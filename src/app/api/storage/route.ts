@@ -1,0 +1,1 @@
+import {NextResponse} from "next/server";import {emptyTrash,storageStats} from "@/lib/ai/storage";export async function GET(){return NextResponse.json(await storageStats())}export async function DELETE(){await emptyTrash();return NextResponse.json(await storageStats())}

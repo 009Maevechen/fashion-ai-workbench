@@ -1,0 +1,4 @@
+import {NextResponse} from "next/server";import {listJobs} from "@/lib/db";import {enqueueWorkflow,initializeJobState} from "@/lib/job-runner";import {z} from "zod";
+export async function GET(request:Request){await initializeJobState();const url=new URL(request.url);return NextResponse.json(await listJobs({sku:url.searchParams.get("sku")||undefined,workflow:url.searchParams.get("workflow")||undefined,projectId:url.searchParams.get("projectId")||undefined}))}
+const schema=z.object({workflow:z.enum(["tryon","pose","recolor"]),payload:z.object({projectId:z.string().uuid()}).passthrough()});
+export async function POST(request:Request){try{const value=schema.parse(await request.json()),operation=await enqueueWorkflow(value.workflow,value.payload);return NextResponse.json({jobId:operation.id,status:operation.status},{status:202})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:"创建任务失败"},{status:400})}}

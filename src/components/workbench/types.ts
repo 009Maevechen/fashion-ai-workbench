@@ -1,0 +1,5 @@
+import type {Job,Project,ProjectAssets} from "@/lib/db";
+import type {WorkflowRuntimeSummary} from "@/lib/ai/provider-settings-types";
+export type ApiHealth={bfl:boolean;fashn:boolean;volcengine:boolean;flux:boolean;fluxKlein:boolean;fluxPro:boolean;custom:boolean;tryonProvider:"bfl"|"volcengine"|"custom";poseProvider:"flux"|"volcengine"|"custom";recolorProvider:"flux"|"volcengine"|"custom"};
+export type Runner=(fn:()=>Promise<void>)=>void;
+export type PanelProps={p:Project;jobs:Job[];health:ApiHealth;modelRouting:WorkflowRuntimeSummary;busy:boolean;run:Runner;persistAsset:(file:File|undefined,key:keyof ProjectAssets,name:string,index?:number)=>Promise<string>;deleteAsset:(key:keyof ProjectAssets,index?:number)=>Promise<void>;clearSourceAssets:()=>Promise<Project>;clearWorkflowResults:(workflow:"tryon"|"pose"|"recolor")=>Promise<Project>;saveProject:(patch:Partial<Project>)=>Promise<Project>;post:(url:string,body:unknown)=>Promise<unknown>;confirmFlow:(workflow:string,images:string[])=>Promise<void>};

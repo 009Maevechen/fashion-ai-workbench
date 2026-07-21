@@ -1,0 +1,3 @@
+import {NextResponse} from "next/server";import {providerHealth} from "@/lib/ai/config";import {getWorkflowRuntimeSummary,listApiProviders} from "@/lib/ai/provider-settings";
+export const dynamic="force-dynamic";
+export async function GET(){const [providers,runtime]=await Promise.all([listApiProviders(),getWorkflowRuntimeSummary()]),legacy=providerHealth(),ready=Object.values(runtime).filter(item=>item.primary.configured).length;return NextResponse.json({...legacy,managedProviders:providers.length,enabledManagedProviders:providers.filter(item=>item.enabled).length,configuredWorkflows:ready,overallStatus:ready===3?"API正常":ready>0?"部分未配置":"全部未配置"})}
