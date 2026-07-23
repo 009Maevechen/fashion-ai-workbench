@@ -37,7 +37,7 @@ export default function Workspace({initial,initialJobs,health,modelRouting,initi
     {step===2&&<TryonPanel {...common} jobs={latest("tryon")}/>}
     {step===3&&<PosePanel {...common} jobs={latest("pose")}/>}
     {step===4&&<RecolorPanel {...common} jobs={latest("recolor",true)}/>}
-    {step===5&&<FinalPanel p={p} onStep={goStep} onComplete={complete}/>}
+    {step===5&&<FinalPanel p={p} jobs={jobs} onStep={goStep} onComplete={complete}/>}
     <RecentTaskList jobs={jobs}/>
   </>;
 }

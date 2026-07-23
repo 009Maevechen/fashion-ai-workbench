@@ -3,7 +3,7 @@ import {getProject,updateProject,type ProjectAssets} from "@/lib/db";
 import {moveFileToTrash} from "@/lib/ai/storage";
 import {invalidateForAssetChange} from "@/lib/workflow";
 
-const KEYS=new Set<keyof ProjectAssets>(["garmentImage","productDetailImage","brandTagImage","modelReferenceImage","fabricTextureImage","otherMaterialImages","standalonePoseInputImage","colorReferenceImage","standaloneRecolorPoseImages"]);
+const KEYS=new Set<keyof ProjectAssets>(["garmentImage","productFrontImage","productBackImage","productDetailImage","printCloseupImage","buttonCloseupImage","brandTagImage","modelReferenceImage","fabricTextureImage","otherMaterialImages","standalonePoseInputImage","colorReferenceImage","standaloneRecolorPoseImages"]);
 const ARRAY_KEYS=new Set<keyof ProjectAssets>(["standaloneRecolorPoseImages","otherMaterialImages"]);
 export async function DELETE(request:Request,{params}:{params:Promise<{id:string}>}){
   try{

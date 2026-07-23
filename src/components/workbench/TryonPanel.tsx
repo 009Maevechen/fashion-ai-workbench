@@ -10,9 +10,10 @@ import ClearAssetsButton from "./ClearAssetsButton";
 import ClearResultsButton from "./ClearResultsButton";
 import {hasClearableSourceAssets} from "@/lib/asset-cleanup";
 import {hasWorkflowResults} from "@/lib/result-cleanup";
+import {buildProductProtectionPrompt,TRYON_SAFETY_ITEMS} from "@/lib/product-structure";
 
 const DETAILS="保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
-const PROTECTION=["保持版型","保持领口","保持袖口","保持肩部","保持下摆","保持纽扣数量","保持印花位置","保持白色包边","保持黑色包边","保持面料纹理","保持服装长度","禁止新增口袋","禁止新增腰带"];
+const PROTECTION=["保持版型","保持领口","保持袖口","保持肩部","保持下摆","保持纽扣数量","保持印花位置","保持白色包边","保持黑色包边","保持面料纹理","保持服装长度","禁止新增口袋","禁止新增腰带",...TRYON_SAFETY_ITEMS];
 const PRODUCT_TYPES:ProductType[]=["上衣","裤装","连衣裙","半身裙","套装"];
 
 export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,saveProject,post,confirmFlow}:PanelProps){
@@ -25,13 +26,14 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const [mode,setMode]=useState<"fast"|"standard"|"quality">(saved?.mode||"standard");
   const [count,setCount]=useState(saved?.candidateCount||2);
   const [selected,setSelected]=useState(p.confirmedTryonImage||"");
-  const [protectedItems,setProtected]=useState(saved?.protectedItems?.length?saved.protectedItems:PROTECTION);
+  const [protectedItems,setProtected]=useState(saved?.protectedItems?.length?saved.protectedItems:[...new Set([...PROTECTION,...(p.profile?.protectionItems||[])])]);
   const [preview,setPreview]=useState<{images:string[];index:number}|null>(null);
   const route=modelRouting.tryon,routed=route.primary.source==="stored";
   const standardProvider=routed?route.primary.model:health.tryonProvider==="custom"?"自定义模型":health.tryonProvider==="volcengine"?"Seedream 5.0":"BFL VTO";
   const configured=routed?route.primary.configured:health.tryonProvider==="custom"?health.custom:mode==="quality"?health.fashn:health.tryonProvider==="volcengine"?health.volcengine:health.bfl;
   const modelName=routed?route.primary.model:health.tryonProvider==="custom"?"自定义图像 API":mode==="quality"?"FASHN Try-On Max":health.tryonProvider==="volcengine"?"Doubao Seedream 5.0":"BFL FLUX Virtual Try-On";
   const allImages=[...new Set([garment.url,model.url,...jobs.flatMap(j=>j.outputImages)].filter(Boolean))] as string[];
+  const structurePrompt=buildProductProtectionPrompt(productType||p.productType,p.profile),missing=[!garment.url&&"服装产品图",!model.url&&"模特参考图"].filter(Boolean) as string[];
 
   async function saveAsset(asset:LocalAsset,key:"garmentImage"|"modelReferenceImage",name:string,setter:(asset:LocalAsset)=>void){
     setter({...asset,status:"uploading"});
@@ -45,7 +47,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
     if(!productType)throw new Error("请先选择服装类型");
     if(!garment.url||!model.url)throw new Error("两张图片必须保存成功后才能生成");
     await saveSettings();
-    await post("/api/tryon",{projectId:p.id,productType,garmentImage:garment.url,modelImage:model.url,garmentDescription:description,detailRequirements:`${protectedItems.join("；")}。${extra}`,mode,candidateCount:slot?1:count,modelPreference,...(slot?{slot}:{})});
+    await post("/api/tryon",{projectId:p.id,productType,garmentImage:garment.url,modelImage:model.url,garmentDescription:description,detailRequirements:`${structurePrompt}\n${protectedItems.join("；")}。${extra}`,mode,candidateCount:slot?1:count,modelPreference,...(slot?{slot}:{})});
   }
 
   return <>
@@ -66,6 +68,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
       <AssetUploadCard label="服装产品图" description="上传真实服装产品图" value={garment} onChange={a=>run(()=>saveAsset(a,"garmentImage","garment",setGarment))} onDelete={()=>run(async()=>{await deleteAsset("garmentImage");setGarment({status:"idle"})})} onPreview={()=>garment.url&&setPreview({images:allImages,index:allImages.indexOf(garment.url)})}/>
       <AssetUploadCard label="模特参考图" description="保留模特、姿势、构图和背景" value={model} onChange={a=>run(()=>saveAsset(a,"modelReferenceImage","model-reference",setModel))} onDelete={()=>run(async()=>{await deleteAsset("modelReferenceImage");setModel({status:"idle"})})} onPreview={()=>model.url&&setPreview({images:allImages,index:allImages.indexOf(model.url)})}/>
     </div>
+{missing.length>0&&<div className="notice">开始换装前还需要保存：{missing.join("、")}。</div>}
 <label className="field">服装描述<textarea maxLength={500} value={description} onChange={e=>setDescription(e.target.value)}/>
 <span className="field-count">{description.length}/500</span>
 </label>
@@ -108,6 +111,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 <div className="protection-grid">{PROTECTION.map(x=>
 <label className="check-item" key={x}>
 <input type="checkbox" checked={protectedItems.includes(x)} onChange={()=>setProtected(v=>v.includes(x)?v.filter(y=>y!==x):[...v,x])}/>{x}</label>)}</div>
+<details className="structure-prompt-preview"><summary>查看自动组成的商品结构保护提示</summary><pre>{structurePrompt}</pre></details>
 <div className="model-card">
 <div className="model-row">
 <span>{modelName}</span>

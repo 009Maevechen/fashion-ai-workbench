@@ -1,6 +1,6 @@
 import type {Project,ProjectAssets,TargetColor} from "./db";
 
-export const CLEARABLE_SOURCE_KEYS=["garmentImage","productDetailImage","brandTagImage","modelReferenceImage","fabricTextureImage","otherMaterialImages","modelImage","standalonePoseInputImage","colorReferenceImage","standaloneRecolorPoseImages"] as const satisfies readonly (keyof ProjectAssets)[];
+export const CLEARABLE_SOURCE_KEYS=["garmentImage","productFrontImage","productBackImage","productDetailImage","printCloseupImage","buttonCloseupImage","brandTagImage","modelReferenceImage","fabricTextureImage","otherMaterialImages","modelImage","standalonePoseInputImage","colorReferenceImage","standaloneRecolorPoseImages"] as const satisfies readonly (keyof ProjectAssets)[];
 
 export function prepareSourceAssetCleanup(project:Project){
   const assets={...project.assets};
