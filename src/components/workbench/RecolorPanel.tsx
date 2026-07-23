@@ -9,6 +9,7 @@ import ImagePreviewDialog from "./ImagePreviewDialog";
 import ColorCropper,{type CropRegion} from "./ColorCropper";
 import ClearAssetsButton from "./ClearAssetsButton";
 import ClearResultsButton from "./ClearResultsButton";
+import ColorAdjustmentPanel from "./ColorAdjustmentPanel";
 import {hasClearableSourceAssets} from "@/lib/asset-cleanup";
 import {hasWorkflowResults} from "@/lib/result-cleanup";
 
@@ -48,6 +49,13 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,persis
   async function clearResults(){const project=await clearWorkflowResults("recolor");setColors(project.targetColors||[]);setSelected([]);setPreview(null)}
   async function addColor(){const color:TargetColor={id:crypto.randomUUID(),name:`颜色${String(colors.length+1).padStart(2,"0")}`,status:"draft"},next=[...colors,color];setActiveId(color.id);setSelected([]);await persistColors(next,color.id)}
   async function updateColor(patch:Partial<TargetColor>){if(!active)return;await persistColors(colors.map(c=>c.id===active.id?{...c,...patch}:c))}
+  async function applyColorAdjustment(patch:Pick<TargetColor,"baseHex"|"hex"|"colorAdjustment">){
+    if(!active)return;
+    const changed=active.hex!==patch.hex,hasOldResults=Boolean(active.poseResults?.length),stale=changed&&hasOldResults;
+    const next=colors.map(color=>color.id===active.id?{...color,...patch,status:stale?"stale" as const:hasOldResults?color.status:"ready" as const}:color);
+    setColors(next);
+    await saveProject({targetColors:next,settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:active.id,sourceMode}},...(stale?{status:"需要重新审核",dependencyStatus:"needs_review",stepStatuses:{...p.stepStatuses,"4":"stale","5":"stale"}}:{})});
+  }
   async function crop(region:CropRegion){if(!active)return;const result=await post(`/api/projects/${p.id}/colors/crop`,{colorId:active.id,region}) as {url:string};await updateColor({cropRegion:region,cropImage:result.url,status:"ready"})}
   async function start(slot?:number,modelPreference:"primary"|"fallback"="primary"){
     if(sources.length!==3)throw new Error("必须有三张有效姿势输入图");
@@ -64,7 +72,7 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,persis
 
   return <>
 <div className="color-tabs">{colors.map(c=>
-<button className={activeId===c.id?"active":""} key={c.id} onClick={()=>{setActiveId(c.id);setSelected(c.poseResults||[])}}>{c.name}<small>{c.status}</small>
+<button className={activeId===c.id?"active":""} key={c.id} onClick={()=>{setActiveId(c.id);setSelected(c.poseResults||[])}}><i className="color-tab-swatch" style={{background:VALID_HEX.test(c.hex||"")?c.hex:"#E8E8EE"}}/>{c.name}<small>{c.status}</small>
 </button>)}<button onClick={()=>run(addColor)}>＋ 添加目标颜色</button>{active&&<button className="danger" onClick={()=>run(removeColor)}>删除当前套装</button>}<button disabled={!colors[colors.findIndex(c=>c.id===activeId)+1]} onClick={nextColor}>下一个颜色</button>
 </div>
 <div className="workbench-grid">
@@ -81,11 +89,7 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,persis
 <AssetUploadCard key={i} label={`姿势${i+1}输入图`} value={manual[i]||{status:"idle"}} onChange={asset=>run(()=>persist(asset,"standaloneRecolorPoseImages",`recolor-pose-${i+1}`,i))} onDelete={()=>run(()=>removeManual(i))} onPreview={()=>manual[i]?.url&&setPreview({images:sources,index:i})}/>)}</div>}<AssetUploadCard label="多颜色参考图（可选）" description="只提取框选服装区域的颜色，不复制款式、图案或结构" value={reference} onChange={asset=>run(()=>persist(asset,"colorReferenceImage","color-reference"))} onDelete={()=>run(async()=>{await deleteAsset("colorReferenceImage");setReference({status:"idle"})})} onPreview={()=>reference.url&&setPreview({images:[reference.url],index:0})}/>{active&&<>
 <label className="field">颜色名称<input value={active.name} onChange={e=>void updateColor({name:e.target.value})}/>
 </label>
-<label className="field">色板选色<input type="color" value={VALID_HEX.test(active.hex||"")?active.hex:"#000000"} onChange={e=>void updateColor({hex:e.target.value.toUpperCase(),status:"ready"})}/>
-</label>
-<label className="field">输入颜色色号（HEX）<input value={active.hex||""} onChange={e=>void updateColor({hex:e.target.value.toUpperCase(),status:VALID_HEX.test(e.target.value)?"ready":"draft"})} placeholder="#C8A06A" maxLength={7}/>
-</label>
-{active.hex&&!VALID_HEX.test(active.hex)&&<small className="error">请输入 6 位 HEX 色号，例如 #C8A06A</small>}
+<ColorAdjustmentPanel key={active.id} baseHex={active.baseHex||active.hex} adjustment={active.colorAdjustment} disabled={busy} onApply={applyColorAdjustment}/>
 {reference.url&&<>
 <h3 className="section-label">在参考图中框选当前颜色</h3>
 <ColorCropper src={reference.url} region={active.cropRegion} onChange={region=>run(()=>crop(region))}/>
