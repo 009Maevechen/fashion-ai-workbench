@@ -1,5 +1,6 @@
 import {NextResponse} from "next/server";
 import {getProject,listJobs,patchJob,updateProject} from "@/lib/db";
+import {duplicateColorNames,normalizedColorName} from "@/lib/color-sets";
 import {z} from "zod";
 
 const schema=z.object({workflow:z.enum(["tryon","pose","recolor"]),images:z.array(z.string().startsWith("/api/files/")).min(1).max(3)});
@@ -28,6 +29,9 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     }
     const targetIds=[...new Set(selected.map(job=>job!.targetColorId))];
     if(targetIds.length!==1||!targetIds[0])throw new Error("三张复色图必须属于同一个目标颜色");
+    const targetColor=(project.targetColors||[]).find(color=>color.id===targetIds[0]);
+    if(!targetColor||!normalizedColorName(targetColor))throw new Error("请先为当前颜色命名，再确认这一套复色结果");
+    if(duplicateColorNames(project.targetColors||[]).has(normalizedColorName(targetColor).toLocaleLowerCase("zh-CN")))throw new Error("颜色名称不能重复，请先修改名称");
     const colors=(project.targetColors||[]).map(color=>color.id===targetIds[0]?{...color,status:"confirmed" as const,poseResults:value.images}:color);
     return NextResponse.json(await updateProject(id,{confirmedRecolorImages:value.images,currentStep:5,status:"等待最终确认",dependencyStatus:"current",targetColors:colors,stepStatuses:{...project.stepStatuses,"4":"confirmed","5":"ready"}}));
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"确认失败"},{status:400})}
