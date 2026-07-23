@@ -15,7 +15,7 @@ export default function ImagePreviewDialog({ images, index, onClose }: { images:
     <button className="dialog-close" onClick={onClose}>×</button>
     <div className="image-dialog" onClick={(e)=>e.stopPropagation()}>
       <div className="image-dialog-stage" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}>
-        <img src={current} alt="大图预览" draggable={false} onLoad={event=>setMeta(value=>({...value,width:event.currentTarget.naturalWidth,height:event.currentTarget.naturalHeight}))} style={{transform:`translate(${position.x}px,${position.y}px) scale(${zoom})`}}/>
+        <img src={current} alt="大图预览" draggable={false} onLoad={event=>{const width=event.currentTarget.naturalWidth,height=event.currentTarget.naturalHeight;setMeta(value=>({...value,width,height}))}} style={{transform:`translate(${position.x}px,${position.y}px) scale(${zoom})`}}/>
       </div>
       <div className="image-meta">{meta.width>0?`${meta.width} × ${meta.height}px`:"读取原始尺寸中"} · {meta.bytes>0?`${(meta.bytes/1024/1024).toFixed(2)} MB`:"读取文件大小中"} · {active+1}/{images.length}</div>
       {images.length>1&&<div className="dialog-thumbnails">{images.map((url,itemIndex)=><button key={`${url}-${itemIndex}`} className={itemIndex===active?"active":""} onClick={()=>setActive(itemIndex)}><img src={url} alt={`缩略图 ${itemIndex+1}`}/></button>)}</div>}
