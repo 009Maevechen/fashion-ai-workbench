@@ -3,6 +3,7 @@ name: Build Windows
 on:
   workflow_dispatch:
   push:
+    branches: ["codex/publish-workbench"]
     tags: ["v*"]
 
 permissions:
