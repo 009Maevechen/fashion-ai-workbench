@@ -1,13 +1,15 @@
 import "server-only";
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import {lookup} from "node:dns/promises";
 import path from "node:path";
 import {timeout} from "./config";
 import {isPrivateAddress,validateRemoteImageUrl} from "./remote-url";
 import {safeSegment} from "./validators";
 import {isSafeStoredPath,outputSegments} from "./storage-paths";
+import {runtimeOutputsDir} from "../runtime-paths";
 
-const root=path.resolve(process.cwd(),process.env.OUTPUTS_DIR||"outputs");
+const root=runtimeOutputsDir();
 export function outputPath(sku:string,folder:string,file:string){const target=path.resolve(root,...outputSegments(sku,folder,file));if(!target.startsWith(root+path.sep))throw new Error("非法输出路径");return target}
 export async function saveOutput(sku:string,folder:string,file:string,data:Buffer){const segments=outputSegments(sku,folder,file),p=path.resolve(root,...segments);if(!p.startsWith(root+path.sep))throw new Error("非法输出路径");await fs.mkdir(path.dirname(p),{recursive:true});await fs.writeFile(p,data);return `/api/files/${segments.map(encodeURIComponent).join("/")}`}
 export async function readOutput(parts:string[]){if(!isSafeStoredPath(parts))throw new Error("非法文件路径");const p=path.resolve(root,...parts);if(!p.startsWith(root+path.sep))throw new Error("非法文件路径");return fs.readFile(p)}
@@ -54,6 +56,15 @@ export const toDataUrl=(b:Buffer,mime="image/jpeg")=>`data:${mime};base64,${b.to
 export async function moveProjectToTrash(sku:string,projectId:string){const source=path.resolve(root,safeSegment(sku));try{await fs.access(source)}catch{return false}const trash=path.resolve(root,".trash",`${safeSegment(projectId)}-${Date.now()}`);await fs.mkdir(path.dirname(trash),{recursive:true});await fs.rename(source,trash);return true}
 export async function moveFileToTrash(url:string,projectId:string){const prefix="/api/files/";if(!url.startsWith(prefix))return false;const parts=url.slice(prefix.length).split("/").map(decodeURIComponent);if(parts.some(x=>x!==safeSegment(x)))throw new Error("非法文件路径");const source=path.resolve(root,...parts),target=path.resolve(root,".trash",`${safeSegment(projectId)}-${Date.now()}`,...parts.slice(1));if(!source.startsWith(root+path.sep))throw new Error("非法文件路径");await fs.mkdir(path.dirname(target),{recursive:true});await fs.rename(source,target).catch(()=>{});return true}
 export async function moveFilesToTrashStrict(urls:string[],projectId:string){const prefix="/api/files/",batch=`${safeSegment(projectId)}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,moved:{source:string;target:string}[]=[];try{for(const url of [...new Set(urls)]){if(!url.startsWith(prefix))throw new Error("只能清理工作台持久化素材");const parts=url.slice(prefix.length).split("/").map(decodeURIComponent);if(!isSafeStoredPath(parts))throw new Error("非法素材路径");const source=path.resolve(root,...parts),target=path.resolve(root,".trash",batch,...parts);if(!source.startsWith(root+path.sep)||!target.startsWith(root+path.sep))throw new Error("非法素材路径");try{await fs.access(source)}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")continue;throw error}await fs.mkdir(path.dirname(target),{recursive:true});await fs.rename(source,target);moved.push({source,target})}return moved.length}catch(error){for(const item of moved.reverse()){await fs.mkdir(path.dirname(item.source),{recursive:true}).catch(()=>{});await fs.rename(item.target,item.source).catch(()=>{})}throw new Error(`清理素材文件失败：${error instanceof Error?error.message:"文件系统错误"}`)}}
+export async function movePoseLibraryFileToTrash(url:string){
+  const prefix="/api/files/";if(!url.startsWith(prefix))throw new Error("只能清理工作台姿势库文件");
+  const parts=url.slice(prefix.length).split("/").map(decodeURIComponent);
+  if(!isSafeStoredPath(parts)||parts[0]!=="pose-library")throw new Error("非法姿势库路径");
+  const source=path.resolve(root,...parts),target=path.resolve(root,".trash","pose-library",`${Date.now()}-${crypto.randomUUID()}`,...parts.slice(1));
+  if(!source.startsWith(root+path.sep)||!target.startsWith(root+path.sep))throw new Error("非法姿势库路径");
+  try{await fs.access(source)}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return false;throw error}
+  await fs.mkdir(path.dirname(target),{recursive:true});await fs.rename(source,target);return true;
+}
 async function dirSize(dir:string):Promise<number>{try{const entries=await fs.readdir(dir,{withFileTypes:true});let total=0;for(const e of entries){const p=path.join(dir,e.name);total+=e.isDirectory()?await dirSize(p):(await fs.stat(p)).size}return total}catch{return 0}}
 export async function storageStats(){const trash=await dirSize(path.join(root,".trash")),cache=await dirSize(path.join(root,".cache"));return {outputsBytes:Math.max(0,(await dirSize(root))-trash-cache),trashBytes:trash,cacheBytes:cache,outputPath:root}}
 export async function emptyTrash(){const trash=path.join(root,".trash");await fs.rm(trash,{recursive:true,force:true});await fs.mkdir(trash,{recursive:true})}

@@ -1,13 +1,14 @@
 "use client";
 
 import {useMemo,useState} from "react";
-import type {ApiProviderPublic,ApiProviderType,WorkflowModelBindings,WorkflowRuntimeSummary} from "@/lib/ai/provider-settings-types";
+import type {ApiProviderPublic,ApiProviderType,SycConfigPublic,WorkflowModelBindings,WorkflowRuntimeSummary} from "@/lib/ai/provider-settings-types";
 import type {WorkflowType} from "@/lib/ai/types";
+import SycSettingsDialog from "./SycSettingsDialog";
 
 type FormState={name:string;type:ApiProviderType;baseUrl:string;apiKey:string;defaultModel:string;enabled:boolean;notes:string};
 type EnvironmentStatus={bfl:boolean;fashn:boolean;volcengine:boolean;flux:boolean;custom:boolean};
 type CatalogItem={
-  id:keyof EnvironmentStatus;
+  id:keyof EnvironmentStatus|"generic";
   label:string;
   types:ApiProviderType[];
   newType:ApiProviderType;
@@ -16,27 +17,31 @@ type CatalogItem={
   baseUrl:string;
   description:string;
 };
-type DialogType="provider"|"workflow"|null;
+type DialogType="provider"|"syc"|"workflow"|null;
 
 const emptyForm:FormState={name:"",type:"openai-compatible",baseUrl:"",apiKey:"",defaultModel:"",enabled:true,notes:""};
-const TYPE_LABEL:Record<ApiProviderType,string>={"openai-compatible":"OpenAI兼容中转站",fashn:"FASHN",bfl:"BFL / FLUX",volcengine:"火山方舟",flux:"FLUX兼容接口",custom:"自定义兼容接口"};
+const TYPE_LABEL:Record<ApiProviderType,string>={"openai-compatible":"OpenAI兼容中转站","syc-openai-compatible":"SYC 中转站",fashn:"FASHN",bfl:"BFL / FLUX",volcengine:"火山方舟",flux:"FLUX兼容接口",custom:"自定义兼容接口"};
 const WORKFLOWS:{key:WorkflowType;label:string;description:string}[]=[{key:"tryon",label:"服装换装",description:"服装图＋模特图生成换装候选"},{key:"pose",label:"三种姿势",description:"三次独立图片编辑任务"},{key:"recolor",label:"服装复色",description:"三张姿势图分别精准复色"}];
 const CATALOG:CatalogItem[]=[
   {id:"bfl",label:"BFL API",types:["bfl"],newType:"bfl",model:"FLUX Virtual Try-On",defaultModel:"FLUX Virtual Try-On",baseUrl:"https://api.bfl.ai",description:"用于快速和标准服装换装"},
   {id:"fashn",label:"FASHN API",types:["fashn"],newType:"fashn",model:"FASHN Try-On Max",defaultModel:"tryon-max",baseUrl:"https://api.fashn.ai/v1",description:"用于精细服装换装"},
   {id:"volcengine",label:"火山方舟 API",types:["volcengine"],newType:"volcengine",model:"Seedream",defaultModel:"doubao-seedream-5-0-260128",baseUrl:"https://ark.cn-beijing.volces.com/api/v3",description:"用于姿势生成和服装复色"},
   {id:"flux",label:"FLUX.2 API",types:["flux"],newType:"flux",model:"Klein / Pro",defaultModel:"",baseUrl:"",description:"用于快速姿势和高质量编辑"},
-  {id:"custom",label:"自定义图像 API",types:["openai-compatible","custom"],newType:"openai-compatible",model:"OpenAI-compatible JSON",defaultModel:"",baseUrl:"",description:"用于中转站或其他兼容图片模型"},
+  {id:"custom",label:"SYC 中转站 API",types:["syc-openai-compatible"],newType:"syc-openai-compatible",model:"gpt-image-2",defaultModel:"gpt-image-2",baseUrl:"https://sycagent.top/v1",description:"OpenAI 兼容图片生成与图片编辑"},
 ];
+const GENERIC_CATALOG:CatalogItem={id:"generic",label:"自定义 API 提供商",types:["openai-compatible","custom"],newType:"openai-compatible",model:"自定义图片模型",defaultModel:"",baseUrl:"",description:"添加任意 OpenAI 兼容中转站或自定义图片接口"};
+const ALL_CATALOG=[...CATALOG,GENERIC_CATALOG];
 
 async function requestJson(url:string,init?:RequestInit){const response=await fetch(url,{...init,headers:{"Content-Type":"application/json",...(init?.headers||{})}});const data=response.status===204?null:await response.json();if(!response.ok)throw new Error(data?.error||"操作失败");return data}
 
-export default function ProviderSettingsManager({initialProviders,initialBindings,initialRuntime,environmentStatus}:{initialProviders:ApiProviderPublic[];initialBindings:WorkflowModelBindings;initialRuntime:WorkflowRuntimeSummary;environmentStatus:EnvironmentStatus}){
-  const [providers,setProviders]=useState(initialProviders),[bindings,setBindings]=useState(initialBindings),[runtime,setRuntime]=useState(initialRuntime),[form,setForm]=useState<FormState>(emptyForm),[editingId,setEditingId]=useState<string>(),[activeCatalogId,setActiveCatalogId]=useState<CatalogItem["id"]>("custom"),[dialog,setDialog]=useState<DialogType>(null),[busy,setBusy]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState("");
+export default function ProviderSettingsManager({initialProviders,initialBindings,initialRuntime,initialSyc,environmentStatus}:{initialProviders:ApiProviderPublic[];initialBindings:WorkflowModelBindings;initialRuntime:WorkflowRuntimeSummary;initialSyc:SycConfigPublic;environmentStatus:EnvironmentStatus}){
+  const [providers,setProviders]=useState(initialProviders),[bindings,setBindings]=useState(initialBindings),[runtime,setRuntime]=useState(initialRuntime),[syc,setSyc]=useState(initialSyc),[form,setForm]=useState<FormState>(emptyForm),[editingId,setEditingId]=useState<string>(),[activeCatalogId,setActiveCatalogId]=useState<CatalogItem["id"]>("custom"),[dialog,setDialog]=useState<DialogType>(null),[busy,setBusy]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState("");
   const enabledProviders=useMemo(()=>providers.filter(provider=>provider.enabled),[providers]);
-  const activeCatalog=CATALOG.find(item=>item.id===activeCatalogId)||CATALOG[4];
+  const activeCatalog=ALL_CATALOG.find(item=>item.id===activeCatalogId)||GENERIC_CATALOG;
   const catalogProviders=providers.filter(provider=>activeCatalog.types.includes(provider.type));
   const editingProvider=providers.find(provider=>provider.id===editingId);
+  const activeEnvironmentConfigured=activeCatalog.id==="generic"?false:environmentStatus[activeCatalog.id];
+  const environmentConfigured=(id:CatalogItem["id"])=>id==="generic"?false:environmentStatus[id];
 
   function clearFeedback(){setMessage("");setError("")}
   function formForCatalog(item:CatalogItem):FormState{return {name:item.label,type:item.newType,baseUrl:item.baseUrl,apiKey:"",defaultModel:item.defaultModel,enabled:true,notes:""}}
@@ -44,12 +49,19 @@ export default function ProviderSettingsManager({initialProviders,initialBinding
   function edit(provider:ApiProviderPublic){setEditingId(provider.id);setForm({name:provider.name,type:provider.type,baseUrl:provider.baseUrl,apiKey:"",defaultModel:provider.defaultModel,enabled:provider.enabled,notes:provider.notes||""});clearFeedback()}
   function openProvider(item:CatalogItem){
     setActiveCatalogId(item.id);
+    if(item.id==="custom"){clearFeedback();setDialog("syc");return}
     const first=providers.find(provider=>item.types.includes(provider.type));
     if(first)edit(first);else startNew(item);
     setDialog("provider");
   }
+  function openGeneric(createNew=false){
+    setActiveCatalogId("generic");
+    const first=providers.find(provider=>GENERIC_CATALOG.types.includes(provider.type));
+    if(first&&!createNew)edit(first);else startNew(GENERIC_CATALOG);
+    setDialog("provider");
+  }
   function closeDialog(){if(busy)return;setDialog(null);clearFeedback()}
-  async function reload(){const [providerData,bindingData]=await Promise.all([requestJson("/api/settings/providers"),requestJson("/api/settings/workflow-models")]);setProviders(providerData);setBindings(bindingData.bindings);setRuntime(bindingData.runtime);return providerData as ApiProviderPublic[]}
+  async function reload(){const [providerData,bindingData,sycData]=await Promise.all([requestJson("/api/settings/providers"),requestJson("/api/settings/workflow-models"),requestJson("/api/settings/syc")]);setProviders(providerData);setBindings(bindingData.bindings);setRuntime(bindingData.runtime);setSyc(sycData);return providerData as ApiProviderPublic[]}
   async function submit(){
     const wasEditing=Boolean(editingId);
     setBusy("save");clearFeedback();
@@ -80,19 +92,27 @@ export default function ProviderSettingsManager({initialProviders,initialBinding
   return <div className="settings-stack">
     {(error||message)&&!dialog&&<div className={error?"error":"notice"}>{error||message}</div>}
     <section className="card settings-hub">
-      <div className="panel-head"><div><h2>API提供商</h2><small>点击卡片查看、添加或修改里面的配置</small></div><button className="secondary" onClick={()=>openProvider(CATALOG[4])}>＋ 添加中转站</button></div>
+      <div className="panel-head"><div><h2>API提供商</h2><small>点击卡片查看、添加或修改里面的配置</small></div><div className="panel-actions"><button className="secondary" onClick={()=>openProvider(CATALOG[4])}>配置 SYC 中转站</button><button className="primary" onClick={()=>openGeneric(true)}>＋ 新增 API</button></div></div>
       <div className="settings-provider-grid">
         {CATALOG.map(item=>{
           const saved=providers.filter(provider=>item.types.includes(provider.type));
-          const configured=environmentStatus[item.id]||saved.some(provider=>provider.enabled&&provider.hasApiKey);
+          const configured=item.id==="custom"?syc.apiKeyConfigured:environmentConfigured(item.id)||saved.some(provider=>provider.enabled&&provider.hasApiKey);
           const failed=saved.some(provider=>provider.lastTestStatus==="failed");
+          const sycLabel=!syc.apiKeyConfigured?"未配置":!syc.imageModel?"配置不完整":syc.lastImageTestStatus==="success"?"可用":syc.lastTestStatus==="failed"||syc.lastImageTestStatus==="failed"?"测试失败":syc.lastTestStatus==="success"?"基础连接成功":"已配置";
+          const cardFailed=item.id==="custom"?sycLabel==="测试失败":failed;
           return <button type="button" className="settings-provider-tile" key={item.id} onClick={()=>openProvider(item)}>
-            <span className="settings-provider-tile-head"><b>{item.label}</b><span className={`badge ${configured?"success":"failed"}`}>{configured?"已配置":"未配置"}</span></span>
-            <strong>{item.model}</strong>
+            <span className="settings-provider-tile-head"><b>{item.label}</b><span className={`badge ${cardFailed?"failed":configured?"success":"failed"}`}>{item.id==="custom"?sycLabel:configured?"已配置":"未配置"}</span></span>
+            <strong>{item.id==="custom"?syc.imageModel:item.model}</strong>
             <small>{item.description}</small>
-            <span className="settings-provider-tile-foot"><span>{saved.length?`${saved.length} 个页面配置`:environmentStatus[item.id]?"环境变量配置":"点击开始配置"}</span><span className={failed?"danger-text":""}>{failed?"测试失败":"查看配置 →"}</span></span>
+            <span className="settings-provider-tile-foot"><span>{item.id==="custom"?(syc.lastImageTestAt||syc.lastTestAt?`最近测试 ${new Date(syc.lastImageTestAt||syc.lastTestAt!).toLocaleDateString("zh-CN")}`:"点击开始配置"):saved.length?`${saved.length} 个页面配置`:environmentConfigured(item.id)?"环境变量配置":"点击开始配置"}</span><span className={cardFailed?"danger-text":""}>{cardFailed?(syc.lastImageTestError||syc.lastError||"测试失败").slice(0,22):"查看配置 →"}</span></span>
           </button>
         })}
+        <button type="button" className="settings-provider-tile" onClick={()=>openGeneric(false)}>
+          <span className="settings-provider-tile-head"><b>自定义 API</b><span className={`badge ${providers.some(provider=>GENERIC_CATALOG.types.includes(provider.type)&&provider.enabled&&provider.hasApiKey)?"success":""}`}>{providers.filter(provider=>GENERIC_CATALOG.types.includes(provider.type)).length} 个配置</span></span>
+          <strong>添加任意图片模型</strong>
+          <small>填写 Base URL、API Key 和模型名称，支持多个配置</small>
+          <span className="settings-provider-tile-foot"><span>OpenAI 兼容 / 自定义接口</span><span>管理配置 →</span></span>
+        </button>
         <button type="button" className="settings-provider-tile workflow-entry-tile" onClick={()=>{clearFeedback();setDialog("workflow")}}>
           <span className="settings-provider-tile-head"><b>工作流模型分配</b><span className="badge">3 个流程</span></span>
           <strong>主模型＋备用模型</strong>
@@ -103,21 +123,23 @@ export default function ProviderSettingsManager({initialProviders,initialBinding
       <div className="notice settings-security-note">API Key 只发送到本机服务器并加密保存，页面仅显示掩码，不会写入 LocalStorage。环境变量配置仍可在 <code>.env.local</code> 中使用。</div>
     </section>
 
+    {dialog==="syc"&&<SycSettingsDialog config={syc} onClose={closeDialog} onChanged={async()=>{await reload()}}/>}
+
     {dialog==="provider"&&<div className="settings-dialog-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)closeDialog()}}>
       <section className="settings-dialog" role="dialog" aria-modal="true" aria-label={`${activeCatalog.label}配置`}>
         <header className="settings-dialog-head"><div><small>API PROVIDER</small><h2>{activeCatalog.label}</h2><p>{activeCatalog.description}</p></div><button className="settings-dialog-close" aria-label="关闭配置" onClick={closeDialog}>×</button></header>
         <div className="settings-dialog-status">
-          <span className={`badge ${environmentStatus[activeCatalog.id]?"success":"failed"}`}>环境变量：{environmentStatus[activeCatalog.id]?"已配置":"未配置"}</span>
+          {activeCatalog.id!=="generic"&&<span className={`badge ${activeEnvironmentConfigured?"success":"failed"}`}>环境变量：{activeEnvironmentConfigured?"已配置":"未配置"}</span>}
           <span className="badge">{catalogProviders.length} 个页面配置</span>
           <span>{activeCatalog.model}</span>
         </div>
         {catalogProviders.length>0&&<div className="settings-config-tabs">{catalogProviders.map(provider=><button type="button" className={editingId===provider.id?"active":""} key={provider.id} onClick={()=>edit(provider)}><b>{provider.name}</b><small>{provider.enabled?"已启用":"已停用"} · {provider.lastTestStatus==="success"?"测试成功":provider.lastTestStatus==="failed"?"测试失败":"未测试"}</small></button>)}<button type="button" className={!editingId?"active add":""} onClick={()=>startNew(activeCatalog)}>＋ 新增配置</button></div>}
         <div className="settings-dialog-body">
           {(error||message)&&<div className={error?"error":"notice"}>{error||message}</div>}
-          <div className="settings-form-heading"><div><h3>{editingId?"编辑页面配置":"新增页面配置"}</h3><small>{editingProvider?.apiKeyMasked||"完整 API Key 不会返回网页"}</small></div>{!catalogProviders.length&&environmentStatus[activeCatalog.id]&&<span className="badge success">现有环境配置可继续使用</span>}</div>
+          <div className="settings-form-heading"><div><h3>{editingId?"编辑页面配置":"新增页面配置"}</h3><small>{editingProvider?.apiKeyMasked||"完整 API Key 不会返回网页"}</small></div>{!catalogProviders.length&&activeEnvironmentConfigured&&<span className="badge success">现有环境配置可继续使用</span>}</div>
           <div className="provider-form form-grid">
             <label className="field">配置名称<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="例如：我的中转站1"/></label>
-            <label className="field">提供商类型<select value={form.type} onChange={e=>setForm({...form,type:e.target.value as ApiProviderType})}>{Object.entries(TYPE_LABEL).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label>
+            <label className="field">提供商类型<select value={form.type} onChange={e=>setForm({...form,type:e.target.value as ApiProviderType})}>{Object.entries(TYPE_LABEL).filter(([value])=>value!=="syc-openai-compatible").map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label>
             <label className="field full">Base URL<input value={form.baseUrl} onChange={e=>setForm({...form,baseUrl:e.target.value})} placeholder="https://example.com/v1"/></label>
             <label className="field">API Key<input type="password" autoComplete="new-password" value={form.apiKey} onChange={e=>setForm({...form,apiKey:e.target.value})} placeholder={editingId?"留空表示不修改":"只发送到本机服务器"}/></label>
             <label className="field">默认模型<input value={form.defaultModel} onChange={e=>setForm({...form,defaultModel:e.target.value})} placeholder="模型名称或接入点ID"/></label>

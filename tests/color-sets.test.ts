@@ -28,3 +28,9 @@ test("色差板基础色可作为当前颜色的有效色值",()=>{
   const color={...complete("米杏色"),hex:undefined,baseHex:"#C8A06A",status:"success" as const};
   assert.equal(colorSetIssue(color),"等待确认");
 });
+
+test("两张已确认姿势可以组成两张复色套装",()=>{
+  const color:TargetColor={id:"two",name:"米白色",hex:"#EEE9DF",sourceCount:2,status:"confirmed",poseResults:["/1.jpg","/2.jpg"]};
+  assert.equal(isColorSetComplete(color),true);
+  assert.equal(colorSetIssue(color),"已完成");
+});
