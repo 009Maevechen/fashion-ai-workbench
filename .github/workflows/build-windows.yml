@@ -26,6 +26,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: windows-next-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('src/**', 'next.config.ts') }}
+          restore-keys: |
+            windows-next-${{ hashFiles('pnpm-lock.yaml') }}-
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: Type check
@@ -41,7 +48,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build-logs | Out-Null
-          Get-ChildItem -Recurse out -ErrorAction SilentlyContinue | Select-Object FullName,Length | Out-File build-logs/artifacts.txt
+          Get-ChildItem -Recurse out/make -ErrorAction SilentlyContinue | Select-Object FullName,Length | Out-File build-logs/artifacts.txt
       - name: Upload Setup.exe
         uses: actions/upload-artifact@v4
         with:
