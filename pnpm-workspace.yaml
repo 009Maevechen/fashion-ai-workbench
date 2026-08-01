@@ -1,4 +1,13 @@
+packages:
+  - .
+
 allowBuilds:
-  esbuild: set this to true or false
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
+  electron: true
+  electron-winstaller: true
+
+overrides:
+  "@electron/rebuild": 4.0.1
+
+onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
