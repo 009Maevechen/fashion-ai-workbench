@@ -27,6 +27,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const [face,setFace]=useState(saved?.face??false);
   const [count,setCount]=useState(saved?.candidateCount||2);
   const [selected,setSelected]=useState(p.confirmedTryonImage||"");
+  const [candidateSlot,setCandidateSlot]=useState(1);
   const [protectedItems,setProtected]=useState(saved?.protectedItems?.length?saved.protectedItems:[...new Set([...TRYON_PROTECTION_LABELS,...(p.profile?.protectionItems||[])])]);
   const [preview,setPreview]=useState<{images:string[];index:number}|null>(null);
   const route=modelRouting.tryon,routed=route.primary.source==="stored";
@@ -36,6 +37,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const allImages=[...new Set([garment.url,model.url,...jobs.flatMap(j=>j.outputImages)].filter(Boolean))] as string[];
   const structurePrompt=buildProductProtectionPrompt(productType||p.productType,p.profile),missing=[!garment.url&&"服装产品图",!model.url&&"模特参考图"].filter(Boolean) as string[];
   const canConfirmSelected=canConfirmTryonSelection(selected,jobs);
+  const candidateTotal=Math.max(count,jobs.length,1),activeCandidate=Math.min(candidateSlot,candidateTotal),visibleJob=jobs.find(job=>job.slot===activeCandidate),visibleUrl=visibleJob?.outputImages[0];
 
   async function saveAsset(asset:LocalAsset,key:"garmentImage"|"modelReferenceImage",name:string,setter:(asset:LocalAsset)=>void){
     setter({...asset,status:"uploading"});
@@ -54,7 +56,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 
   return <>
 <div className="workbench-grid">
-    <section className="card workbench-panel">
+    <section className="card workbench-panel tryon-input-panel">
 <div className="panel-head">
 <h2>输入素材</h2>
 <div className="panel-actions"><small>选择后立即保存</small><ClearAssetsButton disabled={busy||!hasClearableSourceAssets(p)} onConfirm={clearAllAssets}/></div>
@@ -74,16 +76,16 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 <label className="field">服装描述<textarea maxLength={500} value={description} onChange={e=>setDescription(e.target.value)}/>
 <span className="field-count">{description.length}/500</span>
 </label>
-<label className="field">重点细节要求<textarea maxLength={800} value={extra} onChange={e=>setExtra(e.target.value)}/>
+<label className="field tryon-detail-field">重点细节要求<textarea maxLength={800} value={extra} onChange={e=>setExtra(e.target.value)}/>
 <span className="field-count">{extra.length}/800</span>
 </label>
 <button className="secondary" onClick={()=>run(saveSettings)}>保存换装设置</button>
 </section>
-    <section className="card workbench-panel">
+    <section className="card workbench-panel tryon-results-panel">
 <div className="panel-head">
 <h2>换装结果（候选图）</h2>
-<div className="panel-actions"><span className="badge">共 {Math.max(count,jobs.length)} 张候选</span><ClearResultsButton workflow="tryon" disabled={busy||!hasWorkflowResults(p,jobs,"tryon")} onConfirm={clearResults}/></div>
-</div>{jobs.length?<div className="result-grid">{Array.from({length:Math.max(count,jobs.length)},(_,i)=>{const slot=i+1,job=jobs.find(j=>j.slot===slot),url=job?.outputImages[0];return <ResultCard key={`tryon-candidate-slot-${slot}`} job={job} label={`候选 ${String(slot).padStart(2,"0")}`} selected={selected===url} onSelect={url?()=>setSelected(url):undefined} onPreview={url?()=>setPreview({images:allImages,index:allImages.indexOf(url)}):undefined} onRetry={()=>run(()=>start(slot))} onFallbackRetry={route.fallback.configured?()=>run(()=>start(slot,"fallback")):undefined}/>})}</div>:<div className="empty-state">
+<div className="panel-actions"><div className="tryon-candidate-tabs">{Array.from({length:candidateTotal},(_,index)=>index+1).map(slot=><button type="button" className={activeCandidate===slot?"active":""} key={slot} onClick={()=>setCandidateSlot(slot)}>候选{String(slot).padStart(2,"0")}</button>)}</div><ClearResultsButton workflow="tryon" disabled={busy||!hasWorkflowResults(p,jobs,"tryon")} onConfirm={clearResults}/></div>
+</div>{jobs.length?<div className="result-grid tryon-single-result"><ResultCard key={`tryon-candidate-slot-${activeCandidate}`} job={visibleJob} label={`候选 ${String(activeCandidate).padStart(2,"0")}`} selected={selected===visibleUrl} onSelect={visibleUrl?()=>setSelected(visibleUrl):undefined} onPreview={visibleUrl?()=>setPreview({images:allImages,index:allImages.indexOf(visibleUrl)}):undefined} onRetry={()=>run(()=>start(activeCandidate))} onFallbackRetry={route.fallback.configured?()=>run(()=>start(activeCandidate,"fallback")):undefined}/></div>:<div className="empty-state">
 <div>
 <div className="empty-icon">◇</div>
 <b>还没有换装候选</b>
@@ -94,7 +96,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 <p>确认后可进入三种姿势</p>
 </div>
 </section>
-    <section className="card workbench-panel settings-panel">
+    <section className="card workbench-panel settings-panel tryon-settings-panel">
 <div className="panel-head">
 <h2>生成设置</h2>
 <small>真实模型状态</small>

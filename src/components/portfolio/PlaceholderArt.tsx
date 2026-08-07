@@ -1,0 +1,1 @@
+export default function PlaceholderArt({label,index=1,tall=false}:{label:string;index?:number;tall?:boolean}){return <div className={`placeholder-art tone-${index}${tall?" tall":""}`} role="img" aria-label={label}><span>{String(index).padStart(2,"0")}</span><p>IMAGE PLACEHOLDER</p><small>{label}</small><i aria-hidden="true"/></div>}

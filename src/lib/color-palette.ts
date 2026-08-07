@@ -44,6 +44,12 @@ export function readableColorName(hex:string,usedNames:string[]=[]){
   return colorName(hexToRgb(hex),used);
 }
 
+/** 商品色卡常用黑/白对比边饰；按 WCAG 亮度选择与主色对比更清晰的边饰色。 */
+export function contrastTrimForHex(hex:string){
+  const [r,g,b]=hexToRgb(hex).map(linear),luminance=r*.2126+g*.7152+b*.0722;
+  return luminance>.179?{trimColorName:"黑色",trimHex:"#101010"}:{trimColorName:"白色",trimHex:"#F4F6F5"};
+}
+
 /** CIE Lab 感知色差；大约小于 7 时肉眼通常会认为是同一款颜色。 */
 export function colorDistance(left:string,right:string){return labDistance(rgbToLab(hexToRgb(left)),rgbToLab(hexToRgb(right)))}
 

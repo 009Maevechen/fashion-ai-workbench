@@ -2,7 +2,7 @@ export async function readSycResponse(response:Response){
   const text=await response.text();
   if(/^\s*<!doctype html|^\s*<html/i.test(text))throw new Error("SYC 中转站返回了 HTML 页面，可能被网关或 Cloudflare 拦截");
   let data:unknown;
-  try{data=JSON.parse(text)}catch{throw new Error("SYC 中转站返回的不是有效 JSON")}
+  try{data=JSON.parse(text)}catch{const type=response.headers.get("content-type")||"未知类型";throw new Error(`SYC 中转站返回的不是有效 JSON（HTTP ${response.status}，${type}）`)}
   if(!response.ok){
     const item=data as {error?:string|{message?:string};message?:string};
     const detail=typeof item.error==="string"?item.error:item.error?.message||item.message;

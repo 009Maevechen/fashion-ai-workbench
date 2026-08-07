@@ -18,3 +18,5 @@ release/
 desktop-runtime/
 *.log
 *.tsbuildinfo
+.DS_Store
+tmp/

@@ -1,0 +1,3 @@
+"use client";
+import {ElementType,useEffect,useRef,useState} from "react";
+export default function Reveal({as:Tag="div",className="",children,...props}:{as?:ElementType;className?:string;children:React.ReactNode;[key:string]:unknown}){const ref=useRef<HTMLElement|null>(null);const [visible,setVisible]=useState(false);useEffect(()=>{const node=ref.current;if(!node)return;const observer=new IntersectionObserver(([entry])=>{if(entry.isIntersecting){setVisible(true);observer.disconnect()}},{threshold:.12});observer.observe(node);return()=>observer.disconnect()},[]);return <Tag ref={ref} className={`${className} reveal ${visible?"is-visible":""}`} {...props}>{children}</Tag>}

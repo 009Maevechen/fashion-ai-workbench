@@ -1,0 +1,28 @@
+陈靖俞
+AI Visual Designer & Workflow Builder
+
+定位
+跨境电商 AIGC 视觉设计｜AI 工作流搭建
+
+核心介绍
+把 AI 从一次性生图，转化为可复用的跨境商品视觉工作流。
+
+教育背景
+广州美术学院｜数字媒体艺术设计｜2027届
+
+核心能力
+- 跨境服装模特商品图设计
+- 产品图换装与服装复色
+- 三种不同姿势生成
+- AI 图片细节质检
+- Codex 辅助搭建 AI 视觉工作台
+- 扣子前期流程框架验证
+
+工具
+ComfyUI、ChatGPT、Gemini、Midjourney、Codex、扣子、Photoshop、Illustrator、After Effects
+
+奖项
+2025 广东省计算机设计大赛信息可视化设计省二等奖
+
+联系方式
+邮箱、电话与社交账号待补充。

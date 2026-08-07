@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {colorDistance,extractColorPalette,readableColorName} from "../src/lib/color-palette";
+import {colorDistance,contrastTrimForHex,extractColorPalette,readableColorName} from "../src/lib/color-palette";
 
 test("颜色参考图可以提取多个不重复色卡",()=>{
   const pixels=new Uint8Array([
@@ -18,6 +18,13 @@ test("局部色块可以获得可读名称并判断近似重复色",()=>{
   assert.equal(readableColorName("#171717"),"纯黑色");
   assert.ok(colorDistance("#A6886B","#A7896C")<3);
   assert.ok(colorDistance("#A6886B","#181818")>40);
+});
+
+test("色卡会为浅色主体匹配黑边，为深棕和黑色匹配白边",()=>{
+  assert.deepEqual(contrastTrimForHex("#A68D68"),{trimColorName:"黑色",trimHex:"#101010"});
+  assert.deepEqual(contrastTrimForHex("#58382D"),{trimColorName:"白色",trimHex:"#F4F6F5"});
+  assert.deepEqual(contrastTrimForHex("#101010"),{trimColorName:"白色",trimHex:"#F4F6F5"});
+  assert.deepEqual(contrastTrimForHex("#F4F6F5"),{trimColorName:"黑色",trimHex:"#101010"});
 });
 
 test("自动色卡最多保留五款服装主色并过滤中间灰背景",()=>{

@@ -1,0 +1,6 @@
+import type {Metadata} from "next";
+import SiteHeader from "@/components/portfolio/SiteHeader";
+import SiteFooter from "@/components/portfolio/SiteFooter";
+export const metadata:Metadata={title:"About"};
+const tools=["ComfyUI","ChatGPT","Gemini","Midjourney","Codex","扣子","Photoshop","Illustrator","After Effects"];
+export default function AboutPage(){return <div className="portfolio-site"><SiteHeader/><main className="site-container inner-page about-page"><header className="inner-hero"><p>About / 陈靖俞</p><h1>Designing images.<br/>Building systems.</h1><p>我是一名跟随 AI 视觉技术发展、同时关注商业交付与流程稳定性的视觉设计师。</p></header><section className="about-intro"><div className="portrait-placeholder"><span>PORTRAIT</span><p>个人照片待补充</p></div><div><p>Profile</p><h2>把视觉判断、AI 工具和产品思维连接起来。</h2><p>目前聚焦跨境服装商品图生产，包括模特换装、服装复色、姿势扩展、细节质检，以及支持这些任务的 AI 工作台搭建。</p></div></section><section className="resume-grid" id="resume"><article><p>Education</p><h3>广州美术学院</h3><p>数字媒体艺术设计 / 2027届</p></article><article><p>Experience</p><h3>跨境电商 AIGC 视觉设计</h3><p>详细工作经历与项目时间待补充</p></article><article><p>Awards</p><h3>广东省计算机设计大赛</h3><p>信息可视化设计 · 省二等奖 / 2025</p></article></section><section className="tool-section"><p>AI &amp; Design tools</p><div>{tools.map(tool=><span key={tool}>{tool}</span>)}</div></section></main><SiteFooter/></div>}

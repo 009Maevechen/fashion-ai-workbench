@@ -4,8 +4,9 @@ import sharp from "sharp";
 import {timeout} from "./config";
 import {generateImage} from "./generate";
 import {getProviderRuntime} from "./provider-settings";
-import {downloadImage,saveOutput} from "./storage";
+import {downloadImage,localImage,saveOutput,toDataUrl} from "./storage";
 import {safeSegment,validateOutput} from "./validators";
+import {listProjects} from "../db";
 
 function modelsEndpoint(baseUrl:string){const url=new URL(baseUrl);url.pathname=url.pathname.replace(/\/images\/(generations|edits)\/?$/i,"").replace(/\/$/,"")+"/models";url.search="";return url.toString()}
 function connectionHeaders(type:string,key:string):HeadersInit{return type==="bfl"?{"x-key":key,Accept:"application/json"}:{Authorization:`Bearer ${key}`,Accept:"application/json"}}
@@ -23,8 +24,15 @@ export async function testProviderConnection(id:string){
 
 export async function testProviderImage(id:string){
   const provider=await getProviderRuntime(id);
-  if(provider.type==="bfl"||provider.type==="fashn")throw new Error(`${provider.name} 需要真实服装与模特输入图，请在服装换装页面测试图片能力`);
-  const result=await generateImage({workflow:"pose",provider:provider.type,model:provider.model,images:[],prompt:"一件白色基础款服装的简洁电商产品摄影，白色背景，单张图片，无文字，无水印",options:{mode:"standard",sku:"provider-tests",seed:1}},provider);
+  let workflow:"tryon"|"pose"="pose",images:string[]=[],prompt="一件白色基础款服装的简洁电商产品摄影，白色背景，单张图片，无文字，无水印";
+  if(provider.type==="bfl"||provider.type==="fashn"){
+    const project=(await listProjects()).find(item=>item.assets.garmentImage&&(item.assets.modelReferenceImage||item.assets.modelImage));
+    if(!project)throw new Error("真实图片能力测试需要服装图和模特图。请先在任一商品项目保存这两张图片，再重新测试");
+    const modelUrl=project.assets.modelReferenceImage||project.assets.modelImage!,garmentUrl=project.assets.garmentImage!;
+    const [modelImage,garmentImage]=await Promise.all([localImage(modelUrl),localImage(garmentUrl)]);
+    workflow="tryon";images=[toDataUrl(modelImage),toDataUrl(garmentImage)];prompt="将第二张服装商品图准确穿到第一张模特图上，保持人物、姿势、背景和服装设计细节，生成一张无文字无水印的真实电商换装图";
+  }
+  const result=await generateImage({workflow,provider:provider.type,model:provider.model,images,prompt,options:{mode:"standard",sku:"provider-tests",seed:1}},provider);
   const downloaded=result.imageBase64?{buffer:Buffer.from(result.imageBase64,"base64"),mime:result.mimeType||"image/jpeg"}:await downloadImage(result.temporaryImageUrl!);
   await validateOutput(downloaded.buffer,downloaded.mime);
   const jpeg=await sharp(downloaded.buffer).jpeg({quality:90}).toBuffer(),filename=`test-${Date.now()}-${crypto.randomUUID()}.jpg`;

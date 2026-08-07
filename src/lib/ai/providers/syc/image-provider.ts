@@ -4,6 +4,7 @@ import type {ProviderRuntimeConfig} from "../../provider-settings-types";
 import {sycEndpoint} from "./config";
 import {readSycResponse,sycNetworkError} from "./errors";
 import {parseSycImageResponse} from "./response-parser";
+import {serializeSycRequest} from "./request-queue";
 
 function dataUrl(value:string){
   const match=value.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s);
@@ -31,7 +32,7 @@ export class SycImageProvider implements ImageProvider{
       body=JSON.stringify({model,prompt:input.prompt,n:1,size:"1024x1536",response_format:options.returnBase64?"b64_json":"url",stream:options.stream,partial_images:options.partialImages,...(options.codexCliCompatible?{codexCli:true}:{})});
     }
     let response:Response;
-    try{response=await fetch(url,{method:"POST",headers,body,signal:AbortSignal.timeout(options.timeoutSeconds*1000)})}catch(error){throw sycNetworkError(error)}
+    try{response=await serializeSycRequest(()=>fetch(url,{method:"POST",headers,body,signal:AbortSignal.timeout(options.timeoutSeconds*1000)}))}catch(error){throw sycNetworkError(error)}
     const contentType=response.headers.get("content-type")||"";
     if(contentType.includes("text/event-stream"))throw new Error("SYC 当前返回流式事件；图片工作流暂不支持解析流式结果，请关闭“流式传输”");
     let payload:unknown;

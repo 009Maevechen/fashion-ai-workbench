@@ -14,7 +14,7 @@ async function requestJson(url:string,body?:unknown,method="POST"){
 }
 
 export default function SycSettingsDialog({config,onClose,onChanged}:{config:SycConfigPublic;onClose:()=>void;onChanged:(next?:SycConfigPublic)=>void|Promise<void>}){
-  const [form,setForm]=useState(()=>toForm(config)),[models,setModels]=useState<string[]>([]),[busy,setBusy]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState(""),[testImage,setTestImage]=useState("");
+  const [form,setForm]=useState(()=>toForm(config)),[models,setModels]=useState<string[]>([]),[openModelMenu,setOpenModelMenu]=useState<"image"|"chat"|null>(null),[busy,setBusy]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState(""),[testImage,setTestImage]=useState("");
   useEffect(()=>{setForm(toForm(config))},[config]);
   const draft={baseUrl:form.baseUrl,apiKey:form.apiKey||undefined,imageModel:form.imageModel};
   const canRequest=Boolean(form.baseUrl&&form.imageModel&&(form.apiKey||config.apiKeyConfigured));
@@ -25,6 +25,19 @@ export default function SycSettingsDialog({config,onClose,onChanged}:{config:Syc
   }
   async function fetchModels(){
     await run("models",async()=>{const result=await requestJson("/api/settings/syc/models",draft) as {models:string[]};setModels(result.models);setMessage(`已获取 ${result.models.length} 个真实模型，仍可手动填写模型名称`)});
+  }
+  function modelPicker(kind:"image"|"chat",label:string,value:string,placeholder:string){
+    const key=kind==="image"?"imageModel":"chatModel";
+    const open=openModelMenu===kind;
+    return <label className="field syc-model-field" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setOpenModelMenu(null)}}>{label}
+      <span className="syc-model-input">
+        <input value={value} onChange={event=>setForm(current=>({...current,[key]:event.target.value}))} placeholder={placeholder}/>
+        <button type="button" className="syc-model-toggle" aria-label={`${open?"收起":"展开"}${label}列表`} aria-expanded={open} onClick={()=>setOpenModelMenu(current=>current===kind?null:kind)}><span aria-hidden="true">⌄</span></button>
+      </span>
+      {open&&<span className="syc-model-menu" role="listbox" aria-label={`${label}列表`}>
+        {models.length?models.map(model=><button type="button" role="option" aria-selected={model===value} className={model===value?"active":""} key={model} onClick={()=>{setForm(current=>({...current,[key]:model}));setOpenModelMenu(null)}}>{model}</button>):<small>请先点击右上角“获取模型”</small>}
+      </span>}
+    </label>;
   }
   async function testConnection(){
     await run("connection",async()=>{const result=await requestJson("/api/settings/syc/test",draft) as {message:string;latencyMs:number};setMessage(`${result.message} · ${result.latencyMs}ms`);await onChanged()});
@@ -54,9 +67,7 @@ export default function SycSettingsDialog({config,onClose,onChanged}:{config:Syc
             <label className="field">SYC 授权码 / API Key<input type="password" autoComplete="new-password" value={form.apiKey} onChange={e=>setForm({...form,apiKey:e.target.value})} placeholder={config.apiKeyConfigured?`已配置 ${config.apiKeyMask}；留空表示不修改`:"请输入自己的 SYC API Key"}/><small>密钥只发送到本机服务端；页面、LocalStorage 和日志均不保存完整内容。</small></label>
           </section>
           <section className="syc-section" id="syc-models"><div className="syc-section-title"><div><h3>模型配置</h3><p>下拉建议来自中转站真实 /models 响应，也允许手动输入。</p></div><button className="secondary" disabled={!!busy||!form.baseUrl||(!form.apiKey&&!config.apiKeyConfigured)} onClick={()=>void fetchModels()}>{busy==="models"?"获取中…":"获取模型"}</button></div>
-            <datalist id="syc-model-list">{models.map(model=><option value={model} key={model}/>)}</datalist>
-            <div className="form-grid"><label className="field">图片模型<input list="syc-model-list" value={form.imageModel} onChange={e=>setForm({...form,imageModel:e.target.value})} placeholder="gpt-image-2"/></label><label className="field">对话模型<input list="syc-model-list" value={form.chatModel} onChange={e=>setForm({...form,chatModel:e.target.value})} placeholder="mix-gpt-5.4"/></label></div>
-            {models.length>0&&<div className="syc-model-chips">{models.slice(0,12).map(model=><button type="button" key={model} onClick={()=>setForm({...form,imageModel:model})}>{model}</button>)}</div>}
+            <div className="form-grid">{modelPicker("image","图片模型",form.imageModel,"gpt-image-2")}{modelPicker("chat","对话模型",form.chatModel,"mix-gpt-5.4")}</div>
           </section>
           <section className="syc-section" id="syc-advanced"><div className="syc-section-title"><div><h3>高级设置</h3><p>保持默认值即可；流式输出需要中转站明确支持。</p></div></div>
             <label className="switch-row"><span><b>流式传输</b><small>图片工作流暂不解析 SSE 图片结果，建议保持关闭。</small></span><input type="checkbox" checked={form.stream} onChange={e=>setForm({...form,stream:e.target.checked})}/></label>
