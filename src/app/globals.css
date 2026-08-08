@@ -52,3 +52,4 @@
 }
 .nav-link.disabled{width:100%;border:0;background:transparent;text-align:left;color:var(--muted);opacity:.58;cursor:not-allowed;font:inherit}
 .nav-link.disabled:hover{background:transparent;color:var(--muted)}
+.workflow-nav-button{width:100%;border:0;background:transparent;text-align:left;font:inherit;cursor:pointer}
