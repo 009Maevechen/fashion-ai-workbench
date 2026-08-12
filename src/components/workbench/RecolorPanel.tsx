@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect,useState} from "react";
+import {useEffect,useMemo,useState} from "react";
 import type {TargetColor} from "@/lib/db";
 import type {PanelProps} from "./types";
 import AssetUploadCard,{type LocalAsset} from "./AssetUploadCard";
@@ -11,6 +11,7 @@ import ClearAssetsButton from "./ClearAssetsButton";
 import ClearResultsButton from "./ClearResultsButton";
 import ColorAdjustmentPanel from "./ColorAdjustmentPanel";
 import ReferenceColorSampler from "./ReferenceColorSampler";
+import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 import {hasClearableSourceAssets} from "@/lib/asset-cleanup";
 import {hasWorkflowResults} from "@/lib/result-cleanup";
 import {analyzedColorName,colorResultCount,colorSetIssue,duplicateColorNames,expectedColorResultCount,mergeAnalyzedColorDetails,normalizedColorName,recolorColorName,recolorGenerationTrim} from "@/lib/color-sets";
@@ -37,7 +38,7 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,refres
   const [area,setArea]=useState<string>(lockedArea);
   const [protectedAreas,setProtected]=useState(saved?.protectedAreas?.length?saved.protectedAreas:PROTECTED);
   const [extra,setExtra]=useState(saved?.extraRequirements||EXTRA);
-  const [batchColorIds,setBatchColorIds]=useState<string[]>((p.targetColors||[]).map(color=>color.id));
+  const [batchColorIds,setBatchColorIds]=useState<string[]>(saved?.selectedBatchColorIds||(p.targetColors||[]).map(color=>color.id));
   const [colorsLocked,setColorsLocked]=useState(saved?.colorsLocked??false);
   const [analyzing,setAnalyzing]=useState(false);
   const [paletteVisible,setPaletteVisible]=useState(false);
@@ -61,6 +62,8 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,refres
   const colorJobs=jobs.filter(j=>j.targetColorId===activeId&&(!active?.generationStartedAt||j.startedAt>=active.generationStartedAt));
   const route=modelRouting.recolor,routed=route.primary.source==="stored";
   const configured=routed?route.primary.configured:health.recolorProvider==="custom"?health.custom:health.recolorProvider==="volcengine"?health.volcengine:mode==="quality"?health.fluxPro:health.volcengine;
+  const draftSettings=useMemo(()=>({settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:activeId,sourceMode,face,colorsLocked,selectedBatchColorIds:batchColorIds}}}),[activeId,area,batchColorIds,colorsLocked,extra,face,mode,p.settings,protectedAreas,sourceMode]);
+  useProjectDraftAutosave(p.id,draftSettings);
 
   async function persist(asset:LocalAsset,key:"colorReferenceImage"|"standaloneRecolorPoseImages",name:string,index?:number){
     if(key==="colorReferenceImage")setReference({...asset,status:"uploading"});else setManual(v=>{const next=[...v];next[index!]={...asset,status:"uploading"};return next});

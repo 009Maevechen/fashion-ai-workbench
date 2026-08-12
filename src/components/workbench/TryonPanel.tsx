@@ -1,6 +1,6 @@
 "use client";
 
-import {useState} from "react";
+import {useMemo,useState} from "react";
 import type {PanelProps} from "./types";
 import type {ProductType} from "@/lib/db";
 import AssetUploadCard,{type LocalAsset} from "./AssetUploadCard";
@@ -13,6 +13,7 @@ import {hasWorkflowResults} from "@/lib/result-cleanup";
 import {buildProductProtectionPrompt} from "@/lib/product-structure";
 import {TRYON_MODE_OPTIONS,TRYON_PRODUCT_TYPE_OPTIONS,TRYON_PROTECTION_LABELS,TRYON_PROTECTION_OPTIONS} from "@/lib/tryon-options";
 import {canConfirmTryonSelection} from "@/lib/tryon-confirmation";
+import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 
 const DETAILS="保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
 
@@ -26,8 +27,8 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const [mode,setMode]=useState<"fast"|"standard"|"quality">(saved?.mode||"standard");
   const [face,setFace]=useState(saved?.face??false);
   const [count,setCount]=useState(saved?.candidateCount||2);
-  const [selected,setSelected]=useState(p.confirmedTryonImage||"");
-  const [candidateSlot,setCandidateSlot]=useState(1);
+  const [selected,setSelected]=useState(p.confirmedTryonImage||saved?.selectedCandidateImage||"");
+  const [candidateSlot,setCandidateSlot]=useState(saved?.activeCandidateSlot||1);
   const [protectedItems,setProtected]=useState(saved?.protectedItems?.length?saved.protectedItems:[...new Set([...TRYON_PROTECTION_LABELS,...(p.profile?.protectionItems||[])])]);
   const [preview,setPreview]=useState<{images:string[];index:number}|null>(null);
   const route=modelRouting.tryon,routed=route.primary.source==="stored";
@@ -38,13 +39,15 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const structurePrompt=buildProductProtectionPrompt(productType||p.productType,p.profile),missing=[!garment.url&&"服装产品图",!model.url&&"模特参考图"].filter(Boolean) as string[];
   const canConfirmSelected=canConfirmTryonSelection(selected,jobs);
   const candidateTotal=Math.max(count,jobs.length,1),activeCandidate=Math.min(candidateSlot,candidateTotal),visibleJob=jobs.find(job=>job.slot===activeCandidate),visibleUrl=visibleJob?.outputImages[0];
+  const draftSettings=useMemo(()=>({settings:{...p.settings,tryon:{mode,candidateCount:count,productType:productType||p.productType,garmentDescription:description,detailRequirements:extra,protectedItems,face,selectedCandidateImage:selected||undefined,activeCandidateSlot:candidateSlot}}}),[candidateSlot,count,description,extra,face,mode,p.productType,p.settings,productType,protectedItems,selected]);
+  useProjectDraftAutosave(p.id,draftSettings);
 
   async function saveAsset(asset:LocalAsset,key:"garmentImage"|"modelReferenceImage",name:string,setter:(asset:LocalAsset)=>void){
     setter({...asset,status:"uploading"});
     try{const url=await persistAsset(asset.file,key,name);setter({...asset,url,file:undefined,status:"saved"})}
     catch(error){setter({...asset,status:"failed",error:error instanceof Error?error.message:"上传失败"});throw error}
   }
-  async function saveSettings(){if(!productType)throw new Error("请先选择服装类型");await saveProject({productType,settings:{...p.settings,tryon:{mode,candidateCount:count,productType,garmentDescription:description,detailRequirements:extra,protectedItems,face}}})}
+  async function saveSettings(){if(!productType)throw new Error("请先选择服装类型");await saveProject({productType,...draftSettings})}
   async function clearAllAssets(){await clearSourceAssets();setGarment({status:"idle"});setModel({status:"idle"});setPreview(null)}
   async function clearResults(){await clearWorkflowResults("tryon");setSelected("");setPreview(null)}
   async function start(slot?:number,modelPreference:"primary"|"fallback"="primary"){

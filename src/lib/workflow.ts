@@ -15,7 +15,7 @@ import {POSE_PRESETS} from "./ai/pose-presets";
 import {tryonCompletionPatch} from "./tryon-confirmation";
 
 export const DEFAULT_DETAILS="保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
-export async function persistUpload(file:File,sku:string,name:string){const data=await validateUpload(file);const ext=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";return saveOutput(sku,"source",`${safeSegment(name)}-${crypto.randomUUID()}.${ext}`,data)}
+export async function persistUpload(file:File,sku:string,name:string){const data=await validateUpload(file);return saveOutput(sku,"source",`${safeSegment(name)}-${crypto.randomUUID()}.jpg`,data)}
 async function existingHashes(projectId:string,workflow:WorkflowType,excludeSlot:number){const jobs=await listJobs({projectId,workflow});const urls=jobs.filter(j=>j.slot!==excludeSlot).flatMap(j=>j.outputImages);const hashes=[];for(const u of urls)try{hashes.push(sha(await localImage(u)))}catch{}return hashes}
 async function latestSlotJobs(projectId:string,workflow:WorkflowType,targetColorId?:string){
   const latest=new Map<number,(Awaited<ReturnType<typeof listJobs>>)[number]>();

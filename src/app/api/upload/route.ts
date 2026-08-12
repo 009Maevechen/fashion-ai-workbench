@@ -1,5 +1,5 @@
 import {NextResponse} from "next/server";
-import {getProject,updateProject,type ProjectAssets} from "@/lib/db";
+import {updateProjectWith,type ProjectAssets} from "@/lib/db";
 import {invalidateForAssetChange,persistUpload} from "@/lib/workflow";
 import {moveFileToTrash} from "@/lib/ai/storage";
 
@@ -11,15 +11,17 @@ export async function POST(request:Request){
     if(!(file instanceof File)||!sku)throw new Error("缺少图片或SKU");
     const url=await persistUpload(file,sku,name);
     if(projectId&&KEYS.has(assetKey)){
-      const project=await getProject(projectId);if(!project)throw new Error("项目不存在");
-      const assets={...project.assets};let previous:string|undefined;
-      if(ARRAY_KEYS.has(assetKey)){const max=["standaloneRecolorPoseImages","poseReferenceImages"].includes(assetKey)?2:4;if(index<0||index>max)throw new Error("素材图片序号无效");const values=[...((assets[assetKey] as string[]|undefined)||[])];previous=values[index];values[index]=url;Object.assign(assets,{[assetKey]:values})}
-      else{previous=assets[assetKey] as string|undefined;Object.assign(assets,{[assetKey]:url})}
-      const now=new Date().toISOString();
-      const poseReferenceInputs=assetKey==="poseReferenceImages"
-        ?Array.from({length:3},(_,poseIndex)=>({id:project.poseReferenceInputs?.[poseIndex]?.id||crypto.randomUUID(),poseIndex:(poseIndex+1) as 1|2|3,imagePath:(assets.poseReferenceImages||[])[poseIndex]||"",description:project.poseReferenceInputs?.[poseIndex]?.description,createdAt:project.poseReferenceInputs?.[poseIndex]?.createdAt||now,updatedAt:now})).filter(item=>item.imagePath)
-        :project.poseReferenceInputs;
-      await updateProject(projectId,{assets,poseReferenceInputs,selectedPoseTemplateGroupId:assetKey==="poseReferenceImages"?undefined:project.selectedPoseTemplateGroupId,poseTemplateSnapshot:assetKey==="poseReferenceImages"?undefined:project.poseTemplateSnapshot});
+      let previous:string|undefined;
+      await updateProjectWith(projectId,project=>{
+        const assets={...project.assets};
+        if(ARRAY_KEYS.has(assetKey)){const max=["standaloneRecolorPoseImages","poseReferenceImages"].includes(assetKey)?2:4;if(index<0||index>max)throw new Error("素材图片序号无效");const values=[...((assets[assetKey] as string[]|undefined)||[])];previous=values[index];values[index]=url;Object.assign(assets,{[assetKey]:values})}
+        else{previous=assets[assetKey] as string|undefined;Object.assign(assets,{[assetKey]:url})}
+        const now=new Date().toISOString();
+        const poseReferenceInputs=assetKey==="poseReferenceImages"
+          ?Array.from({length:3},(_,poseIndex)=>({id:project.poseReferenceInputs?.[poseIndex]?.id||crypto.randomUUID(),poseIndex:(poseIndex+1) as 1|2|3,imagePath:(assets.poseReferenceImages||[])[poseIndex]||"",description:project.poseReferenceInputs?.[poseIndex]?.description,createdAt:project.poseReferenceInputs?.[poseIndex]?.createdAt||now,updatedAt:now})).filter(item=>item.imagePath)
+          :project.poseReferenceInputs;
+        return {assets,poseReferenceInputs,selectedPoseTemplateGroupId:assetKey==="poseReferenceImages"?undefined:project.selectedPoseTemplateGroupId,poseTemplateSnapshot:assetKey==="poseReferenceImages"?undefined:project.poseTemplateSnapshot};
+      });
       await invalidateForAssetChange(projectId,assetKey);
       if(previous&&previous!==url)await moveFileToTrash(previous,projectId);
     }

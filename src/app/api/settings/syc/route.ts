@@ -4,7 +4,7 @@ import {deleteSycConfig,getSycConfig,saveSycConfig} from "@/lib/ai/provider-sett
 
 const schema=z.object({
   name:z.string().min(1).max(80),baseUrl:z.string().min(1).max(500),apiKey:z.string().max(1000).optional(),
-  imageModel:z.string().min(1).max(200),chatModel:z.string().max(200).optional(),stream:z.boolean(),
+  imageModel:z.string().min(1).max(200),visionModel:z.string().max(200).optional(),chatModel:z.string().max(200).optional(),stream:z.boolean(),
   partialImages:z.number().int().min(0).max(3),returnBase64:z.boolean(),codexCliCompatible:z.boolean(),
   timeoutSeconds:z.number().int().min(10).max(900),enabled:z.boolean(),
 });

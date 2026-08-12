@@ -12,6 +12,7 @@ import {POSE_PRESETS} from "@/lib/ai/pose-presets";
 import {hasClearableSourceAssets} from "@/lib/asset-cleanup";
 import {hasWorkflowResults} from "@/lib/result-cleanup";
 import {poseLibrarySourceAvailability} from "@/lib/pose-library-utils";
+import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 
 const DETAILS="保持服装领口、袖口、肩部、下摆、纽扣、印花、面料纹理和服装长度，不得改变商品设计。";
 const SHOT_LABEL:Record<string,string>={full_body:"全身",half_body:"半身",upper_body:"上半身",lower_body:"下半身"};
@@ -19,10 +20,16 @@ const SHOT_LABEL:Record<string,string>={full_body:"全身",half_body:"半身",up
 export default function PosePanel({p,jobs,health,modelRouting,busy,run,refreshProject,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,saveProject,post,confirmFlow}:PanelProps){
   const saved=p.settings.pose,savedMatchesProduct=saved?.productType===p.productType;
   const preset=savedMatchesProduct&&saved?.poseInstructions?.length===3?saved.poseInstructions:POSE_PRESETS[p.productType];
-  const [mode,setMode]=useState<"fast"|"standard"|"quality">(saved?.mode||"standard"),[shot,setShot]=useState(saved?.shotType||"全身"),[face,setFace]=useState(saved?.face||false),[background,setBackground]=useState(saved?.background??true),[details,setDetails]=useState(saved?.detailRequirements||DETAILS),[instructions,setInstructions]=useState(preset),[sourceMode,setSourceMode]=useState<"confirmed"|"standalone">(saved?.sourceMode||(p.confirmedTryonImage?"confirmed":"standalone")),[referenceMode,setReferenceMode]=useState<"library"|"upload">(saved?.referenceMode||"library"),[source,setSource]=useState<LocalAsset>({url:p.assets.standalonePoseInputImage,name:"独立姿势输入图",status:p.assets.standalonePoseInputImage?"saved":"idle"}),[references,setReferences]=useState<LocalAsset[]>(()=>Array.from({length:3},(_,index)=>({url:p.assets.poseReferenceImages?.[index],name:`姿势参考图${index+1}`,status:p.assets.poseReferenceImages?.[index]?"saved":"idle"}))),[groups,setGroups]=useState<PoseTemplateGroup[]>([]),[libraryQuery,setLibraryQuery]=useState(""),[selectedGroup,setSelectedGroup]=useState(p.selectedPoseTemplateGroupId||""),[selected,setSelected]=useState<string[]>(p.confirmedPoseImages||jobs.flatMap(j=>j.outputImages)),[preview,setPreview]=useState<{images:string[];index:number}|null>(null),[saveLibrary,setSaveLibrary]=useState(false),[libraryName,setLibraryName]=useState(`${p.productType}常用三姿势`),[libraryMessage,setLibraryMessage]=useState("");
+  const [mode,setMode]=useState<"fast"|"standard"|"quality">(saved?.mode||"standard"),[shot,setShot]=useState(saved?.shotType||"全身"),[face,setFace]=useState(saved?.face||false),[background,setBackground]=useState(saved?.background??true),[details,setDetails]=useState(saved?.detailRequirements||DETAILS),[instructions,setInstructions]=useState(preset),[sourceMode,setSourceMode]=useState<"confirmed"|"standalone">(saved?.sourceMode||(p.confirmedTryonImage?"confirmed":"standalone")),[referenceMode,setReferenceMode]=useState<"library"|"upload">(saved?.referenceMode||"library"),[source,setSource]=useState<LocalAsset>({url:p.assets.standalonePoseInputImage,name:"独立姿势输入图",status:p.assets.standalonePoseInputImage?"saved":"idle"}),[references,setReferences]=useState<LocalAsset[]>(()=>Array.from({length:3},(_,index)=>({url:p.assets.poseReferenceImages?.[index],name:`姿势参考图${index+1}`,status:p.assets.poseReferenceImages?.[index]?"saved":"idle"}))),[groups,setGroups]=useState<PoseTemplateGroup[]>([]),[libraryQuery,setLibraryQuery]=useState(""),[selectedGroup,setSelectedGroup]=useState(p.selectedPoseTemplateGroupId||""),[selected,setSelected]=useState<string[]>(p.confirmedPoseImages||saved?.selectedResultImages||jobs.flatMap(j=>j.outputImages)),[preview,setPreview]=useState<{images:string[];index:number}|null>(null),[saveLibrary,setSaveLibrary]=useState(false),[libraryName,setLibraryName]=useState(`${p.productType}常用三姿势`),[libraryMessage,setLibraryMessage]=useState("");
   const [librarySource,setLibrarySource]=useState<"references"|"results">("references");
   useEffect(()=>{fetch("/api/pose-library",{cache:"no-store"}).then(response=>response.json()).then(data=>setGroups(Array.isArray(data)?data:[])).catch(()=>setGroups([]))},[]);
   useEffect(()=>{setReferences(Array.from({length:3},(_,index)=>({url:p.assets.poseReferenceImages?.[index],name:`姿势参考图${index+1}`,status:p.assets.poseReferenceImages?.[index]?"saved":"idle"})));setSelectedGroup(p.selectedPoseTemplateGroupId||"")},[p.assets.poseReferenceImages,p.selectedPoseTemplateGroupId]);
+  useEffect(()=>{
+    const currentImages=jobs
+      .filter(job=>["success","needs_review","confirmed"].includes(job.status)&&job.dependencyStatus!=="stale")
+      .flatMap(job=>job.outputImages);
+    setSelected(value=>value.filter(image=>currentImages.includes(image)));
+  },[jobs]);
   const sourceUrl=sourceMode==="confirmed"?p.confirmedTryonImage:source.url,referenceUrls=references.map(item=>item.url||""),route=modelRouting.pose,routed=route.primary.source==="stored";
   const configured=routed?route.primary.configured:health.poseProvider==="volcengine"?health.volcengine:mode==="standard"?health.volcengine:mode==="fast"?health.fluxKlein:health.fluxPro;
   const images=jobs.flatMap(j=>j.outputImages),modelLabel=routed?route.primary.model:health.poseProvider==="volcengine"?"Seedream 5.0":"FLUX",reviews=p.poseReviewStates||{};
@@ -33,10 +40,12 @@ export default function PosePanel({p,jobs,health,modelRouting,busy,run,refreshPr
   const selectedSlots=[...new Set(selectedJobs.map(job=>job.slot).filter((slot):slot is number=>Boolean(slot)))];
   const selectedReviewed=selected.length>=2&&selected.length<=3&&selectedSlots.length===selected.length&&selectedSlots.every(slot=>reviews[String(slot)]==="approved");
   const selectedCurrent=selectedJobs.every(job=>job.status!=="stale"&&job.dependencyStatus!=="stale");
+  const draftSettings=useMemo(()=>({settings:{...p.settings,pose:{mode,productType:p.productType,shotType:shot,face,background,detailRequirements:details,poseInstructions:instructions,sourceMode,referenceMode,selectedResultImages:selected}}}),[background,details,face,instructions,mode,p.productType,p.settings,referenceMode,selected,shot,sourceMode]);
+  useProjectDraftAutosave(p.id,draftSettings);
 
   async function persistSource(a:LocalAsset){setSource({...a,status:"uploading"});try{const url=await persistAsset(a.file,"standalonePoseInputImage","pose-source");setSource({...a,url,file:undefined,status:"saved"})}catch(e){setSource({...a,status:"failed",error:e instanceof Error?e.message:"上传失败"});throw e}}
   async function persistReference(index:number,a:LocalAsset){setReferences(current=>current.map((item,itemIndex)=>itemIndex===index?{...a,status:"uploading"}:item));try{const url=await persistAsset(a.file,"poseReferenceImages",`pose-reference-${index+1}`,index);setReferenceMode("upload");setSelectedGroup("");setReferences(current=>current.map((item,itemIndex)=>itemIndex===index?{...a,url,file:undefined,status:"saved"}:item))}catch(e){setReferences(current=>current.map((item,itemIndex)=>itemIndex===index?{...a,status:"failed",error:e instanceof Error?e.message:"上传失败"}:item));throw e}}
-  async function saveSettings(){await saveProject({settings:{...p.settings,pose:{mode,productType:p.productType,shotType:shot,face,background,detailRequirements:details,poseInstructions:instructions,sourceMode,referenceMode}}})}
+  async function saveSettings(){await saveProject(draftSettings)}
   async function clearAllAssets(){await clearSourceAssets();setSource({status:"idle"});setReferences(Array.from({length:3},()=>({status:"idle"})));setSelectedGroup("");setPreview(null)}
   async function clearResults(){await clearWorkflowResults("pose");setSelected([]);setPreview(null)}
   async function applyGroup(id:string){await post(`/api/pose-library/${id}/use`,{projectId:p.id});setReferenceMode("library");setSelectedGroup(id);await refreshProject()}

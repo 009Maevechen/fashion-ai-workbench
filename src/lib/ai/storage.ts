@@ -7,12 +7,13 @@ import {timeout} from "./config";
 import {isPrivateAddress,validateRemoteImageUrl} from "./remote-url";
 import {safeSegment} from "./validators";
 import {isSafeStoredPath,outputSegments} from "./storage-paths";
-import {runtimeOutputsDir} from "../runtime-paths";
+import {runtimeOutputSearchDirs,runtimeOutputsDir} from "../runtime-paths";
 
-const root=runtimeOutputsDir();
+let root=runtimeOutputsDir();
+export function updateOutputRoot(next:string){root=path.resolve(next)}
 export function outputPath(sku:string,folder:string,file:string){const target=path.resolve(root,...outputSegments(sku,folder,file));if(!target.startsWith(root+path.sep))throw new Error("非法输出路径");return target}
 export async function saveOutput(sku:string,folder:string,file:string,data:Buffer){const segments=outputSegments(sku,folder,file),p=path.resolve(root,...segments);if(!p.startsWith(root+path.sep))throw new Error("非法输出路径");await fs.mkdir(path.dirname(p),{recursive:true});await fs.writeFile(p,data);return `/api/files/${segments.map(encodeURIComponent).join("/")}`}
-export async function readOutput(parts:string[]){if(!isSafeStoredPath(parts))throw new Error("非法文件路径");const p=path.resolve(root,...parts);if(!p.startsWith(root+path.sep))throw new Error("非法文件路径");return fs.readFile(p)}
+export async function readOutput(parts:string[]){if(!isSafeStoredPath(parts))throw new Error("非法文件路径");for(const directory of runtimeOutputSearchDirs()){const p=path.resolve(directory,...parts);if(!p.startsWith(directory+path.sep))throw new Error("非法文件路径");try{return await fs.readFile(p)}catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error}}throw new Error("图片文件不存在或保存位置已失效")}
 const MAX_DOWNLOAD_BYTES=30*1024*1024;
 async function assertPublicRemoteUrl(raw:string){
   const url=validateRemoteImageUrl(raw),hostname=url.hostname.replace(/^\[|\]$/g,"");

@@ -1,7 +1,24 @@
 import crypto from "node:crypto";
+import heicConvert from "heic-convert";
 import sharp from "sharp";
-const ALLOWED=new Set(["image/jpeg","image/png","image/webp"]);export const MAX_IMAGE_BYTES=15*1024*1024;
-export async function validateUpload(file:File){if(!ALLOWED.has(file.type))throw new Error("仅支持 JPG、PNG 或 WebP 图片");if(file.size<512||file.size>MAX_IMAGE_BYTES)throw new Error("图片大小必须在 512B 到 15MB 之间");const buffer=Buffer.from(await file.arrayBuffer());await sharp(buffer).metadata().catch(()=>{throw new Error("图片无法解码或文件已损坏")});return buffer}
+const ALLOWED=new Set(["image/jpeg","image/png","image/webp"]);export const MAX_IMAGE_BYTES=30*1024*1024;
+const HEIF_BRANDS=new Set(["heic","heix","hevc","hevx","heim","heis","mif1","msf1"]);
+function isHeif(buffer:Buffer){return buffer.length>=12&&buffer.subarray(4,8).toString("ascii")==="ftyp"&&HEIF_BRANDS.has(buffer.subarray(8,12).toString("ascii"))}
+async function decodableBuffer(buffer:Buffer){
+  try{await sharp(buffer,{failOn:"error"}).metadata();return buffer}catch(error){
+    if(!isHeif(buffer))throw error;
+    const converted=await heicConvert({buffer,format:"JPEG",quality:.96});
+    return converted instanceof ArrayBuffer?Buffer.from(converted):Buffer.from(converted.buffer,converted.byteOffset,converted.byteLength);
+  }
+}
+export async function validateUpload(file:File){
+  if(file.size<512||file.size>MAX_IMAGE_BYTES)throw new Error("图片大小必须在 512B 到 30MB 之间");
+  const original=Buffer.from(await file.arrayBuffer());
+  const decoded=await decodableBuffer(original).catch(()=>{throw new Error("图片无法解析或文件已损坏；请确认它是真实、完整的图片文件")});
+  const metadata=await sharp(decoded,{failOn:"error"}).metadata().catch(()=>{throw new Error("图片无法解析或文件已损坏")});
+  if(!metadata.width||!metadata.height)throw new Error("图片缺少有效尺寸");
+  return sharp(decoded,{failOn:"error",animated:false}).rotate().flatten({background:{r:255,g:255,b:255}}).jpeg({quality:96,mozjpeg:true}).toBuffer();
+}
 export async function prepareProviderInput(buffer:Buffer){
   const metadata=await sharp(buffer,{failOn:"error"}).metadata().catch(()=>{throw new Error("输入图片无法解析或文件已损坏，请重新上传原始 JPG、PNG 或 WebP 图片")});
   if(!metadata.width||!metadata.height)throw new Error("输入图片缺少有效尺寸，请重新上传图片");
