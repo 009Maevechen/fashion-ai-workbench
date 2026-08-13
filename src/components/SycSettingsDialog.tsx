@@ -296,7 +296,6 @@ export default function SycSettingsDialog({
                   }
                   placeholder="https://sycagent.top/v1"
                 />
-                <small>保存时自动统一为 HTTPS 的 /v1 根地址。</small>
               </label>
               <label className="field">
                 SYC 授权码 / API Key

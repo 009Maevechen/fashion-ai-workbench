@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import heicConvert from "heic-convert";
 import sharp from "sharp";
 const ALLOWED=new Set(["image/jpeg","image/png","image/webp"]);export const MAX_IMAGE_BYTES=30*1024*1024;
 const HEIF_BRANDS=new Set(["heic","heix","hevc","hevx","heim","heis","mif1","msf1"]);
@@ -7,6 +6,9 @@ function isHeif(buffer:Buffer){return buffer.length>=12&&buffer.subarray(4,8).to
 async function decodableBuffer(buffer:Buffer){
   try{await sharp(buffer,{failOn:"error"}).metadata();return buffer}catch(error){
     if(!isHeif(buffer))throw error;
+    // Load the HEIC decoder only for actual HEIC/HEIF files. A missing optional
+    // decoder must never prevent ordinary JPG/PNG/WebP uploads on Windows.
+    const {default:heicConvert}=await import("heic-convert");
     const converted=await heicConvert({buffer,format:"JPEG",quality:.96});
     return converted instanceof ArrayBuffer?Buffer.from(converted):Buffer.from(converted.buffer,converted.byteOffset,converted.byteLength);
   }

@@ -6,6 +6,24 @@ const portfolioRoute=route=>route==="/"||route==="/work"||route.startsWith("/wor
 const portfolioPageKey=key=>key==="/page"||key==="/work/page"||key.startsWith("/work/")||key==="/about/page"||key==="/contact/page";
 async function readJson(file){return JSON.parse(await fs.readFile(file,"utf8"))}
 async function writeJson(file,value){await fs.writeFile(file,`${JSON.stringify(value,null,2)}\n`)}
+async function alignSharpRuntime(){
+  // pnpm may expose a newer top-level @img package alongside sharp 0.33.x.
+  // Next's file tracer can then copy the newer native binary into standalone,
+  // producing a JS/native ABI mismatch (valid images fail with TypeError).
+  const matchingImg=path.join(root,"node_modules","sharp","node_modules","@img");
+  const runtimeImg=path.join(target,"node_modules","@img");
+  await fs.access(matchingImg).catch(()=>{throw new Error("找不到与 sharp 匹配的原生图片运行库")});
+  await fs.rm(runtimeImg,{recursive:true,force:true});
+  await fs.cp(matchingImg,runtimeImg,{recursive:true});
+}
+async function verifyImageRuntime(){
+  const required=[
+    path.join(target,"node_modules","sharp","package.json"),
+    path.join(target,"node_modules","heic-convert","package.json"),
+    path.join(target,"node_modules","libheif-js","package.json"),
+  ];
+  for(const file of required)await fs.access(file).catch(()=>{throw new Error(`桌面运行目录缺少图片解码依赖：${path.relative(target,file)}`)});
+}
 async function prunePortfolio(){
   const next=path.join(target,".next"),server=path.join(next,"server"),app=path.join(server,"app");
   const appPathsFile=path.join(server,"app-paths-manifest.json"),appPaths=await readJson(appPathsFile);
@@ -48,6 +66,8 @@ async function prunePortfolio(){
 await fs.access(path.join(source,"server.js"));
 await fs.rm(target,{recursive:true,force:true});
 await fs.cp(source,target,{recursive:true});
+await alignSharpRuntime();
+await verifyImageRuntime();
 await fs.mkdir(path.join(target,".next"),{recursive:true});
 await fs.cp(path.join(root,".next","static"),path.join(target,".next","static"),{recursive:true});
 try{await fs.cp(path.join(root,"public"),path.join(target,"public"),{recursive:true})}catch(error){if(error?.code!=="ENOENT")throw error}

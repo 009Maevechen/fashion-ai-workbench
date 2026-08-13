@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import {normalizeSycBaseUrl,sycEndpoint} from "../src/lib/ai/providers/syc/config";
 import {parseSycImageResponse,parseSycModels} from "../src/lib/ai/providers/syc/response-parser";
 
-test("SYC URL统一为HTTPS /v1根路径",()=>{
-  assert.equal(normalizeSycBaseUrl("https://sycagent.top"),"https://sycagent.top/v1");
-  assert.equal(normalizeSycBaseUrl("https://sycagent.top/"),"https://sycagent.top/v1");
-  assert.equal(normalizeSycBaseUrl("https://sycagent.top/v1/"),"https://sycagent.top/v1");
-  assert.equal(normalizeSycBaseUrl("https://sycagent.top/v1/v1"),"https://sycagent.top/v1");
-  assert.throws(()=>normalizeSycBaseUrl("http://sycagent.top"),/只支持 HTTPS/);
-  assert.throws(()=>normalizeSycBaseUrl("https://sycagent.top/other"),/根路径/);
+test("SYC URL保留用户填写的协议和路径",()=>{
+  assert.equal(normalizeSycBaseUrl("https://sycagent.top"),"https://sycagent.top");
+  assert.equal(normalizeSycBaseUrl("https://sycagent.top/v1/"),"https://sycagent.top/v1/");
+  assert.equal(normalizeSycBaseUrl("http://127.0.0.1:8080/custom"),"http://127.0.0.1:8080/custom");
+  assert.equal(normalizeSycBaseUrl("  https://sycagent.top/api  "),"https://sycagent.top/api");
+  assert.throws(()=>normalizeSycBaseUrl("ftp://sycagent.top"),/HTTP 或 HTTPS/);
+  assert.throws(()=>normalizeSycBaseUrl("https://user:pass@sycagent.top/v1"),/账号或密码/);
   assert.equal(sycEndpoint("https://sycagent.top/v1","models"),"https://sycagent.top/v1/models");
 });
 
