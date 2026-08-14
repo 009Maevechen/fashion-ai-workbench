@@ -14,6 +14,7 @@ import {buildProductProtectionPrompt} from "@/lib/product-structure";
 import {TRYON_MODE_OPTIONS,TRYON_PRODUCT_TYPE_OPTIONS,TRYON_PROTECTION_LABELS,TRYON_PROTECTION_OPTIONS} from "@/lib/tryon-options";
 import {canConfirmTryonSelection} from "@/lib/tryon-confirmation";
 import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
+import {composeTryonDetailRequirements} from "@/lib/tryon-detail-requirements";
 
 const DETAILS="保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
 
@@ -23,7 +24,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const [model,setModel]=useState<LocalAsset>({url:p.assets.modelReferenceImage||p.assets.modelImage,name:"已保存模特图",status:(p.assets.modelReferenceImage||p.assets.modelImage)?"saved":"idle"});
   const [description,setDescription]=useState(saved?.garmentDescription||"");
   const [productType,setProductType]=useState<ProductType|"">(saved?.productType||p.productType||"");
-  const [extra,setExtra]=useState(saved?.detailRequirements||DETAILS);
+  const [extra,setExtra]=useState(saved?.extraRequirements||(saved?.detailRequirements&&saved.detailRequirements.length<=800?saved.detailRequirements:DETAILS));
   const [mode,setMode]=useState<"fast"|"standard"|"quality">(saved?.mode||"standard");
   const [face,setFace]=useState(saved?.face??false);
   const [count,setCount]=useState(saved?.candidateCount||2);
@@ -39,7 +40,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const structurePrompt=buildProductProtectionPrompt(productType||p.productType,p.profile),missing=[!garment.url&&"服装产品图",!model.url&&"模特参考图"].filter(Boolean) as string[];
   const canConfirmSelected=canConfirmTryonSelection(selected,jobs);
   const candidateTotal=Math.max(count,jobs.length,1),activeCandidate=Math.min(candidateSlot,candidateTotal),visibleJob=jobs.find(job=>job.slot===activeCandidate),visibleUrl=visibleJob?.outputImages[0];
-  const draftSettings=useMemo(()=>({settings:{...p.settings,tryon:{mode,candidateCount:count,productType:productType||p.productType,garmentDescription:description,detailRequirements:extra,protectedItems,face,selectedCandidateImage:selected||undefined,activeCandidateSlot:candidateSlot}}}),[candidateSlot,count,description,extra,face,mode,p.productType,p.settings,productType,protectedItems,selected]);
+  const draftSettings=useMemo(()=>({settings:{...p.settings,tryon:{mode,candidateCount:count,productType:productType||p.productType,garmentDescription:description,detailRequirements:extra,extraRequirements:extra,protectedItems,face,selectedCandidateImage:selected||undefined,activeCandidateSlot:candidateSlot}}}),[candidateSlot,count,description,extra,face,mode,p.productType,p.settings,productType,protectedItems,selected]);
   useProjectDraftAutosave(p.id,draftSettings);
 
   async function saveAsset(asset:LocalAsset,key:"garmentImage"|"modelReferenceImage",name:string,setter:(asset:LocalAsset)=>void){
@@ -54,7 +55,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
     if(!productType)throw new Error("请先选择服装类型");
     if(!garment.url||!model.url)throw new Error("两张图片必须保存成功后才能生成");
     await saveSettings();
-    await post("/api/tryon",{projectId:p.id,productType,garmentImage:garment.url,modelImage:model.url,garmentDescription:description,detailRequirements:`${structurePrompt}\n${protectedItems.join("；")}。${extra}`,face,mode,candidateCount:slot?1:count,modelPreference,...(slot?{slot}:{})});
+    await post("/api/tryon",{projectId:p.id,productType,garmentImage:garment.url,modelImage:model.url,garmentDescription:description,detailRequirements:composeTryonDetailRequirements(structurePrompt,`${protectedItems.join("；")}。`,extra),extraRequirements:extra,face,mode,candidateCount:slot?1:count,modelPreference,...(slot?{slot}:{})});
   }
 
   return <>

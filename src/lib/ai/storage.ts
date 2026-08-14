@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import {lookup} from "node:dns/promises";
 import path from "node:path";
 import {timeout} from "./config";
-import {isPrivateAddress,validateRemoteImageUrl} from "./remote-url";
+import {isPrivateAddress,isProxySyntheticAddress,validateRemoteImageUrl} from "./remote-url";
 import {safeSegment} from "./validators";
 import {isSafeStoredPath,outputSegments} from "./storage-paths";
 import {runtimeOutputSearchDirs,runtimeOutputsDir} from "../runtime-paths";
@@ -19,7 +19,8 @@ async function assertPublicRemoteUrl(raw:string){
   const url=validateRemoteImageUrl(raw),hostname=url.hostname.replace(/^\[|\]$/g,"");
   if(!/^\d+\.\d+\.\d+\.\d+$/.test(hostname)&&!hostname.includes(":")){
     const addresses=await lookup(hostname,{all:true,verbatim:true}).catch(()=>{throw new Error("无法解析模型图片地址")});
-    if(!addresses.length||addresses.some(item=>isPrivateAddress(item.address)))throw new Error("模型图片地址解析到了本机或内网");
+    const unsafe=addresses.some(item=>isPrivateAddress(item.address)&&!isProxySyntheticAddress(item.address));
+    if(!addresses.length||unsafe)throw new Error("模型图片地址解析到了本机或内网");
   }
   return url;
 }
@@ -36,7 +37,8 @@ async function readLimited(response:Response){
   }catch(error){await reader.cancel().catch(()=>{});throw error}
   return Buffer.concat(chunks.map(chunk=>Buffer.from(chunk)),total);
 }
-export async function downloadImage(raw:string,signal?:AbortSignal){
+export async function downloadImage(raw:string,signal?:AbortSignal,_trustedHostname?:string){
+  void _trustedHostname;
   let current=raw;
   const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(timeout())]):AbortSignal.timeout(timeout());
   for(let redirect=0;redirect<=5;redirect++){

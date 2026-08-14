@@ -5,6 +5,7 @@ import {sycEndpoint} from "./config";
 import {readSycResponse,sycNetworkError} from "./errors";
 import {parseSycImageResponse} from "./response-parser";
 import {serializeSycRequest} from "./request-queue";
+import {normalizeSycImageUrl} from "./image-url";
 
 function dataUrl(value:string){
   const match=value.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s);
@@ -22,14 +23,16 @@ export class SycImageProvider implements ImageProvider{
       url=sycEndpoint(this.config.baseUrl,"edits");
       const form=new FormData();
       form.set("model",model);form.set("prompt",input.prompt);form.set("n","1");form.set("size","1024x1536");
-      form.set("response_format",options.returnBase64?"b64_json":"url");
+      // 工作台必须直接接收图片数据。若让中转站返回 URL，某些上游会返回
+      // localhost/内网临时地址，桌面端无法安全下载，也不能把该地址再交给外部服务。
+      form.set("response_format","b64_json");
       form.set("stream",String(options.stream));form.set("partial_images",String(options.partialImages));
       if(options.codexCliCompatible)form.set("codexCli","true");
       input.images.forEach((image,index)=>{const part=dataUrl(image),ext=part.mime==="image/png"?"png":part.mime==="image/webp"?"webp":"jpg";form.append("image[]",new Blob([part.bytes],{type:part.mime}),`reference-${index+1}.${ext}`)});
       body=form;
     }else{
       url=sycEndpoint(this.config.baseUrl,"generations");headers["Content-Type"]="application/json";
-      body=JSON.stringify({model,prompt:input.prompt,n:1,size:"1024x1536",response_format:options.returnBase64?"b64_json":"url",stream:options.stream,partial_images:options.partialImages,...(options.codexCliCompatible?{codexCli:true}:{})});
+      body=JSON.stringify({model,prompt:input.prompt,n:1,size:"1024x1536",response_format:"b64_json",stream:options.stream,partial_images:options.partialImages,...(options.codexCliCompatible?{codexCli:true}:{})});
     }
     let response:Response;
     try{response=await serializeSycRequest(()=>fetch(url,{method:"POST",headers,body,signal:AbortSignal.timeout(options.timeoutSeconds*1000)}))}catch(error){throw sycNetworkError(error)}
@@ -41,6 +44,7 @@ export class SycImageProvider implements ImageProvider{
       throw error;
     }
     const result=parseSycImageResponse(payload);
+    if(result.temporaryImageUrl)result.temporaryImageUrl=normalizeSycImageUrl(result.temporaryImageUrl,this.config.baseUrl);
     return {provider:"SYC 中转站",model,...result};
   }
 }

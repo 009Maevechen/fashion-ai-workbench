@@ -13,6 +13,15 @@ function isPrivateAddress(address:string){
     /^fe[89ab]/.test(value)||value.startsWith("ff");
 }
 
+// Clash/Surge 等 TUN 代理的 Fake-IP 模式会把公共域名临时解析到
+// RFC 2544 的 198.18.0.0/15。它不是目标服务器的真实内网地址；只有当
+// URL 本身直接填写该 IP 时才必须拦截，公共域名的 DNS 结果可以继续交给代理。
+function isProxySyntheticAddress(address:string){
+  if(isIP(address)!==4)return false;
+  const [a,b]=address.split(".").map(Number);
+  return a===198&&(b===18||b===19);
+}
+
 function hostAllowed(hostname:string){
   const configured=(process.env.AI_IMAGE_DOWNLOAD_HOSTS||"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
   return configured.length===0||configured.some(allowed=>hostname===allowed||hostname.endsWith(`.${allowed}`));
@@ -30,4 +39,4 @@ export function validateRemoteImageUrl(raw:string){
   return url;
 }
 
-export {isPrivateAddress};
+export {isPrivateAddress,isProxySyntheticAddress};
