@@ -9,7 +9,8 @@ import { requestTextJson, requestVisionText } from "./vision-chat";
 const productTypes = ["上衣", "裤装", "连衣裙", "半身裙", "套装"] as const;
 const attributeKeys = [
   "mainColor", "printType", "neckline", "sleeveType", "garmentLength",
-  "fit", "fabric", "fabricTexture", "placketType", "buttonCount",
+  "fit", "fabric", "fabricTexture", "weaveStructure", "gradientDesign",
+  "colorBlockLayout", "specialDesign", "placketType", "buttonCount",
   "pocketDetails", "trimColor", "printPosition", "asymmetry", "belt",
   "drawstring", "pleats", "slit", "transparency", "lining", "elasticity",
 ] as const satisfies readonly (keyof ProductAttributes)[];
@@ -28,6 +29,10 @@ const attributesSchema = z.object({
   fit: attributeText,
   fabric: attributeText,
   fabricTexture: attributeText,
+  weaveStructure: attributeText,
+  gradientDesign: attributeText,
+  colorBlockLayout: attributeText,
+  specialDesign: attributeText,
   placketType: attributeText,
   buttonCount: attributeText,
   pocketDetails: attributeText,
@@ -81,13 +86,13 @@ export async function analyzeProductImage(
         visionRuntime,
         toDataUrl(normalized, "image/jpeg"),
         "你是电商服装图片识别助手。只陈述图片中明确可见的信息，不确定的内容不要猜测。",
-        "详细观察图片中的核心服装商品，不要把模特的裤子、包、饰品或背景当成目标商品。必须逐项观察并说明：商品类型、主体色、印花类型、领型、袖型、衣长、版型、面料类型、面料纹理、门襟、纽扣数量、口袋数量和位置、包边颜色、印花位置、左右是否不对称、腰带、抽绳、褶皱、开叉、透明度、内衬和弹性。明确可见的不存在结构写“无”；单张图片无法可靠判断的隐藏信息写“无法从图片确认”，严禁猜测。",
+        "详细观察图片中的核心服装商品，不要把模特的裤子、包、饰品或背景当成目标商品。必须逐项观察并说明：商品类型、主体色、印花类型、领型、袖型、衣长、版型、面料材质、表面纹理、织法或针法结构、纹理方向与密度、渐变颜色与过渡方向、色块和拼接的边界比例、特殊设计、门襟、纽扣数量、口袋数量和位置、包边颜色、印花位置、左右是否不对称、腰带、抽绳、褶皱、开叉、透明度、内衬和弹性。尤其要区分针织、罗纹、提花、网眼、绒感、光泽和垂坠感；明确可见的不存在结构写“无”；单张图片无法可靠判断的隐藏信息写“无法从图片确认”，严禁猜测。",
       );
     const parsed = analysisSchema.parse(
       await requestTextJson(
         textRuntime,
         "你是电商服装资料整理助手。根据图片识别模型提供的观察文字整理资料，不得添加观察中没有的信息，必须只返回合法 JSON。attributes 的每一个字段都必须填写：明确不存在时填“无”或对应的“无口袋/无印花/无门襟”；图片无法证明时统一填“无法从图片确认”，不得省略字段、不得用空字符串、不得猜测。",
-        `图片识别结果：\n${observation}\n\n整理为 JSON：productType 只能是上衣/裤装/连衣裙/半身裙/套装；attributes 必须完整包含 mainColor, printType, neckline, sleeveType, garmentLength, fit, fabric, fabricTexture, placketType, buttonCount, pocketDetails, trimColor, printPosition, asymmetry, belt, drawstring, pleats, slit, transparency, lining, elasticity 共21项，所有属性值必须是字符串，例如 buttonCount 必须输出 \"3\" 而不是数字 3；detailDescription 为中文细节概括，并区分“图片可确认”和“无法确认”的信息；protectionItems 只列出图片中明确可见、生成时必须保护的细节。`,
+        `图片识别结果：\n${observation}\n\n整理为 JSON：productType 只能是上衣/裤装/连衣裙/半身裙/套装；attributes 必须完整包含 mainColor, printType, neckline, sleeveType, garmentLength, fit, fabric, fabricTexture, weaveStructure, gradientDesign, colorBlockLayout, specialDesign, placketType, buttonCount, pocketDetails, trimColor, printPosition, asymmetry, belt, drawstring, pleats, slit, transparency, lining, elasticity 共25项，所有属性值必须是字符串，例如 buttonCount 必须输出 \"3\" 而不是数字 3；detailDescription 必须重点概括材质、织法、纹理、渐变、色块和特殊设计布局，并区分“图片可确认”和“无法确认”的信息；protectionItems 只列出图片中明确可见、生成时必须保护的材质与设计细节。`,
       ),
     );
     const attributes = Object.fromEntries(

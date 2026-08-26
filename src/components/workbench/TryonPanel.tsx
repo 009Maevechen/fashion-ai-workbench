@@ -6,6 +6,7 @@ import type {ProductType} from "@/lib/db";
 import AssetUploadCard,{type LocalAsset} from "./AssetUploadCard";
 import ImagePreviewDialog from "./ImagePreviewDialog";
 import ResultCard from "./ResultCard";
+import ConsistencyCheck from "./ConsistencyCheck";
 import ClearAssetsButton from "./ClearAssetsButton";
 import ClearResultsButton from "./ClearResultsButton";
 import {hasClearableSourceAssets} from "@/lib/asset-cleanup";
@@ -32,6 +33,8 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const [candidateSlot,setCandidateSlot]=useState(saved?.activeCandidateSlot||1);
   const [protectedItems,setProtected]=useState(saved?.protectedItems?.length?saved.protectedItems:[...new Set([...TRYON_PROTECTION_LABELS,...(p.profile?.protectionItems||[])])]);
   const [preview,setPreview]=useState<{images:string[];index:number}|null>(null);
+  const [revisionRequest,setRevisionRequest]=useState(saved?.revisionRequest||"");
+  const [revisionMessages,setRevisionMessages]=useState(saved?.revisionMessages||[]);
   const route=modelRouting.tryon,routed=route.primary.source==="stored";
   const standardProvider=routed?route.primary.model:health.tryonProvider==="custom"?"自定义模型":health.tryonProvider==="volcengine"?"Seedream 5.0":"BFL VTO";
   const configured=routed?route.primary.configured:health.tryonProvider==="custom"?health.custom:mode==="quality"?health.fashn:health.tryonProvider==="volcengine"?health.volcengine:health.bfl;
@@ -40,7 +43,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const structurePrompt=buildProductProtectionPrompt(productType||p.productType,p.profile),missing=[!garment.url&&"服装产品图",!model.url&&"模特参考图"].filter(Boolean) as string[];
   const canConfirmSelected=canConfirmTryonSelection(selected,jobs);
   const candidateTotal=Math.max(count,jobs.length,1),activeCandidate=Math.min(candidateSlot,candidateTotal),visibleJob=jobs.find(job=>job.slot===activeCandidate),visibleUrl=visibleJob?.outputImages[0];
-  const draftSettings=useMemo(()=>({settings:{...p.settings,tryon:{mode,candidateCount:count,productType:productType||p.productType,garmentDescription:description,detailRequirements:extra,extraRequirements:extra,protectedItems,face,selectedCandidateImage:selected||undefined,activeCandidateSlot:candidateSlot}}}),[candidateSlot,count,description,extra,face,mode,p.productType,p.settings,productType,protectedItems,selected]);
+  const draftSettings=useMemo(()=>({settings:{...p.settings,tryon:{mode,candidateCount:count,productType:productType||p.productType,garmentDescription:description,detailRequirements:extra,extraRequirements:extra,protectedItems,face,selectedCandidateImage:selected||undefined,activeCandidateSlot:candidateSlot,revisionRequest,revisionMessages}}}),[candidateSlot,count,description,extra,face,mode,p.productType,p.settings,productType,protectedItems,revisionMessages,revisionRequest,selected]);
   useProjectDraftAutosave(p.id,draftSettings);
 
   async function saveAsset(asset:LocalAsset,key:"garmentImage"|"modelReferenceImage",name:string,setter:(asset:LocalAsset)=>void){
@@ -56,6 +59,17 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
     if(!garment.url||!model.url)throw new Error("两张图片必须保存成功后才能生成");
     await saveSettings();
     await post("/api/tryon",{projectId:p.id,productType,garmentImage:garment.url,modelImage:model.url,garmentDescription:description,detailRequirements:composeTryonDetailRequirements(structurePrompt,`${protectedItems.join("；")}。`,extra),extraRequirements:extra,face,mode,candidateCount:slot?1:count,modelPreference,...(slot?{slot}:{})});
+  }
+  async function checkConsistency(jobId:string){await post(`/api/projects/${p.id}/consistency-check`,{jobId})}
+  async function reviseCandidate(){
+    const request=revisionRequest.trim();
+    if(!request)throw new Error("请先告诉工作台需要修改什么");
+    if(!visibleUrl||!visibleJob)throw new Error("请先生成并选择一张候选图");
+    const now=new Date().toISOString(),messages=[...revisionMessages,{id:crypto.randomUUID(),role:"user" as const,content:request,createdAt:now},{id:crypto.randomUUID(),role:"assistant" as const,content:"已收到。我会只修改你指出的问题，同时锁定原产品的版型、材质、纹理、颜色、包边与其他细节。此修改为可选步骤，不影响你直接确认当前结果。",createdAt:now}];
+    setRevisionMessages(messages);setRevisionRequest("");
+    const revisionDetails=composeTryonDetailRequirements(extra,`本次智能修改要求：${request}。除明确要求修改的内容外，其余人物、构图、服装版型、材质、纹理、颜色、包边和设计细节全部保持不变。`);
+    await saveProject({settings:{...p.settings,tryon:{...draftSettings.settings.tryon,revisionRequest:"",revisionMessages:messages}}});
+    await post("/api/tryon",{projectId:p.id,productType,garmentImage:garment.url,modelImage:visibleUrl,garmentDescription:description,detailRequirements:composeTryonDetailRequirements(structurePrompt,`${protectedItems.join("；")}。`,revisionDetails),extraRequirements:revisionDetails,face,mode,candidateCount:1,slot:activeCandidate,modelPreference:"primary"});
   }
 
   return <>
@@ -80,7 +94,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 <label className="field">服装描述<textarea maxLength={500} value={description} onChange={e=>setDescription(e.target.value)}/>
 <span className="field-count">{description.length}/500</span>
 </label>
-<label className="field tryon-detail-field">重点细节要求<textarea maxLength={800} value={extra} onChange={e=>setExtra(e.target.value)}/>
+<label className="field tryon-detail-field">重点细节要求<small>产品图识别出的版型、面料、纹理、领口、袖口、包边、拼接、色块和装饰会由服务端自动叠加；这里可继续补充或修正。</small><textarea maxLength={800} value={extra} onChange={e=>setExtra(e.target.value)}/>
 <span className="field-count">{extra.length}/800</span>
 </label>
 <button className="secondary" onClick={()=>run(saveSettings)}>保存换装设置</button>
@@ -89,13 +103,13 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 <div className="panel-head">
 <h2>换装结果（候选图）</h2>
 <div className="panel-actions"><div className="tryon-candidate-tabs">{Array.from({length:candidateTotal},(_,index)=>index+1).map(slot=><button type="button" className={activeCandidate===slot?"active":""} key={slot} onClick={()=>setCandidateSlot(slot)}>候选{String(slot).padStart(2,"0")}</button>)}</div><ClearResultsButton workflow="tryon" disabled={busy||!hasWorkflowResults(p,jobs,"tryon")} onConfirm={clearResults}/></div>
-</div>{jobs.length?<div className="result-grid tryon-single-result"><ResultCard key={`tryon-candidate-slot-${activeCandidate}`} job={visibleJob} label={`候选 ${String(activeCandidate).padStart(2,"0")}`} selected={selected===visibleUrl} onSelect={visibleUrl?()=>setSelected(visibleUrl):undefined} onPreview={visibleUrl?()=>setPreview({images:allImages,index:allImages.indexOf(visibleUrl)}):undefined} onRetry={()=>run(()=>start(activeCandidate))} onFallbackRetry={route.fallback.configured?()=>run(()=>start(activeCandidate,"fallback")):undefined}/></div>:<div className="empty-state">
+</div>{jobs.length?<div className="result-grid tryon-single-result"><div><ResultCard key={`tryon-candidate-slot-${activeCandidate}`} job={visibleJob} label={`候选 ${String(activeCandidate).padStart(2,"0")}`} selected={selected===visibleUrl} onSelect={visibleUrl?()=>setSelected(visibleUrl):undefined} onPreview={visibleUrl?()=>setPreview({images:allImages,index:allImages.indexOf(visibleUrl)}):undefined} onRetry={()=>run(()=>start(activeCandidate))} onFallbackRetry={route.fallback.configured?()=>run(()=>start(activeCandidate,"fallback")):undefined}/><ConsistencyCheck job={visibleJob} busy={busy} onCheck={()=>visibleJob&&run(()=>checkConsistency(visibleJob.id))}/></div></div>:<div className="empty-state">
 <div>
 <div className="empty-icon">◇</div>
 <b>还没有换装候选</b>
 <p>上传两张输入图片后即可开始换装。</p>
 </div>
-</div>}<div className="confirm-block">
+</div>}<div className="tryon-agent"><div className="panel-head"><div><h3>工作台智能修改（可选）</h3><small>不修改也可以直接确认并进入三种姿势。</small></div></div>{revisionMessages.length?<div className="agent-messages">{revisionMessages.slice(-6).map(message=><div key={message.id} className={`agent-message ${message.role}`}><b>{message.role==="user"?"我":"工作台"}</b><span>{message.content}</span></div>)}</div>:<div className="notice">如果候选图的衣长、领口、袖口、材质、纹理、包边或其他细节不准确，可在这里说明后重新生成当前候选。</div>}<label className="field">告诉工作台需要修改什么<textarea maxLength={800} placeholder="例如：保持当前人物和构图，只把领口恢复为原产品的不对称黑色包边，并保持针织罗纹密度。" value={revisionRequest} onChange={event=>setRevisionRequest(event.target.value)}/><span className="field-count">{revisionRequest.length}/800</span></label><button className="secondary" disabled={busy||!visibleUrl||!revisionRequest.trim()} onClick={()=>run(reviseCandidate)}>按对话要求修改当前候选</button></div><div className="confirm-block">
 <button className="primary" disabled={!canConfirmSelected} onClick={()=>run(()=>confirmFlow("tryon",[selected]))}>✓ 确认选中的换装结果</button>
 <p>确认后可进入三种姿势</p>
 </div>

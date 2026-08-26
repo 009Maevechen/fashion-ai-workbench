@@ -149,6 +149,26 @@ export async function requestVisionText(
   ]);
 }
 
+export async function requestMultiVisionJson(
+  runtime: ProviderRuntimeConfig,
+  imageDataUrls: string[],
+  system: string,
+  prompt: string,
+) {
+  if (imageDataUrls.length < 2) throw new Error("一致性检测至少需要原产品图和生成结果图");
+  const content = await requestChatText(runtime, [
+    { role: "system", content: `${system} 只输出一个合法 JSON 对象，不要使用 Markdown。` },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: prompt },
+        ...imageDataUrls.map((url) => ({ type: "image_url", image_url: { url } })),
+      ],
+    },
+  ]);
+  return parseJsonText(content);
+}
+
 export async function requestTextJson(
   runtime: ProviderRuntimeConfig,
   system: string,

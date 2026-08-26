@@ -138,6 +138,26 @@
 .final-folder-open-head small{color:var(--muted)}
 .final-folder-card .final-sku-package{padding:14px 22px 24px}
 @media(max-width:720px){.final-folder-cover{grid-template-columns:auto 1fr}.final-folder-open-button{grid-column:1/-1;text-align:center}.final-folder-toolbar{align-items:stretch;flex-direction:column}.final-folder-toolbar .actions{display:grid;grid-template-columns:1fr 1fr}.final-folder-icon{width:52px;height:48px}}
+
+/* 高频作图：颜色队列优先，单色三姿势专注查看 */
+.recolor-task-queue{padding:10px;border:1px solid #ded8f7;border-radius:12px;background:#faf9ff}
+.recolor-task-queue button{min-width:142px;background:#fff}
+.recolor-task-queue button.complete:not(.active){border-color:#b9e5d1;background:#f6fffa}
+.recolor-task-queue button.running:not(.active){border-color:#e9cf94;background:#fffaf0}
+.recolor-task-queue small b{margin-left:4px;color:inherit}
+.recolor-active-task-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 12px;padding:10px 12px;border-left:4px solid var(--purple);border-radius:7px;background:#f8f6ff}
+.recolor-active-task-head>div{display:grid;gap:3px}.recolor-active-task-head span{color:var(--muted);font-size:11px}
+
+/* 最终结果：交付/QC 画廊 */
+.final-qc-page{gap:12px}.final-qc-toolbar{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:14px 24px;align-items:center;position:sticky;top:72px;z-index:8;box-shadow:0 8px 26px #29213e0c}
+.final-qc-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.final-qc-title h2{margin:3px 0 0;font-size:20px}.final-qc-title .eyebrow{color:var(--purple);font-size:10px;font-weight:900;letter-spacing:.08em}
+.final-qc-metrics{display:grid;grid-template-columns:repeat(3,92px);gap:8px}.final-qc-metrics>div{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:2px 8px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:#fbfbfd}.final-qc-metrics b{grid-row:1/3;font-size:22px}.final-qc-metrics span{color:var(--muted);font-size:10px}.final-qc-metrics .passed b{color:var(--success)}.final-qc-metrics .review b{color:var(--warning)}.final-qc-metrics .failed b{color:var(--danger)}
+.final-qc-actions{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--line)}.final-qc-actions .final-complete-button{margin-left:auto}
+.final-folder-inline{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px;border:1px solid #eadfae;border-radius:10px;background:#fffdf5}.final-folder-inline>span{font-size:28px}.final-folder-inline>div{display:grid;gap:3px}.final-folder-inline small{color:var(--muted)}
+.final-delivery-gallery{padding:20px 22px}.final-qc-group{display:grid;gap:11px;padding:18px 0;border-top:1px solid var(--line)}.final-qc-group:first-child{padding-top:0;border-top:0}.final-qc-group-head{display:flex;align-items:center;justify-content:space-between}.final-qc-group-head>div{display:flex;align-items:center;gap:9px}.final-qc-group-head h3{margin:0;font-size:17px}.final-qc-group-head i{width:18px;height:18px;border:1px solid #0002;border-radius:50%}.final-qc-group-head>span{color:var(--muted);font-size:11px}
+.final-qc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.final-qc-image{min-width:0;border:1px solid var(--line);border-radius:11px;padding:9px;background:#fff}.final-qc-image.passed{border-color:#b9e4cf}.final-qc-image.review{border-color:#ecd69f}.final-qc-image.failed{border-color:#f2c2c2}.final-qc-image-head{display:flex;align-items:center;justify-content:space-between;padding:2px 2px 8px}.final-qc-image-head span{padding:3px 7px;border-radius:999px;background:#fff3dc;color:var(--warning);font-size:9px;font-weight:800}.final-qc-image.passed .final-qc-image-head span{background:#e5f7ee;color:var(--success)}.final-qc-image.failed .final-qc-image-head span{background:#fdecec;color:var(--danger)}.final-qc-image img,.final-qc-placeholder{display:block;width:100%;aspect-ratio:3/4;border-radius:8px;background:#f2f2f6;object-fit:cover}.final-qc-placeholder{display:grid;place-content:center;text-align:center;color:#9a9da8;padding:16px}.final-qc-placeholder small{margin-top:5px;max-width:240px}.final-qc-image-actions{display:flex;align-items:center;gap:10px;padding-top:8px}.final-qc-image-actions button,.final-qc-image-actions a{border:0;background:transparent;color:#565967;padding:3px;font-size:10px;cursor:pointer;text-decoration:none}.final-qc-image-actions button:last-child{margin-left:auto;color:var(--purple)}.final-back-actions{justify-content:flex-end}
+@media(max-width:980px){.final-qc-toolbar{grid-template-columns:1fr}.final-qc-metrics{grid-template-columns:repeat(3,1fr)}.final-qc-actions .final-complete-button{margin-left:0}.final-qc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.final-qc-grid{grid-template-columns:1fr}.final-folder-inline{grid-template-columns:auto 1fr}.final-folder-inline .button{grid-column:1/-1;text-align:center}}
 .recolor-color-fields{grid-template-columns:1.15fr .75fr 1.15fr .75fr}
 .recolor-color-fields .recolor-output-name{grid-column:1/-1}
 .recolor-color-fields .recolor-output-name input{color:#5f46d8;font-weight:650}

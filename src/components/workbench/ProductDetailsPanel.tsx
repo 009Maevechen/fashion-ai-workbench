@@ -55,6 +55,10 @@ const ATTRIBUTE_OPTIONS: Record<keyof ProductAttributes, string[]> = {
     "牛仔纹理",
     "其他",
   ],
+  weaveStructure: ["平针", "罗纹", "麻花", "提花", "网眼", "梭织", "其他"],
+  gradientDesign: ["无渐变", "明暗渐变", "双色渐变", "多色渐变", "局部渐变", "其他"],
+  colorBlockLayout: ["无拼色", "领口撞色", "袖口撞色", "下摆撞色", "多部位拼色", "不规则色块", "其他"],
+  specialDesign: ["无特殊设计", "荷叶边", "镂空", "褶皱", "不对称", "立体装饰", "其他"],
   placketType: [
     "无门襟",
     "套头",
@@ -106,6 +110,10 @@ const ATTRIBUTE_LABELS: Record<keyof ProductAttributes, string> = {
   fit: "版型",
   fabric: "面料类型",
   fabricTexture: "面料纹理",
+  weaveStructure: "织法与针法结构",
+  gradientDesign: "渐变设计",
+  colorBlockLayout: "色块与拼接布局",
+  specialDesign: "特殊设计细节",
   placketType: "门襟类型",
   buttonCount: "纽扣数量",
   pocketDetails: "口袋数量和位置",
@@ -121,6 +129,19 @@ const ATTRIBUTE_LABELS: Record<keyof ProductAttributes, string> = {
   elasticity: "弹性",
 };
 const ATTRIBUTE_KEYS = Object.keys(ATTRIBUTE_LABELS) as (keyof ProductAttributes)[];
+const PRIMARY_ATTRIBUTE_KEYS: (keyof ProductAttributes)[] = [
+  "fit",
+  "garmentLength",
+  "pocketDetails",
+  "fabric",
+  "fabricTexture",
+  "printType",
+  "trimColor",
+  "colorBlockLayout",
+];
+const ADVANCED_ATTRIBUTE_KEYS = ATTRIBUTE_KEYS.filter(
+  (key) => key !== "mainColor" && !PRIMARY_ATTRIBUTE_KEYS.includes(key),
+);
 type SingleAssetKey =
   | "garmentImage"
   | "productFrontImage"
@@ -201,10 +222,13 @@ const ASSET_FIELDS: {
     name: "color-reference",
   },
 ];
+const PRIMARY_ASSET_KEYS: SingleAssetKey[] = ["garmentImage", "modelReferenceImage"];
+const primaryAssetFields = ASSET_FIELDS.filter((field) => PRIMARY_ASSET_KEYS.includes(field.key));
+const supplementalAssetFields = ASSET_FIELDS.filter((field) => !PRIMARY_ASSET_KEYS.includes(field.key));
 type ProductTab = "basic" | "attributes" | "assets" | "description" | "tags";
 const PRODUCT_TABS: { id: ProductTab; label: string; description: string }[] = [
   { id: "basic", label: "基础信息", description: "SKU、名称与项目安排" },
-  { id: "attributes", label: "商品属性", description: "服装结构与重点保护" },
+  { id: "attributes", label: "AI识别与保护", description: "AI回填，用户确认" },
   { id: "assets", label: "图片素材", description: "商品图、细节图与参考图" },
   { id: "description", label: "细节要求", description: "提供给生成模型的约束" },
   { id: "tags", label: "标签与备注", description: "检索标签、项目备注与统计" },
@@ -522,19 +546,19 @@ export default function ProductDetailsPanel({
                 </select>
               </label>
               <label className="field">
-                资料状态
+                优先级
                 <select
-                  value={profile.reviewStatus || "draft"}
+                  value={profile.priority || "normal"}
                   onChange={(e) =>
                     changeProfile({
-                      reviewStatus: e.target
-                        .value as ProductProfile["reviewStatus"],
+                      priority: e.target.value as ProductProfile["priority"],
                     })
                   }
                 >
-                  <option value="draft">草稿</option>
-                  <option value="awaiting_review">等待人工确认</option>
-                  <option value="confirmed">已确认</option>
+                  <option value="low">低</option>
+                  <option value="normal">普通</option>
+                  <option value="high">高</option>
+                  <option value="urgent">紧急</option>
                 </select>
               </label>
             </div>
@@ -623,12 +647,15 @@ export default function ProductDetailsPanel({
                 {analyzing ? "正在识别…" : "▶ 自动识别商品资料"}
               </button>
             </div>
-            <div className="panel-head">
-              <h2>商品属性与服装结构</h2>
-              <small>AI 回填后仍可手动修改，保存后进入换装提示词</small>
+            <div className="panel-head product-ai-review-head">
+              <div><h2>AI 识别结果</h2><small>版型、长度、口袋、纹理和印花由 AI 先填，你只需确认或修改</small></div>
+              <div className="product-ai-review-actions">
+                <span className={`badge ${profile.reviewStatus === "confirmed" ? "success" : "wait"}`}>{profile.reviewStatus === "confirmed" ? "已确认" : "待确认"}</span>
+                {profile.reviewStatus !== "confirmed" && <button type="button" className="secondary" onClick={()=>changeProfile({reviewStatus:"confirmed"})}>确认识别结果</button>}
+              </div>
             </div>
-            <div className="attribute-grid">
-              {ATTRIBUTE_KEYS.map((key) => {
+            <div className="attribute-grid attribute-grid-primary">
+              {PRIMARY_ATTRIBUTE_KEYS.map((key) => {
                 const currentValue=profile.attributes?.[key] || "";
                 const options=ATTRIBUTE_OPTIONS[key];
                 return (
@@ -649,6 +676,16 @@ export default function ProductDetailsPanel({
                 );
               })}
             </div>
+            <details className="product-advanced-attributes">
+              <summary>高级属性 <span>{ADVANCED_ATTRIBUTE_KEYS.filter(key=>profile.attributes?.[key]).length}/{ADVANCED_ATTRIBUTE_KEYS.length} 已填</span></summary>
+              <div className="attribute-grid">
+                {ADVANCED_ATTRIBUTE_KEYS.map((key) => {
+                  const currentValue=profile.attributes?.[key] || "";
+                  const options=ATTRIBUTE_OPTIONS[key];
+                  return <label className="field" key={key}>{ATTRIBUTE_LABELS[key]}<select value={currentValue} onChange={(e)=>changeAttribute(key,e.target.value)}><option value="">请选择</option>{currentValue&&!options.includes(currentValue)&&<option value={currentValue}>{currentValue}</option>}{options.map(item=><option key={item}>{item}</option>)}<option>无法从图片确认</option></select></label>;
+                })}
+              </div>
+            </details>
             <h3 className="section-label">重点保护</h3>
             <div className="protection-grid">
               {[
@@ -693,8 +730,10 @@ export default function ProductDetailsPanel({
                 />
               </div>
             </div>
-            <div className="product-assets-grid">
-              {ASSET_FIELDS.map((field) => (
+            <div className="product-assets-priority">
+              <div><h3>主要素材</h3><small>换装最常用，优先上传和查看</small></div>
+              <div className="product-assets-grid primary-assets-grid">
+              {primaryAssetFields.map((field) => (
                 <div className="product-asset-card" key={field.key}>
                   <AssetUploadCard
                     label={`${field.label}${field.required ? " *" : ""}`}
@@ -713,6 +752,16 @@ export default function ProductDetailsPanel({
                       setPreview(assets[field.key].url!)
                     }
                   />
+                </div>
+              ))}
+              </div>
+            </div>
+            <details className="product-supplemental-assets">
+              <summary>补充素材 <span>{supplementalAssetFields.filter(field=>assets[field.key]?.url).length + (assets.otherMaterial?.url ? 1 : 0)} 张已上传</span></summary>
+              <div className="product-assets-grid">
+              {supplementalAssetFields.map((field) => (
+                <div className="product-asset-card" key={field.key}>
+                  <AssetUploadCard label={field.label} description={field.description} value={assets[field.key] || { status: "idle" }} onChange={(asset)=>run(()=>saveAsset(asset,field.key,field.name))} onDelete={assets[field.key]?.url?()=>run(()=>removeAsset(field.key)):undefined} onPreview={()=>assets[field.key]?.url&&setPreview(assets[field.key].url!)}/>
                 </div>
               ))}
               <div className="product-asset-card">
@@ -741,7 +790,8 @@ export default function ProductDetailsPanel({
                   }
                 />
               </div>
-            </div>
+              </div>
+            </details>
             <p className="product-hint">
               平铺图和模特参考图用于换装；细节图与面料图用于帮助模型保护商品结构和纹理。
             </p>

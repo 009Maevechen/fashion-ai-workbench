@@ -16,6 +16,7 @@ temp/
 dist/
 release/
 desktop-runtime/
+Windows安装包/
 *.log
 *.tsbuildinfo
 .DS_Store

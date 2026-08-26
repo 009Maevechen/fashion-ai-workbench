@@ -18,6 +18,10 @@ test("复色提示词只提取颜色且禁止复制参考图款式",()=>{
   assert.match(prompt,/边饰颜色：白色（#FFFFFF）/);
   assert.match(prompt,/色块布局/);
   assert.match(prompt,/不得新增、删除或移动色块/);
+  assert.match(prompt,/不得保留原主体颜色/);
+  assert.match(prompt,/没有真正改变目标服装主体颜色必须视为生成失败/);
+  assert.match(prompt,/面料材质、织法\/针法/);
+  assert.match(prompt,/渐变方向、层次和过渡边界/);
 });
 
 test("复色区域由商品类型锁定，上衣不得改动下装",()=>{

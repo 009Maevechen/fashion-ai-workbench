@@ -1,6 +1,6 @@
 import {faceVisibilityPrompt} from "./face-visibility";
 
-export const POSE_PROMPT_VERSION="pose-v4-locked-framing";
+export const POSE_PROMPT_VERSION="pose-v5-material-design-lock";
 export const POSES=["自然站立，身体正面或轻微侧向镜头，双手自然放置，完整清晰地展示服装。","模特轻微迈步或自然转移重心，动作自然，不遮挡服装重点。","身体轻微侧转，一只手自然弯曲，展示服装侧面、袖型、腰线、裙型或裤型。"];
 export function posePrompt(pose:string,productType:string,shot:string,face:boolean,background:boolean,details:string){return `任务：根据两张输入图生成一张独立的电商姿势图。
 第一张输入图是商品模特图，决定模特身份、脸部、服装商品、颜色、结构、材质、背景与光线。
@@ -16,7 +16,8 @@ export function posePrompt(pose:string,productType:string,shot:string,face:boole
 7. 如果任何文字说明、页面设置或模型默认构图与第二张参考图有冲突，以第二张参考图为唯一标准。
 8. 第二张图只提供人体姿势骨架与构图，不得复制其中的人物身份、脸、发型、服装、配饰、道具或背景。
 
-必须保持第一张图中的同一个模特、同一套服装、颜色版型长度面料、全部服装细节、背景光线拍摄风格、正常人体比例、3:4竖版；每次只输出一张独立图片。
+必须保持第一张图中的同一个模特、同一套服装、颜色、版型、长度、全部服装细节、背景光线拍摄风格、正常人体比例、3:4竖版；每次只输出一张独立图片。
+服装材质与设计拥有与姿势同等的强制优先级：姿势变化后仍须保持第一张图的面料材质、织法/针法、罗纹或纹理方向与密度、粗细、绒感、透视度、光泽、褶皱和垂坠感；保持渐变方向与过渡范围、色块边界与比例、拼接、包边、印花及特殊装饰布局。肢体转动只能改变透视，不得磨平、替换、重绘或虚构服装纹理和设计。
 文字说明（仅用于辅助理解参考图，不得覆盖参考图）：${pose}
 商品类型：${productType}
 页面辅助景别：${shot}（仅当第二张参考图完全无法辨认景别时可用；正常情况下必须忽略此文字并一比一复制参考图实际景别）
