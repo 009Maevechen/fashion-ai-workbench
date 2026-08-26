@@ -278,6 +278,8 @@ export default function ProductDetailsPanel({
     [activeTab, setActiveTab] = useState<ProductTab>("basic"),
     [analyzing, setAnalyzing] = useState(false),
     [analysisNotice, setAnalysisNotice] = useState("");
+  const [visualAnalyzing, setVisualAnalyzing] = useState(false);
+  const [visualNotice, setVisualNotice] = useState("");
   const [assets, setAssets] = useState<Record<string, LocalAsset>>(() =>
     Object.fromEntries([
       ...ASSET_FIELDS.map((field) => [
@@ -444,6 +446,50 @@ export default function ProductDetailsPanel({
       );
     } finally {
       setAnalyzing(false);
+    }
+  }
+  async function analyzeVisual() {
+    if (!assets.garmentImage?.url)
+      throw new Error("请先上传产品主图，再自动识别细节图");
+    setVisualAnalyzing(true);
+    setVisualNotice("");
+    try {
+      const response = await fetch(`/api/projects/${p.id}/visual-analyze`, {
+        method: "POST",
+      });
+      const data = (await response.json()) as {
+        regions?: Array<{
+          assetKey: string;
+          label: string;
+          upscalePath: string;
+          needsReview: boolean;
+        }>;
+        missing?: Array<{ label: string }>;
+        error?: string;
+      };
+      if (!response.ok || !data.regions)
+        throw new Error(data.error || "产品细节识别失败");
+      const filledKeys = new Set(data.regions.map((region) => region.assetKey));
+      const next = { ...assets };
+      for (const region of data.regions) {
+        const stateKey = region.assetKey as keyof typeof assets;
+        if (!(stateKey in next)) continue;
+        next[stateKey] = {
+          url: region.upscalePath,
+          name: region.label,
+          status: "saved",
+        };
+      }
+      setAssets(next);
+      setSaved(false);
+      const reviewCount = data.regions.filter((region) => region.needsReview).length;
+      const filled = Array.from(filledKeys).length;
+      const missing = (data.missing || []).map((item) => item.label).join("、");
+      setVisualNotice(
+        `已自动裁剪并高清放大 ${filled} 个细节图${reviewCount ? `，其中 ${reviewCount} 个建议人工确认` : ""}${missing ? `；未识别到：${missing}` : ""}。请检查后保存。`,
+      );
+    } finally {
+      setVisualAnalyzing(false);
     }
   }
   const successful = jobs.filter(
@@ -723,6 +769,14 @@ export default function ProductDetailsPanel({
             <div className="panel-head">
               <h2>图片素材</h2>
               <div className="panel-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy || visualAnalyzing || !assets.garmentImage?.url}
+                  onClick={() => run(analyzeVisual)}
+                >
+                  {visualAnalyzing ? "正在识别细节…" : "▶ AI自动识别并填充细节图"}
+                </button>
                 <span>{previewImages.length} 张已保存</span>
                 <ClearAssetsButton
                   disabled={busy || !hasClearableSourceAssets(p)}
@@ -730,6 +784,7 @@ export default function ProductDetailsPanel({
                 />
               </div>
             </div>
+            {visualNotice && <div className="notice">{visualNotice}</div>}
             <div className="product-assets-priority">
               <div><h3>主要素材</h3><small>换装最常用，优先上传和查看</small></div>
               <div className="product-assets-grid primary-assets-grid">
