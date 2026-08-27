@@ -1,15 +1,32 @@
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 
 function resolveRuntimeDirectory(value: string | undefined, fallback: string) {
   const selected = value?.trim();
-  return selected ? path.resolve(selected) : path.resolve(process.cwd(), fallback);
+  return selected ? path.resolve(selected) : path.resolve(fallback);
 }
 
 /**
- * 桌面安装版会由 Electron 注入绝对目录；网页开发版继续使用仓库内的 data/ 与 outputs/。
+ * 系统用户数据目录：运行时数据（商品信息、产品图片、临时文件）一律存放在
+ * 这里，绝不写入源码目录、node_modules 或软件安装目录。
  */
-export const runtimeDataDir = () => resolveRuntimeDirectory(process.env.AI_STUDIO_DATA_DIR, "data");
+function userDataBaseDir(): string {
+  if (process.platform === "darwin")
+    return path.join(os.homedir(), "Library", "Application Support", "AI服装工作台");
+  if (process.platform === "win32")
+    return path.join(
+      process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+      "AI服装工作台",
+    );
+  return path.join(os.homedir(), ".ai-fashion-workbench");
+}
+
+/**
+ * 桌面安装版由 Electron 注入 AI_STUDIO_DATA_DIR 绝对目录；
+ * 网页开发版回退到系统用户数据目录，不落源码目录。
+ */
+export const runtimeDataDir = () => resolveRuntimeDirectory(process.env.AI_STUDIO_DATA_DIR, path.join(userDataBaseDir(), "data"));
 const storageSettingsFile = () => path.join(runtimeDataDir(), "storage-settings.json");
 type StorageSettings = {
   outputsDir?: string;
@@ -31,7 +48,10 @@ function savedOutputsDir() {
 }
 
 export const defaultRuntimeOutputsDir = () =>
-  resolveRuntimeDirectory(process.env.AI_STUDIO_OUTPUTS_DIR || process.env.OUTPUTS_DIR, "outputs");
+  resolveRuntimeDirectory(
+    process.env.AI_STUDIO_OUTPUTS_DIR || process.env.OUTPUTS_DIR,
+    path.join(userDataBaseDir(), "outputs"),
+  );
 export const runtimeOutputsDir = () => resolveRuntimeDirectory(savedOutputsDir(), defaultRuntimeOutputsDir());
 export const runtimeOutputSearchDirs = () => {
   const settings = storageSettings();
