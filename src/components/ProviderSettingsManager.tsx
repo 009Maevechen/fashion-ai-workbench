@@ -28,7 +28,7 @@ type EnvironmentStatus = {
   custom: boolean;
 };
 type CatalogItem = {
-  id: keyof EnvironmentStatus | "generic";
+  id: keyof EnvironmentStatus | "generic" | "deepseek" | "xiaomi";
   label: string;
   types: ApiProviderType[];
   newType: ApiProviderType;
@@ -61,7 +61,14 @@ function supportsWorkflow(
   provider: ApiProviderPublic,
   workflow: ModelWorkflowType,
 ) {
-  if (workflow === "product")
+  if (workflow === "product" || workflow === "qc")
+    return [
+      "syc-openai-compatible",
+      "openai-compatible",
+      "volcengine",
+      "custom",
+    ].includes(provider.type);
+  if (workflow === "research" || workflow === "assistant")
     return [
       "syc-openai-compatible",
       "openai-compatible",
@@ -159,17 +166,20 @@ const WORKFLOWS: {
 }[] = [
   {
     key: "product",
-    label: "产品图片识别",
+    label: "商品视觉识别",
     description:
-      "读取产品图并自动填写商品资料；需填写支持图片输入和文字输出的视觉理解模型 ID，不能使用纯生图模型",
+      "产品类型识别、商品属性识别、细节提取、自动标签；需支持图片输入和文字输出的视觉理解模型",
   },
   {
     key: "tryon",
     label: "服装换装",
-    description: "服装图＋模特图生成换装候选",
+    description: "产品图＋模特图换装，需要图片编辑能力",
   },
-  { key: "pose", label: "三种姿势", description: "三次独立图片编辑任务" },
-  { key: "recolor", label: "服装复色", description: "三张姿势图分别精准复色" },
+  { key: "pose", label: "三种姿势", description: "商品模特图＋姿势参考图，三次独立图片编辑" },
+  { key: "recolor", label: "服装复色", description: "三张姿势图分别精准复色，需要图片编辑能力" },
+  { key: "qc", label: "QC质量检查", description: "商品结构比对、模特一致性、面料、手部异常、露脸检测，需要视觉理解模型" },
+  { key: "research", label: "爆款研究 / 文本分析", description: "爆款共同点、趋势研究、设计Brief、卖点总结，需要文本推理模型（预留）" },
+  { key: "assistant", label: "工作台AI助手", description: "工作台内通用文本问答（预留）" },
 ];
 const CATALOG: CatalogItem[] = [
   {
@@ -221,6 +231,26 @@ const CATALOG: CatalogItem[] = [
     defaultModel: "gpt-image-2",
     baseUrl: "https://sycagent.top/v1",
     description: "OpenAI 兼容图片生成与图片编辑",
+  },
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    types: ["openai-compatible"],
+    newType: "openai-compatible",
+    model: "deepseek-chat",
+    defaultModel: "deepseek-chat",
+    baseUrl: "https://api.deepseek.com/v1",
+    description: "文本理解与推理，用于爆款研究、AI助手",
+  },
+  {
+    id: "xiaomi",
+    label: "小米模型",
+    types: ["openai-compatible"],
+    newType: "openai-compatible",
+    model: "MiMo",
+    defaultModel: "MiMo-7B",
+    baseUrl: "https://api.xiaomi.com/v1",
+    description: "OpenAI 兼容文本模型，用于文本分析",
   },
 ];
 const GENERIC_CATALOG: CatalogItem = {
@@ -284,11 +314,15 @@ export default function ProviderSettingsManager({
     (provider) => provider.id === editingId,
   );
   const activeEnvironmentConfigured =
-    activeCatalog.id === "generic"
+    activeCatalog.id === "generic" ||
+    activeCatalog.id === "deepseek" ||
+    activeCatalog.id === "xiaomi"
       ? false
       : environmentStatus[activeCatalog.id];
   const environmentConfigured = (id: CatalogItem["id"]) =>
-    id === "generic" ? false : environmentStatus[id];
+    id === "generic" || id === "deepseek" || id === "xiaomi"
+      ? false
+      : environmentStatus[id];
 
   function clearFeedback() {
     setMessage("");
@@ -482,7 +516,11 @@ export default function ProviderSettingsManager({
         ? slot === "primary"
           ? provider?.visionModel || ""
           : provider?.chatModel || ""
-        : provider?.defaultModel || "";
+        : workflow === "qc"
+          ? provider?.visionModel || provider?.chatModel || ""
+          : workflow === "research" || workflow === "assistant"
+            ? provider?.chatModel || provider?.defaultModel || ""
+            : provider?.defaultModel || "";
     setBindings((current) => ({
       ...current,
       [workflow]: {
@@ -525,12 +563,19 @@ export default function ProviderSettingsManager({
     workflow: ModelWorkflowType,
     slot: "primary" | "fallback",
   ) {
-    if (workflow !== "product") return providerOptionLabel(provider);
-    const model =
-      slot === "primary"
-        ? provider.visionModel
-        : provider.chatModel;
-    return `${provider.name} · ${model || (slot === "primary" ? "未配置图片识别模型" : "未配置对话模型")}`;
+    if (workflow === "product") {
+      const model = slot === "primary" ? provider.visionModel : provider.chatModel;
+      return `${provider.name} · ${model || (slot === "primary" ? "未配置图片识别模型" : "未配置对话模型")}`;
+    }
+    if (workflow === "qc") {
+      const model = provider.visionModel || provider.chatModel;
+      return `${provider.name} · ${model || "未配置视觉模型"}`;
+    }
+    if (workflow === "research" || workflow === "assistant") {
+      const model = provider.chatModel || provider.defaultModel;
+      return `${provider.name} · ${model || "未配置文本模型"}`;
+    }
+    return providerOptionLabel(provider);
   }
   async function saveBindings() {
     setBusy("bindings");
@@ -543,7 +588,7 @@ export default function ProviderSettingsManager({
       setBindings(data.bindings);
       setRuntime(data.runtime);
       setDialog(null);
-      setMessage("四个工作流的主模型与备用模型已保存");
+      setMessage("七个工作流的主模型与备用模型已保存");
     } catch (e) {
       setError(e instanceof Error ? e.message : "模型绑定保存失败");
     } finally {
@@ -581,8 +626,19 @@ export default function ProviderSettingsManager({
                     (provider) => provider.enabled && provider.hasApiKey,
                   );
             const failed = saved.some(
-              (provider) => provider.lastTestStatus === "failed",
+              (provider) =>
+                provider.lastTestStatus !== "untested" &&
+                provider.lastTestStatus !== "success",
             );
+            const FAILED_LABEL: Record<string, string> = {
+              auth_failed: "认证失败",
+              rate_limited: "限流",
+              model_not_found: "模型不存在",
+              failed: "测试失败",
+            };
+            const worstStatus = saved
+              .map((provider) => provider.lastTestStatus)
+              .find((status) => status !== "untested" && status !== "success");
             const sycLabel = !syc.apiKeyConfigured
               ? "未配置"
               : !syc.imageModel
@@ -633,13 +689,23 @@ export default function ProviderSettingsManager({
                           : "点击开始配置"}
                   </span>
                   <span className={cardFailed ? "danger-text" : ""}>
-                    {cardFailed
-                      ? (
-                          syc.lastImageTestError ||
-                          syc.lastError ||
-                          "测试失败"
-                        ).slice(0, 22)
-                      : "查看配置 →"}
+                    {item.id === "custom"
+                      ? cardFailed
+                        ? (
+                            syc.lastImageTestError ||
+                            syc.lastError ||
+                            "测试失败"
+                          ).slice(0, 22)
+                        : "查看配置 →"
+                      : worstStatus
+                        ? (FAILED_LABEL[worstStatus] || "测试失败") +
+                          (saved.find((provider) => provider.lastTestStatus === worstStatus)?.lastError
+                            ? " · " +
+                              saved
+                                .find((provider) => provider.lastTestStatus === worstStatus)!
+                                .lastError!.slice(0, 14)
+                            : "")
+                        : "查看配置 →"}
                   </span>
                 </span>
               </button>
@@ -680,10 +746,10 @@ export default function ProviderSettingsManager({
           >
             <span className="settings-provider-tile-head">
               <b>工作流模型分配</b>
-              <span className="badge">4 个流程</span>
+              <span className="badge">7 个流程</span>
             </span>
             <strong>主模型＋备用模型</strong>
-            <small>分别为产品识别、换装、三种姿势和复色选择模型</small>
+            <small>分别为商品识别、换装、三姿势、复色、QC、爆款研究、AI助手选择模型</small>
             <span className="settings-provider-tile-foot">
               <span>手动备用模型重试</span>
               <span>查看配置 →</span>
@@ -1088,9 +1154,18 @@ export default function ProviderSettingsManager({
                               ? slot === "primary"
                                 ? "图片识别模型"
                                 : "对话模型"
-                              : slot === "primary"
-                                ? "主模型"
-                                : "备用模型"}
+                              : workflow.key === "qc"
+                                ? slot === "primary"
+                                  ? "QC视觉模型"
+                                  : "QC备用视觉模型"
+                                : workflow.key === "research" ||
+                                    workflow.key === "assistant"
+                                  ? slot === "primary"
+                                    ? "主文本模型"
+                                    : "备用文本模型"
+                                  : slot === "primary"
+                                    ? "主模型"
+                                    : "备用模型"}
                           </b>
                           <select
                             value={current[slot]?.providerId || ""}
@@ -1107,9 +1182,18 @@ export default function ProviderSettingsManager({
                                 ? slot === "primary"
                                   ? "选择图片识别 API"
                                   : "选择对话 API"
-                                : slot === "primary"
-                                  ? environmentOptionLabel(summary.primary)
-                                  : "不配置备用模型"}
+                                : workflow.key === "qc"
+                                  ? slot === "primary"
+                                    ? "选择QC视觉模型 API"
+                                    : "不配置备用模型"
+                                  : workflow.key === "research" ||
+                                      workflow.key === "assistant"
+                                    ? slot === "primary"
+                                      ? "选择文本模型 API"
+                                      : "不配置备用模型"
+                                    : slot === "primary"
+                                      ? environmentOptionLabel(summary.primary)
+                                      : "不配置备用模型"}
                             </option>
                             {compatibleProviders.map((provider) => (
                               <option value={provider.id} key={provider.id}>
@@ -1132,7 +1216,12 @@ export default function ProviderSettingsManager({
                                 ? slot === "primary"
                                   ? "图片识别模型 ID"
                                   : "对话模型 ID"
-                                : "模型名称"
+                                : workflow.key === "qc"
+                                  ? "视觉理解模型 ID"
+                                  : workflow.key === "research" ||
+                                      workflow.key === "assistant"
+                                    ? "文本模型 ID"
+                                    : "模型名称"
                             }
                           />
                           <small

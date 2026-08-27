@@ -1,5 +1,10 @@
 import type { WorkflowType } from "./types";
-export type ModelWorkflowType = WorkflowType | "product";
+export type ModelWorkflowType =
+  | WorkflowType
+  | "product"
+  | "qc"
+  | "research"
+  | "assistant";
 
 export type ApiProviderType =
   | "openai-compatible"
@@ -9,8 +14,70 @@ export type ApiProviderType =
   | "volcengine"
   | "flux"
   | "custom";
-export type ProviderTestStatus = "untested" | "success" | "failed";
-export type SycTestStatus = "untested" | "incomplete" | "success" | "failed";
+
+/** 模型能力标签：模型中心据此判断“这个模型能做什么、不能做什么”。 */
+export type ModelCapability =
+  | "text"
+  | "reasoning"
+  | "vision"
+  | "image-generation"
+  | "image-editing"
+  | "multi-image"
+  | "virtual-tryon"
+  | "qc"
+  | "embedding"
+  | "ocr"
+  | "upscale";
+
+/** 模型库存条目：从已配置 Provider 推导出的可调度模型。 */
+export type ModelInventoryEntry = {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName: string;
+  enabled: boolean;
+  configured: boolean;
+  lastTestStatus: ProviderTestStatus;
+  lastTestAt?: string;
+  averageLatencyMs?: number;
+  notes?: string;
+  capabilities: ModelCapability[];
+};
+
+/** 模型任务记录：为模型实验室 / 成本统计预留。 */
+export type ModelRunRecord = {
+  id: string;
+  workflowType: ModelWorkflowType;
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  success: boolean;
+  retryCount: number;
+  qcResult?: "passed" | "needs_review" | "failed" | "skipped";
+  errorMessage?: string;
+  promptTemplateId?: string;
+  promptVersion?: string;
+  generationMode?: string;
+  parameters?: Record<string, unknown>;
+};
+export type ProviderTestStatus =
+  | "untested"
+  | "success"
+  | "failed"
+  | "auth_failed"
+  | "rate_limited"
+  | "model_not_found";
+export type SycTestStatus =
+  | "untested"
+  | "incomplete"
+  | "success"
+  | "failed"
+  | "auth_failed"
+  | "rate_limited"
+  | "model_not_found";
 export type ModelSlot = "primary" | "fallback";
 
 export type ApiProviderPublic = {
@@ -138,4 +205,7 @@ export const EMPTY_WORKFLOW_BINDINGS: WorkflowModelBindings = {
   tryon: {},
   pose: {},
   recolor: {},
+  qc: {},
+  research: {},
+  assistant: {},
 };

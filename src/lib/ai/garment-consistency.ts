@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import type { GarmentConsistencyCheck, Job, Project } from "@/lib/db";
 import { localImage, toDataUrl } from "./storage";
-import { resolveProductAnalysisModel } from "./provider-settings";
+import { resolveQcModel } from "./provider-settings";
 import { requestMultiVisionJson } from "./vision-chat";
 import { garmentConsistencyPrompt } from "./prompts/consistency";
 
@@ -30,7 +30,7 @@ export async function checkGarmentConsistency(project:Project,job:Job):Promise<G
       ?(project.assets.garmentImage||job.inputImages[1])
       :(project.assets.garmentImage||job.sourceModelImage||job.inputImages[0]||project.confirmedTryonImage);
   if(!source)throw new Error("找不到原产品服装基准图，请先保留产品图或输入图");
-  const runtime=await resolveProductAnalysisModel();
+  const runtime=await resolveQcModel();
   const parsed=checkSchema.parse(await requestMultiVisionJson(runtime,await Promise.all([compactImage(source),compactImage(output)]),"你是严格的电商服装质检员。必须基于可见证据判断，不得因人物姿势或背景不同而误判。",garmentConsistencyPrompt(job.workflow,project,job)));
   return {status:parsed.consistent&&parsed.score>=85?"passed":"needs_review",score:Math.round(parsed.score),summary:parsed.summary,issues:parsed.issues,checks:parsed.checks,checkedAt:new Date().toISOString(),model:runtime.model};
 }

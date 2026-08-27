@@ -23,6 +23,7 @@ import type {
 import { EMPTY_WORKFLOW_BINDINGS } from "./provider-settings-types";
 import { normalizeSycBaseUrl } from "./providers/syc/config";
 import { runtimeDataDir } from "../runtime-paths";
+import { WORKFLOW_REQUIRED_CAPABILITIES, capabilitiesMatch, inferCapabilities, missingCapabilities, CAPABILITY_LABELS } from "./model-capabilities";
 
 type SettingsStore = {
   version: 1;
@@ -56,6 +57,9 @@ const cleanBindings = (
   pose: { ...(value?.pose || {}) },
   recolor: { ...(value?.recolor || {}) },
   product: { ...(value?.product || {}) },
+  qc: { ...(value?.qc || {}) },
+  research: { ...(value?.research || {}) },
+  assistant: { ...(value?.assistant || {}) },
 });
 
 async function loadStore(): Promise<SettingsStore> {
@@ -266,7 +270,7 @@ export async function updateApiProvider(
       record.apiKeyMasked = maskKey(input.apiKey.trim());
     }
     if (!record.enabled)
-      for (const workflow of ["tryon", "pose", "recolor"] as const) {
+      for (const workflow of ["tryon", "pose", "recolor", "qc", "research", "assistant"] as const) {
         if (store.workflowModelBindings[workflow].primary?.providerId === id)
           delete store.workflowModelBindings[workflow].primary;
         if (store.workflowModelBindings[workflow].fallback?.providerId === id)
@@ -287,7 +291,7 @@ export async function deleteApiProvider(id: string) {
     const exists = store.apiProviders.some((item) => item.id === id);
     if (!exists) throw new Error("API 提供商不存在");
     store.apiProviders = store.apiProviders.filter((item) => item.id !== id);
-    for (const workflow of ["product", "tryon", "pose", "recolor"] as const) {
+    for (const workflow of ["product", "tryon", "pose", "recolor", "qc", "research", "assistant"] as const) {
       const binding = store.workflowModelBindings[workflow];
       if (binding.primary?.providerId === id) delete binding.primary;
       if (binding.fallback?.providerId === id) delete binding.fallback;
@@ -474,7 +478,7 @@ export async function saveSycConfig(input: SycConfigInput) {
       record.lastTestLatencyMs = undefined;
     }
     if (!record.enabled)
-      for (const workflow of ["tryon", "pose", "recolor"] as const) {
+      for (const workflow of ["tryon", "pose", "recolor", "qc", "research", "assistant"] as const) {
         if (
           store.workflowModelBindings[workflow].primary?.providerId ===
           record.id
@@ -613,11 +617,19 @@ export async function saveWorkflowModelBindings(
   input: Partial<WorkflowModelBindings>,
 ) {
   return mutate((store) => {
-    const providerIds = new Set(
-      store.apiProviders.filter((item) => item.enabled).map((item) => item.id),
-    );
+    const providers = store.apiProviders.filter((item) => item.enabled);
+    const providerIds = new Set(providers.map((item) => item.id));
     const next = cleanBindings(input);
-    for (const workflow of ["product", "tryon", "pose", "recolor"] as const) {
+    const workflows = [
+      "product",
+      "tryon",
+      "pose",
+      "recolor",
+      "qc",
+      "research",
+      "assistant",
+    ] as const;
+    for (const workflow of workflows) {
       for (const slot of ["primary", "fallback"] as const) {
         const selection = validSelection(next[workflow][slot]);
         if (!selection) {
@@ -636,6 +648,20 @@ export async function saveWorkflowModelBindings(
           throw new Error(
             `产品识别模型“${selection.model}”是图片生成模型，请填写支持图片输入和文字输出的视觉理解模型 ID`,
           );
+        // 能力校验：模型必须满足工作流所需能力，否则拒绝保存
+        const provider = providers.find((item) => item.id === selection.providerId);
+        if (provider) {
+          const capabilities = inferCapabilities(provider.type, selection.model);
+          const required = WORKFLOW_REQUIRED_CAPABILITIES[workflow];
+          if (required.length && !capabilitiesMatch(capabilities, required)) {
+            const missing = missingCapabilities(capabilities, required)
+              .map((capability) => CAPABILITY_LABELS[capability])
+              .join("、");
+            throw new Error(
+              `模型“${selection.model}”缺少当前工作流所需能力：${missing}，不能用于${slot === "primary" ? "主" : "备用"}模型`,
+            );
+          }
+        }
         next[workflow][slot] = selection;
       }
     }
@@ -764,6 +790,29 @@ export async function resolveProductAnalysisModel(slot: ModelSlot = "primary") {
   );
 }
 
+/**
+ * QC 质量检查视觉模型。独立槽位，可单独更换；未配置时回退到产品视觉识别模型。
+ */
+export async function resolveQcModel(slot: ModelSlot = "primary") {
+  const bindings = await getWorkflowModelBindings();
+  const selection = bindings.qc[slot];
+  if (selection) return getProviderRuntime(selection.providerId, selection.model);
+  if (slot === "fallback")
+    throw new Error("QC质量检查尚未配置备用视觉模型，请到“API与模型设置 → 工作流模型分配”中选择");
+  // 回退到产品视觉识别模型，保证老配置开箱即用
+  return resolveProductAnalysisModel("primary");
+}
+
+export async function resolveTextModel(workflow: "research" | "assistant", slot: ModelSlot = "primary") {
+  const selection = (await getWorkflowModelBindings())[workflow][slot];
+  if (selection) return getProviderRuntime(selection.providerId, selection.model);
+  throw new Error(
+    slot === "fallback"
+      ? `${workflow === "research" ? "爆款研究" : "工作台AI助手"}尚未配置备用文本模型`
+      : `${workflow === "research" ? "爆款研究" : "工作台AI助手"}尚未配置文本模型，请到“API与模型设置 → 工作流模型分配”中选择`,
+  );
+}
+
 async function runtimeSummary(
   workflow: ModelWorkflowType,
   slot: ModelSlot,
@@ -783,7 +832,11 @@ async function runtimeSummary(
     const runtime =
       workflow === "product"
         ? await resolveProductAnalysisModel(slot)
-        : await resolveWorkflowModel(workflow, "standard", slot);
+        : workflow === "qc"
+          ? await resolveQcModel(slot)
+          : workflow === "research" || workflow === "assistant"
+            ? await resolveTextModel(workflow, slot)
+            : await resolveWorkflowModel(workflow, "standard", slot);
     return {
       slot,
       configured: true,
@@ -807,7 +860,7 @@ async function runtimeSummary(
 }
 export async function getWorkflowRuntimeSummary(): Promise<WorkflowRuntimeSummary> {
   const entries = await Promise.all(
-    (["product", "tryon", "pose", "recolor"] as const).map(
+    (["product", "tryon", "pose", "recolor", "qc", "research", "assistant"] as const).map(
       async (workflow) =>
         [
           workflow,

@@ -19,6 +19,9 @@ const schema = z.object({
   tryon: binding,
   pose: binding,
   recolor: binding,
+  qc: binding,
+  research: binding,
+  assistant: binding,
 });
 export const dynamic = "force-dynamic";
 export async function GET() {

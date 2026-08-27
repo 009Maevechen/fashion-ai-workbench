@@ -13,6 +13,9 @@ const LABEL: Record<ModelWorkflowType, string> = {
   tryon: "换装",
   pose: "姿势",
   recolor: "复色",
+  qc: "QC检查",
+  research: "爆款研究",
+  assistant: "AI助手",
 };
 
 function supportsWorkflow(
