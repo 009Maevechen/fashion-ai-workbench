@@ -7,7 +7,7 @@
   "private": true,
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "cross-env NEXT_DIST_DIR=.next-dev next dev",
+    "dev": "node scripts/dev.mjs",
     "dev:electron": "cross-env NEXT_DIST_DIR=.next-dev concurrently -k -s first \"next dev -H 127.0.0.1\" \"wait-on http://127.0.0.1:3000/api/health && cross-env ELECTRON_DEV_URL=http://127.0.0.1:3000 electron .\"",
     "build": "cross-env NEXT_DIST_DIR=.next-build next build",
     "build:desktop": "cross-env NEXT_DIST_DIR=.next next build && node scripts/prepare-desktop.mjs",
