@@ -51,9 +51,8 @@ jobs:
           $exe = Get-ChildItem -Recurse out/make/squirrel.windows/x64/*Setup.exe | Select-Object -First 1
           if (-not $exe) { throw "未找到 Windows Setup.exe" }
           Write-Host "Found installer: $($exe.FullName)"
-          $tag = "latest"
-          gh release delete $tag --yes 2>$null
-          gh release create $tag $exe.FullName --title "AI服装工作台（最新构建）" --notes "Windows 安装包 + macOS 包，由 GitHub Actions 自动构建。" 2>&1 | Out-String
+          gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包 + macOS 包，由 GitHub Actions 自动构建。" 2>$null
+          gh release upload latest $exe.FullName --clobber
 
   macos-x64:
     runs-on: macos-latest
@@ -89,4 +88,5 @@ jobs:
           if [ -z "$zip" ]; then echo "未找到 macOS zip，尝试 dmg"; zip=$(find out/make -name '*.dmg' | head -1); fi
           if [ -z "$zip" ]; then echo "未找到任何 macOS 安装包"; ls -R out/make; exit 1; fi
           echo "Found package: $zip"
+          gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包 + macOS 包，由 GitHub Actions 自动构建。" 2>/dev/null || true
           gh release upload latest "$zip" --clobber
