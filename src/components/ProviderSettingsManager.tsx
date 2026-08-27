@@ -1,14 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type {
   ApiProviderPublic,
   ApiProviderType,
   SycConfigPublic,
-  WorkflowModelBindings,
-  WorkflowRuntimeSummary,
 } from "@/lib/ai/provider-settings-types";
-import type { ModelWorkflowType } from "@/lib/ai/provider-settings-types";
 import SycSettingsDialog from "./SycSettingsDialog";
 
 type FormState = {
@@ -37,7 +34,7 @@ type CatalogItem = {
   baseUrl: string;
   description: string;
 };
-type DialogType = "provider" | "syc" | "workflow" | null;
+type DialogType = "provider" | "syc" | null;
 
 const emptyForm: FormState = {
   name: "",
@@ -57,27 +54,6 @@ const TYPE_LABEL: Record<ApiProviderType, string> = {
   flux: "FLUX兼容接口",
   custom: "自定义兼容接口",
 };
-function supportsWorkflow(
-  provider: ApiProviderPublic,
-  workflow: ModelWorkflowType,
-) {
-  if (workflow === "product" || workflow === "qc")
-    return [
-      "syc-openai-compatible",
-      "openai-compatible",
-      "volcengine",
-      "custom",
-    ].includes(provider.type);
-  if (workflow === "research" || workflow === "assistant")
-    return [
-      "syc-openai-compatible",
-      "openai-compatible",
-      "volcengine",
-      "custom",
-    ].includes(provider.type);
-  if (workflow === "tryon") return true;
-  return provider.type !== "bfl" && provider.type !== "fashn";
-}
 const PROVIDER_FORM_META: Record<
   Exclude<ApiProviderType, "syc-openai-compatible">,
   {
@@ -159,28 +135,6 @@ const PROVIDER_FORM_META: Record<
     help: "当前自定义接口按 OpenAI 兼容格式调用；如果服务商的请求字段或鉴权方式不是 Bearer Token，请选择其专用提供商类型。",
   },
 };
-const WORKFLOWS: {
-  key: ModelWorkflowType;
-  label: string;
-  description: string;
-}[] = [
-  {
-    key: "product",
-    label: "商品视觉识别",
-    description:
-      "产品类型识别、商品属性识别、细节提取、自动标签；需支持图片输入和文字输出的视觉理解模型",
-  },
-  {
-    key: "tryon",
-    label: "服装换装",
-    description: "产品图＋模特图换装，需要图片编辑能力",
-  },
-  { key: "pose", label: "三种姿势", description: "商品模特图＋姿势参考图，三次独立图片编辑" },
-  { key: "recolor", label: "服装复色", description: "三张姿势图分别精准复色，需要图片编辑能力" },
-  { key: "qc", label: "QC质量检查", description: "商品结构比对、模特一致性、面料、手部异常、露脸检测，需要视觉理解模型" },
-  { key: "research", label: "爆款研究 / 文本分析", description: "爆款共同点、趋势研究、设计Brief、卖点总结，需要文本推理模型（预留）" },
-  { key: "assistant", label: "工作台AI助手", description: "工作台内通用文本问答（预留）" },
-];
 const CATALOG: CatalogItem[] = [
   {
     id: "bfl",
@@ -277,20 +231,14 @@ async function requestJson(url: string, init?: RequestInit) {
 
 export default function ProviderSettingsManager({
   initialProviders,
-  initialBindings,
-  initialRuntime,
   initialSyc,
   environmentStatus,
 }: {
   initialProviders: ApiProviderPublic[];
-  initialBindings: WorkflowModelBindings;
-  initialRuntime: WorkflowRuntimeSummary;
   initialSyc: SycConfigPublic;
   environmentStatus: EnvironmentStatus;
 }) {
   const [providers, setProviders] = useState(initialProviders),
-    [bindings, setBindings] = useState(initialBindings),
-    [runtime, setRuntime] = useState(initialRuntime),
     [syc, setSyc] = useState(initialSyc),
     [form, setForm] = useState<FormState>(emptyForm),
     [editingId, setEditingId] = useState<string>(),
@@ -301,10 +249,6 @@ export default function ProviderSettingsManager({
     [message, setMessage] = useState(""),
     [error, setError] = useState(""),
     [testImage, setTestImage] = useState("");
-  const enabledProviders = useMemo(
-    () => providers.filter((provider) => provider.enabled),
-    [providers],
-  );
   const activeCatalog =
     ALL_CATALOG.find((item) => item.id === activeCatalogId) || GENERIC_CATALOG;
   const catalogProviders = providers.filter((provider) =>
@@ -408,14 +352,11 @@ export default function ProviderSettingsManager({
     clearFeedback();
   }
   async function reload() {
-    const [providerData, bindingData, sycData] = await Promise.all([
+    const [providerData, sycData] = await Promise.all([
       requestJson("/api/settings/providers"),
-      requestJson("/api/settings/workflow-models"),
       requestJson("/api/settings/syc"),
     ]);
     setProviders(providerData);
-    setBindings(bindingData.bindings);
-    setRuntime(bindingData.runtime);
     setSyc(sycData);
     return providerData as ApiProviderPublic[];
   }
@@ -501,96 +442,6 @@ export default function ProviderSettingsManager({
     } catch (e) {
       await reload();
       setError(e instanceof Error ? e.message : "测试失败");
-    } finally {
-      setBusy("");
-    }
-  }
-  function updateSelection(
-    workflow: ModelWorkflowType,
-    slot: "primary" | "fallback",
-    providerId: string,
-  ) {
-    const provider = providers.find((item) => item.id === providerId);
-    const model =
-      workflow === "product"
-        ? slot === "primary"
-          ? provider?.visionModel || ""
-          : provider?.chatModel || ""
-        : workflow === "qc"
-          ? provider?.visionModel || provider?.chatModel || ""
-          : workflow === "research" || workflow === "assistant"
-            ? provider?.chatModel || provider?.defaultModel || ""
-            : provider?.defaultModel || "";
-    setBindings((current) => ({
-      ...current,
-      [workflow]: {
-        ...current[workflow],
-        [slot]:
-          provider ? { providerId: provider.id, model } : undefined,
-      },
-    }));
-  }
-  function updateModel(
-    workflow: ModelWorkflowType,
-    slot: "primary" | "fallback",
-    model: string,
-  ) {
-    setBindings((current) => {
-      const selection = current[workflow][slot];
-      return selection
-        ? {
-            ...current,
-            [workflow]: {
-              ...current[workflow],
-              [slot]: { ...selection, model },
-            },
-          }
-        : current;
-    });
-  }
-  function environmentOptionLabel(
-    summary: WorkflowRuntimeSummary[ModelWorkflowType]["primary"],
-  ) {
-    return summary.configured
-      ? `使用现有环境变量配置 · ${summary.providerName} / ${summary.model}`
-      : "使用现有环境变量配置";
-  }
-  function providerOptionLabel(provider: ApiProviderPublic) {
-    return `${provider.name} · ${provider.defaultModel || TYPE_LABEL[provider.type]}`;
-  }
-  function workflowProviderOptionLabel(
-    provider: ApiProviderPublic,
-    workflow: ModelWorkflowType,
-    slot: "primary" | "fallback",
-  ) {
-    if (workflow === "product") {
-      const model = slot === "primary" ? provider.visionModel : provider.chatModel;
-      return `${provider.name} · ${model || (slot === "primary" ? "未配置图片识别模型" : "未配置对话模型")}`;
-    }
-    if (workflow === "qc") {
-      const model = provider.visionModel || provider.chatModel;
-      return `${provider.name} · ${model || "未配置视觉模型"}`;
-    }
-    if (workflow === "research" || workflow === "assistant") {
-      const model = provider.chatModel || provider.defaultModel;
-      return `${provider.name} · ${model || "未配置文本模型"}`;
-    }
-    return providerOptionLabel(provider);
-  }
-  async function saveBindings() {
-    setBusy("bindings");
-    clearFeedback();
-    try {
-      const data = await requestJson("/api/settings/workflow-models", {
-        method: "PUT",
-        body: JSON.stringify(bindings),
-      });
-      setBindings(data.bindings);
-      setRuntime(data.runtime);
-      setDialog(null);
-      setMessage("七个工作流的主模型与备用模型已保存");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "模型绑定保存失败");
     } finally {
       setBusy("");
     }
@@ -734,25 +585,6 @@ export default function ProviderSettingsManager({
             <span className="settings-provider-tile-foot">
               <span>OpenAI 兼容 / 自定义接口</span>
               <span>管理配置 →</span>
-            </span>
-          </button>
-          <button
-            type="button"
-            className="settings-provider-tile workflow-entry-tile"
-            onClick={() => {
-              clearFeedback();
-              setDialog("workflow");
-            }}
-          >
-            <span className="settings-provider-tile-head">
-              <b>工作流模型分配</b>
-              <span className="badge">7 个流程</span>
-            </span>
-            <strong>主模型＋备用模型</strong>
-            <small>分别为商品识别、换装、三姿势、复色、QC、爆款研究、AI助手选择模型</small>
-            <span className="settings-provider-tile-foot">
-              <span>手动备用模型重试</span>
-              <span>查看配置 →</span>
             </span>
           </button>
         </div>
@@ -1100,168 +932,6 @@ export default function ProviderSettingsManager({
         </div>
       )}
 
-      {dialog === "workflow" && (
-        <div
-          className="settings-dialog-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeDialog();
-          }}
-        >
-          <section
-            className="settings-dialog workflow-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="工作流模型分配"
-          >
-            <header className="settings-dialog-head">
-              <div>
-                <small>WORKFLOW ROUTING</small>
-                <h2>工作流模型分配</h2>
-                <p>
-                  产品识别依次使用图片识别模型和对话模型；其他流程保留主模型与备用模型。
-                </p>
-              </div>
-              <button
-                className="settings-dialog-close"
-                aria-label="关闭配置"
-                onClick={closeDialog}
-              >
-                ×
-              </button>
-            </header>
-            <div className="settings-dialog-body">
-              {(error || message) && (
-                <div className={error ? "error" : "notice"}>
-                  {error || message}
-                </div>
-              )}
-              <div className="workflow-binding-grid">
-                {WORKFLOWS.map((workflow) => {
-                  const current = bindings[workflow.key],
-                    summary = runtime[workflow.key],
-                    compatibleProviders = enabledProviders.filter((provider) =>
-                      supportsWorkflow(provider, workflow.key),
-                    );
-                  return (
-                    <article className="binding-card" key={workflow.key}>
-                      <h3>{workflow.label}</h3>
-                      <p>{workflow.description}</p>
-                      {(["primary", "fallback"] as const).map((slot) => (
-                        <div className="binding-slot" key={slot}>
-                          <b>
-                            {workflow.key === "product"
-                              ? slot === "primary"
-                                ? "图片识别模型"
-                                : "对话模型"
-                              : workflow.key === "qc"
-                                ? slot === "primary"
-                                  ? "QC视觉模型"
-                                  : "QC备用视觉模型"
-                                : workflow.key === "research" ||
-                                    workflow.key === "assistant"
-                                  ? slot === "primary"
-                                    ? "主文本模型"
-                                    : "备用文本模型"
-                                  : slot === "primary"
-                                    ? "主模型"
-                                    : "备用模型"}
-                          </b>
-                          <select
-                            value={current[slot]?.providerId || ""}
-                            onChange={(e) =>
-                              updateSelection(
-                                workflow.key,
-                                slot,
-                                e.target.value,
-                              )
-                            }
-                          >
-                            <option value="">
-                              {workflow.key === "product"
-                                ? slot === "primary"
-                                  ? "选择图片识别 API"
-                                  : "选择对话 API"
-                                : workflow.key === "qc"
-                                  ? slot === "primary"
-                                    ? "选择QC视觉模型 API"
-                                    : "不配置备用模型"
-                                  : workflow.key === "research" ||
-                                      workflow.key === "assistant"
-                                    ? slot === "primary"
-                                      ? "选择文本模型 API"
-                                      : "不配置备用模型"
-                                    : slot === "primary"
-                                      ? environmentOptionLabel(summary.primary)
-                                      : "不配置备用模型"}
-                            </option>
-                            {compatibleProviders.map((provider) => (
-                              <option value={provider.id} key={provider.id}>
-                                {workflowProviderOptionLabel(
-                                  provider,
-                                  workflow.key,
-                                  slot,
-                                )}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            disabled={!current[slot]}
-                            value={current[slot]?.model || ""}
-                            onChange={(e) =>
-                              updateModel(workflow.key, slot, e.target.value)
-                            }
-                            placeholder={
-                              workflow.key === "product"
-                                ? slot === "primary"
-                                  ? "图片识别模型 ID"
-                                  : "对话模型 ID"
-                                : workflow.key === "qc"
-                                  ? "视觉理解模型 ID"
-                                  : workflow.key === "research" ||
-                                      workflow.key === "assistant"
-                                    ? "文本模型 ID"
-                                    : "模型名称"
-                            }
-                          />
-                          <small
-                            className={
-                              summary[slot].configured
-                                ? "binding-ok"
-                                : "binding-warn"
-                            }
-                          >
-                            {summary[slot].configured
-                              ? `当前：${summary[slot].providerName} / ${summary[slot].model}`
-                              : summary[slot].error || "未配置"}
-                          </small>
-                        </div>
-                      ))}
-                    </article>
-                  );
-                })}
-              </div>
-              <div className="settings-dialog-actions">
-                <span />
-                <button
-                  className="secondary"
-                  disabled={!!busy}
-                  onClick={closeDialog}
-                >
-                  取消
-                </button>
-                <button
-                  className="primary"
-                  disabled={!!busy}
-                  onClick={() => void saveBindings()}
-                >
-                  {busy === "bindings" ? "保存中…" : "保存工作流模型分配"}
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      )}
     </div>
   );
 }

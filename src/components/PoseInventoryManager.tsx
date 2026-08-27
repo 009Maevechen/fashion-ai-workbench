@@ -62,6 +62,16 @@ export default function PoseInventoryManager({
     },
     [manifest.groups, query, productType, shot, face],
   );
+  const hasFilters = Boolean(query.trim() || productType || shot || face);
+  const completeGroups = manifest.groups.filter((group) => !group.missingImages?.length).length;
+  const groupsWithMissingImages = manifest.groups.length - completeGroups;
+
+  function clearFilters() {
+    setQuery("");
+    setProductType("");
+    setShot("");
+    setFace("");
+  }
 
   async function refresh(extra?: string) {
     const url = extra ? `/api/pose-inventory?${extra}` : "/api/pose-inventory";
@@ -163,15 +173,24 @@ export default function PoseInventoryManager({
   }
 
   return (
-    <div className="settings-stack">
+    <div className="settings-stack pose-inventory-page">
       {(error || notice) && <div className={error ? "error" : "notice"}>{error || notice}</div>}
 
-      <section className="card">
+      <section className="card pose-inventory-overview">
         <div className="panel-head">
           <div>
-            <h2>姿势库存</h2>
+            <div className="pose-inventory-title-row">
+              <h2>本地姿势库存</h2>
+              <span className="badge">{manifest.groups.length} 组</span>
+            </div>
             <small>图片保存在你自己的电脑文件夹，工作台只读取和建立索引</small>
           </div>
+        </div>
+        <div className="pose-inventory-stats" aria-label="库存概览">
+          <div><strong>{manifest.groups.length}</strong><span>姿势组</span></div>
+          <div><strong>{completeGroups}</strong><span>图片完整</span></div>
+          <div><strong>{groupsWithMissingImages}</strong><span>需要补图</span></div>
+          <div><strong>{groups.length}</strong><span>当前显示</span></div>
         </div>
         <div className="inventory-toolbar">
           <label className="field">
@@ -190,11 +209,13 @@ export default function PoseInventoryManager({
         </div>
       </section>
 
-      <section className="card">
+      <section className="card pose-inventory-filter-card">
         <div className="panel-head">
           <div>
             <h2>搜索与筛选</h2>
+            <small>快速找到适合当前商品和画面要求的姿势组</small>
           </div>
+          {hasFilters && <button type="button" className="secondary" onClick={clearFilters}>清除筛选</button>}
         </div>
         <div className="inventory-filters">
           <label className="field">
@@ -254,28 +275,39 @@ export default function PoseInventoryManager({
         </section>
       )}
 
-      <section className="card">
-        <div className="panel-head"><div><h2>全部姿势组（{groups.length}）</h2><small>点击查看详情{selectMode ? "或直接选择" : ""}</small></div></div>
+      <section className="card pose-inventory-results">
+        <div className="panel-head">
+          <div>
+            <h2>全部姿势组</h2>
+            <small>{hasFilters ? `找到 ${groups.length} 组，库存共 ${manifest.groups.length} 组` : `库存共 ${manifest.groups.length} 组`} · 点击{selectMode ? "直接选择" : "查看详情"}</small>
+          </div>
+          <span className="pose-inventory-result-count">{groups.length}</span>
+        </div>
         {groups.length === 0 ? (
-          <div className="empty-state"><div><div className="empty-icon">◇</div><b>还没有姿势组</b><p>先设置姿势库文件夹，再导入 Excel/CSV 表格。</p></div></div>
+          <div className="empty-state pose-inventory-empty"><div><div className="empty-icon">◇</div><b>{hasFilters ? "没有匹配的姿势组" : "还没有姿势组"}</b><p>{hasFilters ? "可以调整搜索词或清除筛选条件后再试。" : "先设置姿势库文件夹，再导入 Excel/CSV 表格。"}</p>{hasFilters && <button type="button" className="secondary" onClick={clearFilters}>清除筛选</button>}</div></div>
         ) : (
           <div className="inventory-grid">
             {groups.map((group) => (
               <button type="button" className="inventory-card" key={group.id} onClick={() => choose(group)}>
-                {group.coverPath ? (
-                  <img src={inventoryUrl(group, "cover")} alt={group.poseGroupId} />
-                ) : (
-                  <div className="inventory-no-cover">无封面</div>
-                )}
+                <div className="inventory-card-preview">
+                  {(["pose01", "pose02", "pose03"] as const).map((which, index) => {
+                    const url = inventoryUrl(group, which) || (index === 0 ? inventoryUrl(group, "cover") : undefined);
+                    return url ? <img key={which} src={url} alt={`${group.poseGroupId} 姿势${index + 1}`} /> : <span key={which}>姿势{index + 1}</span>;
+                  })}
+                </div>
                 <div className="inventory-card-body">
-                  <b>{group.poseGroupId}</b>
-                  <small>{group.productType}{group.productSubtype ? ` / ${group.productSubtype}` : ""}</small>
-                  <small>{group.shotType}{group.faceVisible !== undefined ? ` · ${group.faceVisible ? "露脸" : "不露脸"}` : ""}</small>
+                  <div className="inventory-card-title"><b>{group.poseGroupId}</b><span className={`inventory-status ${group.missingImages?.length ? "warning" : "ready"}`}>{group.missingImages?.length ? "缺图" : "完整"}</span></div>
+                  <div className="inventory-card-tags">
+                    {group.productType && <span>{group.productType}{group.productSubtype ? ` · ${group.productSubtype}` : ""}</span>}
+                    {group.shotType && <span>{group.shotType}</span>}
+                    {group.faceVisible !== undefined && <span>{group.faceVisible ? "露脸" : "不露脸"}</span>}
+                  </div>
                   {group.displayFocus && <small>{group.displayFocus}</small>}
                   {group.tags && <small className="muted">{group.tags}</small>}
                   {group.missingImages && group.missingImages.length > 0 && (
                     <small className="danger-text">缺失：{group.missingImages.join("、")}</small>
                   )}
+                  <span className="inventory-card-action">{selectMode ? "选择此姿势组" : "查看详情"} →</span>
                 </div>
               </button>
             ))}
