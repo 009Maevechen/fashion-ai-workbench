@@ -3,6 +3,7 @@ import {z} from "zod";
 import {listPoseTemplateGroups} from "@/lib/db";
 import {createPoseTemplateGroup} from "@/lib/pose-library";
 import {movePoseLibraryFileToTrash} from "@/lib/ai/storage";
+import {archivePoseGroup} from "@/lib/pose-archive";
 
 const productType=z.enum(["上衣","裤装","连衣裙","半身裙","套装"]);
 const schema=z.object({
@@ -18,7 +19,7 @@ export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json(await listPoseTemplateGroups())}
 export async function POST(request:Request){
   let images:string[]=[];
-  try{const value=schema.parse(await request.json());images=value.images;const result=await createPoseTemplateGroup(value);return NextResponse.json(result,{status:result.created?201:200})}
+  try{const value=schema.parse(await request.json());images=value.images;const result=await createPoseTemplateGroup(value);if(result.created){await archivePoseGroup(result.group).catch(()=>{})}return NextResponse.json(result,{status:result.created?201:200})}
   catch(error){return NextResponse.json({error:error instanceof Error?error.message:"保存姿势模板失败"},{status:400})}
   finally{for(const url of images)if(url.startsWith("/api/files/pose-library/source/"))await movePoseLibraryFileToTrash(url).catch(()=>{})}
 }
