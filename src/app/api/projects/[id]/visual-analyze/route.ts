@@ -8,7 +8,6 @@ const AUTO_ASSET_KEYS = [
   "productDetailImage",
   "printCloseupImage",
   "buttonCloseupImage",
-  "brandTagImage",
   "fabricTextureImage",
   "colorReferenceImage",
 ] as const;
@@ -35,7 +34,6 @@ export async function POST(
           detail: "productDetailImage",
           print: "printCloseupImage",
           buttons: "buttonCloseupImage",
-          label: "brandTagImage",
           fabric: "fabricTextureImage",
           multiColor: "colorReferenceImage",
           modelReference: "modelReferenceImage",

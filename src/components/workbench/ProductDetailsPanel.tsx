@@ -149,7 +149,6 @@ type SingleAssetKey =
   | "productDetailImage"
   | "printCloseupImage"
   | "buttonCloseupImage"
-  | "brandTagImage"
   | "modelReferenceImage"
   | "fabricTextureImage"
   | "colorReferenceImage";
@@ -196,12 +195,6 @@ const ASSET_FIELDS: {
     label: "纽扣特写",
     description: "纽扣数量、颜色与形状参考",
     name: "button-closeup",
-  },
-  {
-    key: "brandTagImage",
-    label: "品牌／标签图",
-    description: "吊牌、水洗标或包装标签",
-    name: "brand-tag",
   },
   {
     key: "modelReferenceImage",
@@ -280,6 +273,17 @@ export default function ProductDetailsPanel({
     [analysisNotice, setAnalysisNotice] = useState("");
   const [visualAnalyzing, setVisualAnalyzing] = useState(false);
   const [visualNotice, setVisualNotice] = useState("");
+  const [aiFilled, setAiFilled] = useState<Record<string, { confidence: number; needsReview: boolean }>>(
+    () =>
+      Object.fromEntries(
+        Object.entries(p.assetEvidence || {})
+          .filter(([, evidence]) => evidence.source === "ai_crop")
+          .map(([key, evidence]) => [
+            key,
+            { confidence: evidence.confidence ?? 0, needsReview: evidence.needsReview ?? false },
+          ]),
+      ),
+  );
   const [assets, setAssets] = useState<Record<string, LocalAsset>>(() =>
     Object.fromEntries([
       ...ASSET_FIELDS.map((field) => [
@@ -462,6 +466,7 @@ export default function ProductDetailsPanel({
           assetKey: string;
           label: string;
           upscalePath: string;
+          confidence: number;
           needsReview: boolean;
         }>;
         missing?: Array<{ label: string }>;
@@ -471,6 +476,7 @@ export default function ProductDetailsPanel({
         throw new Error(data.error || "产品细节识别失败");
       const filledKeys = new Set(data.regions.map((region) => region.assetKey));
       const next = { ...assets };
+      const evidence: Record<string, { confidence: number; needsReview: boolean }> = {};
       for (const region of data.regions) {
         const stateKey = region.assetKey as keyof typeof assets;
         if (!(stateKey in next)) continue;
@@ -479,8 +485,13 @@ export default function ProductDetailsPanel({
           name: region.label,
           status: "saved",
         };
+        evidence[region.assetKey] = {
+          confidence: region.confidence,
+          needsReview: region.needsReview,
+        };
       }
       setAssets(next);
+      setAiFilled(evidence);
       setSaved(false);
       const reviewCount = data.regions.filter((region) => region.needsReview).length;
       const filled = Array.from(filledKeys).length;
@@ -491,6 +502,28 @@ export default function ProductDetailsPanel({
     } finally {
       setVisualAnalyzing(false);
     }
+  }
+  async function undoAiFill() {
+    const keys = Object.keys(aiFilled);
+    if (!keys.length) return;
+    const assetKeys = keys.filter((key) =>
+      ASSET_FIELDS.some((field) => field.key === key),
+    ) as SingleAssetKey[];
+    for (const key of assetKeys) await deleteAsset(key);
+    const remainingEvidence = Object.fromEntries(
+      Object.entries(p.assetEvidence || {}).filter(
+        ([key]) => !assetKeys.includes(key as SingleAssetKey),
+      ),
+    );
+    await saveProject({ assetEvidence: remainingEvidence });
+    setAiFilled({});
+    setAssets((value) => {
+      const next = { ...value };
+      for (const key of assetKeys) next[key] = { status: "idle" };
+      return next;
+    });
+    setSaved(false);
+    setVisualNotice("已撤销 AI 自动填充的细节图，对应槽位已清空，可重新手动上传或再次识别。");
   }
   const successful = jobs.filter(
     (job) =>
@@ -777,6 +810,16 @@ export default function ProductDetailsPanel({
                 >
                   {visualAnalyzing ? "正在识别细节…" : "▶ AI自动识别并填充细节图"}
                 </button>
+                {Object.keys(aiFilled).length > 0 && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => run(undoAiFill)}
+                  >
+                    撤销AI填充
+                  </button>
+                )}
                 <span>{previewImages.length} 张已保存</span>
                 <ClearAssetsButton
                   disabled={busy || !hasClearableSourceAssets(p)}
@@ -807,6 +850,12 @@ export default function ProductDetailsPanel({
                       setPreview(assets[field.key].url!)
                     }
                   />
+                  {aiFilled[field.key] && (
+                    <span className={`ai-fill-badge ${aiFilled[field.key].needsReview ? "review" : ""}`}>
+                      AI裁剪 · 置信度 {Math.round(aiFilled[field.key].confidence * 100)}%
+                      {aiFilled[field.key].needsReview ? " · 建议确认" : ""}
+                    </span>
+                  )}
                 </div>
               ))}
               </div>
@@ -817,6 +866,12 @@ export default function ProductDetailsPanel({
               {supplementalAssetFields.map((field) => (
                 <div className="product-asset-card" key={field.key}>
                   <AssetUploadCard label={field.label} description={field.description} value={assets[field.key] || { status: "idle" }} onChange={(asset)=>run(()=>saveAsset(asset,field.key,field.name))} onDelete={assets[field.key]?.url?()=>run(()=>removeAsset(field.key)):undefined} onPreview={()=>assets[field.key]?.url&&setPreview(assets[field.key].url!)}/>
+                  {aiFilled[field.key] && (
+                    <span className={`ai-fill-badge ${aiFilled[field.key].needsReview ? "review" : ""}`}>
+                      AI裁剪 · 置信度 {Math.round(aiFilled[field.key].confidence * 100)}%
+                      {aiFilled[field.key].needsReview ? " · 建议确认" : ""}
+                    </span>
+                  )}
                 </div>
               ))}
               <div className="product-asset-card">

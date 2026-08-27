@@ -20,19 +20,16 @@ const REGION_ASSET_KEY: Record<ProductDetailRegionType, ProductDetailAssetKey> =
   detail: "productDetailImage",
   print: "printCloseupImage",
   buttons: "buttonCloseupImage",
-  label: "brandTagImage",
   fabric: "fabricTextureImage",
   multiColor: "colorReferenceImage",
   modelReference: "modelReferenceImage",
 };
-
 const regionTypeSchema = z.enum([
   "frontView",
   "backView",
   "detail",
   "print",
   "buttons",
-  "label",
   "fabric",
   "multiColor",
 ]);
@@ -95,7 +92,7 @@ export async function detectProductVisualRegions(
       runtime,
       toDataUrl(normalized, "image/jpeg"),
       "你是电商服装商品图细节定位助手。只标注图片中明确可见的服装细节区域，看不到的区域一律不要标注，不得猜测。坐标使用归一化比例（0 到 1 的小数），x/y 是区域左上角，width/height 是区域相对整图的宽高比例。",
-      `观察这张产品图，找出其中清晰可见、可用于后续生成时保护细节的独立区域，按以下类型输出归一化裁剪框：\n- frontView：完整正面平铺视图\n- backView：完整背面视图\n- detail：领口、袖口、下摆或肩部等结构细节\n- print：印花或图案特写\n- buttons：纽扣或门襟特写\n- label：品牌标签、吊牌或水洗标\n- fabric：面料纹理特写\n- multiColor：包含多个颜色的参考区域\n\n规则：\n1. 每个区域只标注一种类型，边界要贴合物件本身，不要包含无关背景。\n2. 同一区域不要重复标注。\n3. 若某类细节整张图都看不到，把它放进 missing 数组并说明原因。\n4. confidence 是 0 到 1 的置信度，低于 0.6 时 needsReview 必须为 true。\n5. 只返回一个合法 JSON 对象：{"regions":[{"type","label","confidence","boundingBox":{"x","y","width","height"},"needsReview","reason"}],"missing":[{"type","label","reason"}]}`,
+      `观察这张产品图，找出其中清晰可见、可用于后续生成时保护细节的独立区域，按以下类型输出归一化裁剪框：\n- frontView：完整正面平铺视图\n- backView：完整背面视图\n- detail：领口、袖口、下摆或肩部等结构细节\n- print：印花或图案特写\n- buttons：纽扣或门襟特写\n- fabric：面料纹理特写\n- multiColor：包含多个颜色的参考区域\n\n规则：\n1. 每个区域只标注一种类型，边界要贴合物件本身，不要包含无关背景。\n2. 同一区域不要重复标注。\n3. 若某类细节整张图都看不到，把它放进 missing 数组并说明原因。\n4. confidence 是 0 到 1 的置信度，低于 0.6 时 needsReview 必须为 true。\n5. 只返回一个合法 JSON 对象：{"regions":[{"type","label","confidence","boundingBox":{"x","y","width","height"},"needsReview","reason"}],"missing":[{"type","label","reason"}]}`,
     ),
   );
   return {

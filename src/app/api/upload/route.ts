@@ -3,7 +3,7 @@ import {updateProjectWith,type ProjectAssets} from "@/lib/db";
 import {invalidateForAssetChange,persistUpload} from "@/lib/workflow";
 import {moveFileToTrash} from "@/lib/ai/storage";
 
-const KEYS=new Set<keyof ProjectAssets>(["garmentImage","productFrontImage","productBackImage","productDetailImage","printCloseupImage","buttonCloseupImage","brandTagImage","modelReferenceImage","fabricTextureImage","otherMaterialImages","standalonePoseInputImage","poseReferenceImages","colorReferenceImage","standaloneRecolorPoseImages"]);
+const KEYS=new Set<keyof ProjectAssets>(["garmentImage","productFrontImage","productBackImage","productDetailImage","printCloseupImage","buttonCloseupImage","modelReferenceImage","fabricTextureImage","otherMaterialImages","standalonePoseInputImage","poseReferenceImages","colorReferenceImage","standaloneRecolorPoseImages"]);
 const ARRAY_KEYS=new Set<keyof ProjectAssets>(["poseReferenceImages","standaloneRecolorPoseImages","otherMaterialImages"]);
 export async function POST(request:Request){
   try{
