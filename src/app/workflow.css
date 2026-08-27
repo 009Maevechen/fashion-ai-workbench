@@ -329,3 +329,21 @@
 .provider-form-guide{display:grid;gap:4px;padding:11px 13px;border:1px solid #ddd5ff;border-radius:9px;background:#f7f4ff;color:#5b46b5}
 .provider-form-guide b{color:#332276}
 .provider-form-guide span{font-size:11px;line-height:1.55}
+
+/* 姿势库存 */
+.inventory-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.inventory-toolbar .field{flex:1;min-width:260px}
+.inventory-filters{display:flex;flex-wrap:wrap;gap:10px}
+.inventory-filters .field{flex:1;min-width:150px}
+.inventory-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.inventory-card{display:flex;flex-direction:column;border:1px solid var(--line,#e3e3ea);border-radius:11px;overflow:hidden;background:#fff;text-align:left;cursor:pointer;padding:0}
+.inventory-card img,.inventory-no-cover{width:100%;aspect-ratio:3/4;object-fit:cover;background:#f2f2f6;display:grid;place-content:center;color:#9a9da8;font-size:12px}
+.inventory-card-body{display:flex;flex-direction:column;gap:3px;padding:9px 11px}
+.inventory-card-body b{font-size:13px}
+.inventory-card-body small{font-size:10px;color:var(--muted,#6d6d78);line-height:1.4}
+.inventory-detail-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.inventory-detail-grid figure{margin:0}
+.inventory-detail-grid img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;background:#f2f2f6}
+.inventory-detail-grid figcaption{font-size:10px;color:var(--muted,#6d6d78);text-align:center;margin-top:4px}
+.inventory-detail-meta{display:grid;gap:6px}
+.inventory-detail-meta p{margin:0;font-size:12px;line-height:1.5}

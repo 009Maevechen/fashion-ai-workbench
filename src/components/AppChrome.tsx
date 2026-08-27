@@ -220,6 +220,17 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               <span className="nav-icon">♟</span>
               <span className="nav-label">姿势库</span>
             </Link>
+            <Link
+              className={
+                pathname.startsWith("/inventory/poses")
+                  ? "nav-link active"
+                  : "nav-link"
+              }
+              href="/inventory/poses"
+            >
+              <span className="nav-icon">▦</span>
+              <span className="nav-label">姿势库存</span>
+            </Link>
           </section>
           <section className="nav-section">
             <p className="nav-group">管理</p>
