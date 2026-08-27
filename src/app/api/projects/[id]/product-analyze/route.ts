@@ -3,15 +3,16 @@ import { getProject } from "@/lib/db";
 import { analyzeProductImage } from "@/lib/ai/product-analysis";
 
 export async function POST(
-  _: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const project = await getProject((await params).id);
     if (!project) throw new Error("商品项目不存在");
     if (!project.assets.garmentImage) throw new Error("请先上传一张产品主图");
+    const body = await request.json().catch(() => ({})) as { force?: boolean };
     return NextResponse.json(
-      await analyzeProductImage(project.assets.garmentImage),
+      await analyzeProductImage(project.assets.garmentImage, { force: Boolean(body.force) }),
     );
   } catch (error) {
     return NextResponse.json(

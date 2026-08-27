@@ -5,6 +5,7 @@ import type { ProductAttributes, ProductType } from "@/lib/db";
 import { resolveProductAnalysisModel } from "./provider-settings";
 import { localImage, toDataUrl } from "./storage";
 import { requestTextJson, requestVisionText } from "./vision-chat";
+import { getCachedProductAnalysis, hashBuffer, putCachedProductAnalysis } from "../product-analysis-cache";
 
 const productTypes = ["上衣", "裤装", "连衣裙", "半身裙", "套装"] as const;
 const attributeKeys = [
@@ -62,11 +63,27 @@ export type ProductImageAnalysis = {
 
 export async function analyzeProductImage(
   imageUrl: string,
+  options: { force?: boolean } = {},
 ): Promise<ProductImageAnalysis> {
-  const [visionRuntime, textRuntime, input] = await Promise.all([
+  const input = await localImage(imageUrl);
+  const imageHash = hashBuffer(input);
+
+  // 命中缓存且非强制重新识别时，直接复用，不调用视觉模型
+  if (!options.force) {
+    const cached = await getCachedProductAnalysis(imageHash);
+    if (cached) {
+      return {
+        productType: cached.productType as ProductType,
+        attributes: cached.attributes as ProductAttributes,
+        detailDescription: cached.detailDescription,
+        protectionItems: cached.protectionItems,
+      };
+    }
+  }
+
+  const [visionRuntime, textRuntime] = await Promise.all([
     resolveProductAnalysisModel(),
     resolveProductAnalysisModel("fallback"),
-    localImage(imageUrl),
   ]);
   const normalized = await sharp(input)
     .rotate()
@@ -98,7 +115,16 @@ export async function analyzeProductImage(
     const attributes = Object.fromEntries(
       attributeKeys.map((key) => [key, parsed.attributes[key]?.trim() || "无法从图片确认"]),
     ) as ProductAttributes;
-    return {...parsed, attributes};
+    const result = { ...parsed, attributes };
+    await putCachedProductAnalysis({
+      imageHash,
+      productType: result.productType,
+      attributes: result.attributes as Record<string, string>,
+      detailDescription: result.detailDescription,
+      protectionItems: result.protectionItems,
+      cachedAt: new Date().toISOString(),
+    });
+    return result;
   } catch (error) {
     throw new Error(
       `产品图片识别失败：${error instanceof Error ? error.message : "未知错误"}`,

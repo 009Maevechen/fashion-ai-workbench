@@ -36,7 +36,10 @@ function schedule(operation:Operation){
   queue.push(operation);
   drainOperationQueue();
 }
-export async function enqueueWorkflow(workflow:WorkflowType,payload:{projectId:string}){await initializeJobState();const now=new Date().toISOString(),operation:Operation={id:crypto.randomUUID(),projectId:payload.projectId,workflow,status:"queued",payload,jobIds:[],createdAt:now,updatedAt:now};await addOperation(operation);schedule(operation);return operation}
+export async function enqueueWorkflow(workflow:WorkflowType,payload:{projectId:string},idempotencyKey?:string){await initializeJobState();const now=new Date().toISOString();
+  // 幂等保护：相同幂等键或相同工作流+slot 且仍在进行中时，直接返回已有任务，禁止重复调用 API。
+  if(idempotencyKey){const existing=await listOperations(payload.projectId);const dup=existing.find(item=>item.workflow===workflow&&item.payload&&(item.payload as Record<string,unknown>).idempotencyKey===idempotencyKey&&["queued","running","success"].includes(item.status));if(dup)return dup}
+  const operation:Operation={id:crypto.randomUUID(),projectId:payload.projectId,workflow,status:"queued",payload:{...payload,idempotencyKey:idempotencyKey||crypto.randomUUID()},jobIds:[],createdAt:now,updatedAt:now};await addOperation(operation);schedule(operation);return operation}
 export async function retryOperation(id:string){const operation=await getOperation(id);if(!operation)throw new Error("本地任务不存在");if(operation.status==="queued"||operation.status==="running")throw new Error("任务仍在执行中");return enqueueWorkflow(operation.workflow,operation.payload as {projectId:string})}
 export async function retryJob(id:string,modelPreference:ModelSlot="primary"){
   const job=await getJob(id);if(!job)throw new Error("生成任务不存在");
