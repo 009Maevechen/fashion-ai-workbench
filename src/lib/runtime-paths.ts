@@ -32,9 +32,13 @@ type StorageSettings = {
   outputsDir?: string;
   finalDir?: string;
   poseLibraryDir?: string;
+  visualReferenceDir?: string;
+  visualReferenceEnabled?: boolean;
+  visualReferenceModelId?: string;
   previousOutputDirs?: string[];
   previousFinalDirs?: string[];
   previousPoseLibraryDirs?: string[];
+  previousVisualReferenceDirs?: string[];
 };
 function storageSettings(): StorageSettings {
   try {
@@ -84,6 +88,19 @@ export const runtimePoseLibrarySearchDirs = () => {
   return [...new Set([runtimePoseLibraryDir(), ...(settings.previousPoseLibraryDirs || []).map((item) => path.resolve(item))])].filter(Boolean);
 };
 
+/**
+ * 视觉参考图库目录：本地参考图片（含姿势模板组），只建索引不复制原图。
+ * 未设置时回退到临时输出目录内的 visual-reference。
+ */
+export const runtimeVisualReferenceDir = () => {
+  const saved = storageSettings().visualReferenceDir?.trim();
+  return saved ? path.resolve(saved) : path.join(runtimeOutputsDir(), "visual-reference");
+};
+export const runtimeVisualReferenceSearchDirs = () => {
+  const settings = storageSettings();
+  return [...new Set([runtimeVisualReferenceDir(), ...(settings.previousVisualReferenceDirs || []).map((item) => path.resolve(item))])].filter(Boolean);
+};
+
 async function persistSettings(next: StorageSettings) {
   await fs.promises.mkdir(runtimeDataDir(), { recursive: true });
   const temporary = `${storageSettingsFile()}.tmp`;
@@ -128,6 +145,32 @@ export async function saveRuntimePoseLibraryDir(value: string) {
   const previousPoseLibraryDirs = [...new Set([...(existing.previousPoseLibraryDirs || []), current])].filter((item) => path.resolve(item) !== resolved);
   await persistSettings({ ...existing, poseLibraryDir: resolved, previousPoseLibraryDirs });
   return resolved;
+}
+
+export async function saveRuntimeVisualReferenceDir(value: string) {
+  const resolved = await assertWritableDir(value);
+  const current = runtimeVisualReferenceDir();
+  const existing = storageSettings();
+  const previousVisualReferenceDirs = [...new Set([...(existing.previousVisualReferenceDirs || []), current])].filter((item) => path.resolve(item) !== resolved);
+  await persistSettings({ ...existing, visualReferenceDir: resolved, previousVisualReferenceDirs });
+  return resolved;
+}
+
+/** 视觉参考 Skill 开关与识别模型（存入 storage-settings）。 */
+export async function saveVisualReferenceSettings(patch: { enabled?: boolean; modelId?: string }) {
+  const existing = storageSettings();
+  await persistSettings({
+    ...existing,
+    visualReferenceEnabled: patch.enabled ?? existing.visualReferenceEnabled,
+    visualReferenceModelId: patch.modelId ?? existing.visualReferenceModelId,
+  });
+}
+export function visualReferenceSettings() {
+  const settings = storageSettings();
+  return {
+    enabled: settings.visualReferenceEnabled !== false,
+    modelId: settings.visualReferenceModelId?.trim() || undefined,
+  };
 }
 
 export function hasExplicitFinalDir() {

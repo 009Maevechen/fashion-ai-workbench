@@ -9,6 +9,7 @@ import {
   saveRuntimeFinalDir,
   saveRuntimeOutputsDir,
   saveRuntimePoseLibraryDir,
+  saveRuntimeVisualReferenceDir,
 } from "@/lib/runtime-paths";
 import { readManifest } from "@/lib/manifest";
 import fs from "node:fs/promises";
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
     else if (action === "set-output-path") updateOutputRoot(await saveRuntimeOutputsDir(String(body.path || "")));
     else if (action === "set-final-path") await saveRuntimeFinalDir(String(body.path || ""));
     else if (action === "set-pose-library-path") await saveRuntimePoseLibraryDir(String(body.path || ""));
+    else if (action === "set-visual-reference-path") await saveRuntimeVisualReferenceDir(String(body.path || ""));
     else if (action === "open-dir") {
       const which = String(body.path || "temp");
       const dir = which === "final" ? runtimeFinalDir() : which === "pose" ? runtimePoseLibraryDir() : runtimeOutputsDir();

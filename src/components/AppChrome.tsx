@@ -231,6 +231,17 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               <span className="nav-icon">▦</span>
               <span className="nav-label">姿势库存</span>
             </Link>
+            <Link
+              className={
+                pathname.startsWith("/visual-reference")
+                  ? "nav-link active"
+                  : "nav-link"
+              }
+              href="/visual-reference"
+            >
+              <span className="nav-icon">◎</span>
+              <span className="nav-label">视觉参考</span>
+            </Link>
           </section>
           <section className="nav-section">
             <p className="nav-group">管理</p>

@@ -2,6 +2,7 @@ import {providerHealth} from "@/lib/ai/config";
 import StorageManager from "@/components/StorageManager";
 import ProviderSettingsManager from "@/components/ProviderSettingsManager";
 import WorkflowModelAssignment from "@/components/WorkflowModelAssignment";
+import VisualReferenceSettings from "@/components/VisualReferenceSettings";
 import {getSycConfig,getWorkflowModelBindings,getWorkflowRuntimeSummary,listApiProviders} from "@/lib/ai/provider-settings";
 
 export const dynamic="force-dynamic";
@@ -20,6 +21,7 @@ export default async function Settings(){
       initialBindings={bindings}
       initialRuntime={runtime}
     />
+    <VisualReferenceSettings/>
     <StorageManager/>
   </>;
 }

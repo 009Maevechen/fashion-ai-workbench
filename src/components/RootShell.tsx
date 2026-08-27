@@ -3,7 +3,7 @@
 import {usePathname} from "next/navigation";
 import AppChrome from "@/components/AppChrome";
 
-const workbenchPrefixes=["/workbench","/projects/","/history","/libraries/","/inventory/","/settings"];
+const workbenchPrefixes=["/workbench","/projects/","/history","/libraries/","/inventory/","/visual-reference","/settings"];
 
 export default function RootShell({children}:{children:React.ReactNode}){
   const pathname=usePathname();
