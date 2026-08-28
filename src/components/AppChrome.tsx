@@ -9,13 +9,31 @@ import WorkflowModelSelector from "@/components/workbench/WorkflowModelSelector"
 import WorkflowSkuExport from "@/components/workbench/WorkflowSkuExport";
 import type { WorkflowType } from "@/lib/ai/types";
 import type { ModelWorkflowType } from "@/lib/ai/provider-settings-types";
+import {
+  IconBell,
+  IconCheck,
+  IconChevron,
+  IconClock,
+  IconDoc,
+  IconEye,
+  IconGear,
+  IconGrid,
+  IconHelp,
+  IconLibrary,
+  IconPalette,
+  IconPlus,
+  IconPose,
+  IconShirt,
+  IconSpark,
+  IconStack,
+} from "@/components/icons";
 
 const MODULES = [
-  { segment: "details", icon: "▤", label: "商品资料" },
-  { segment: "tryon", icon: "♙", label: "服装换装" },
-  { segment: "pose", icon: "⌁", label: "三种姿势" },
-  { segment: "recolor", icon: "◫", label: "服装复色" },
-  { segment: "final", icon: "✓", label: "最终结果" },
+  { segment: "details", icon: IconDoc, label: "商品资料" },
+  { segment: "tryon", icon: IconShirt, label: "服装换装" },
+  { segment: "pose", icon: IconPose, label: "三种姿势" },
+  { segment: "recolor", icon: IconPalette, label: "服装复色" },
+  { segment: "final", icon: IconCheck, label: "最终结果" },
 ];
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
@@ -98,7 +116,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     <div className={collapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <header className="global-header">
         <Link className="wordmark" href="/workbench">
-          <span className="wordmark-icon">✦</span>
+          <span className="wordmark-icon"><IconSpark /></span>
           <b>AI服装工作台</b>
         </Link>
         <div className="project-selector">
@@ -123,8 +141,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               ●
             </span>
           )}
-          <Link href="/workbench" title="新建商品项目">
-            ＋
+          <Link href="/workbench" title="新建商品项目" className="project-new-link">
+            <IconPlus />
           </Link>
         </div>
         <div className="global-spacer" />
@@ -146,10 +164,10 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           <WorkflowModelSelector workflow={activeModelWorkflow} />
         )}
         <button className="icon-button" title="帮助">
-          ?
+          <IconHelp />
         </button>
         <button className="icon-button" title="通知">
-          ♢
+          <IconBell />
         </button>
       </header>
       <aside className="sidebar">
@@ -162,7 +180,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               }
               href="/workbench"
             >
-              <span className="nav-icon">▦</span>
+              <span className="nav-icon"><IconGrid /></span>
               <span className="nav-label">商品项目</span>
             </Link>
           </section>
@@ -170,9 +188,10 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
             <p className="nav-group">制作流程</p>
             {MODULES.map((item) => {
               const href = moduleHref(item.segment),
+                ItemIcon = item.icon,
                 content = (
                   <>
-                    <span className="nav-icon">{item.icon}</span>
+                    <span className="nav-icon"><ItemIcon /></span>
                     <span className="nav-label">{item.label}</span>
                   </>
                 );
@@ -217,7 +236,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               }
               href="/libraries/poses"
             >
-              <span className="nav-icon">♟</span>
+              <span className="nav-icon"><IconLibrary /></span>
               <span className="nav-label">姿势库</span>
             </Link>
             <Link
@@ -228,7 +247,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               }
               href="/inventory/poses"
             >
-              <span className="nav-icon">▦</span>
+              <span className="nav-icon"><IconStack /></span>
               <span className="nav-label">姿势库存</span>
             </Link>
             <Link
@@ -239,7 +258,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               }
               href="/visual-reference"
             >
-              <span className="nav-icon">◎</span>
+              <span className="nav-icon"><IconEye /></span>
               <span className="nav-label">视觉参考</span>
             </Link>
           </section>
@@ -251,7 +270,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               }
               href="/history"
             >
-              <span className="nav-icon">◷</span>
+              <span className="nav-icon"><IconClock /></span>
               <span className="nav-label">历史任务</span>
             </Link>
             <Link
@@ -260,7 +279,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               }
               href="/settings"
             >
-              <span className="nav-icon">⚙</span>
+              <span className="nav-icon"><IconGear /></span>
               <span className="nav-label">API与模型设置</span>
             </Link>
           </section>
@@ -275,7 +294,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           onClick={() => setCollapsed((value) => !value)}
           title={collapsed ? "展开导航" : "折叠导航"}
         >
-          {collapsed ? "›" : "‹"}
+          <IconChevron style={{ transform: collapsed ? "rotate(180deg)" : "none" }} />
         </button>
       </aside>
       <main className="app-main">{children}</main>

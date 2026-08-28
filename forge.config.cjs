@@ -2,8 +2,9 @@ module.exports={
   packagerConfig:{
     asar:true,
     executableName:"ai-fashion-workbench",
+    icon:"build/icons/icon",
     extraResource:["desktop-runtime"],
-    ignore:[/^\/(?:\.git|\.next|data|outputs|uploads|logs|temp|desktop-runtime)(?:\/|$)/,/^\/(?:\.env|\.env\..*)$/],
+    ignore:[/^\/(?:\.git|\.next|data|outputs|uploads|logs|temp|desktop-runtime|build)(?:\/|$)/,/^\/(?:\.env|\.env\..*)$/],
   },
   rebuildConfig:{},
   makers:[{name:"@electron-forge/maker-squirrel",config:{name:"ai_fashion_workbench",authors:"AI Fashion Workbench",description:"AI服装图片生产工作台",setupExe:"AI服装工作台 Setup.exe",noMsi:true}},{name:"@electron-forge/maker-zip",platforms:["darwin"]}],
