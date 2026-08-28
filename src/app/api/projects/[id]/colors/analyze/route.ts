@@ -11,8 +11,9 @@ export async function POST(
     if (!project) throw new Error("商品项目不存在");
     const reference =
       project.assets.colorReferenceCropImage ||
-      project.assets.colorReferenceImage;
-    if (!reference) throw new Error("请先上传颜色参考图");
+      project.assets.colorReferenceImage ||
+      project.assets.garmentImage;
+    if (!reference) throw new Error("请先上传颜色参考图或产品主图");
     const colors = await analyzeGarmentColors(reference);
     if (!colors.length)
       throw new Error("没有从参考图中识别到有效颜色，请更换清晰的产品平铺图");

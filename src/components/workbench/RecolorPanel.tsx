@@ -28,8 +28,8 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,refres
   const lockedArea=recolorAreaForProductType(p.productType);
   const [sourceMode,setSourceMode]=useState<"confirmed"|"standalone">(saved?.sourceMode||((p.confirmedPoseImages?.length||0)>=2?"confirmed":"standalone"));
   const [manual,setManual]=useState<LocalAsset[]>((p.assets.standaloneRecolorPoseImages||[]).map((url,i)=>({url,name:`独立姿势${i+1}`,status:"saved"})));
-  const [reference,setReference]=useState<LocalAsset>({url:p.assets.colorReferenceCropImage||p.assets.colorReferenceImage,name:p.assets.colorReferenceCropImage?"已框选的颜色参考图":"多颜色参考图",status:p.assets.colorReferenceImage?"saved":"idle"});
-  const [referenceSourceUrl,setReferenceSourceUrl]=useState(p.assets.colorReferenceImage||"");
+  const [reference,setReference]=useState<LocalAsset>({url:p.assets.colorReferenceCropImage||p.assets.colorReferenceImage||p.assets.garmentImage,name:p.assets.colorReferenceCropImage?"已框选的颜色参考图":p.assets.colorReferenceImage?"多颜色参考图":"产品主图（自动作为颜色参考）",status:(p.assets.colorReferenceCropImage||p.assets.colorReferenceImage||p.assets.garmentImage)?"saved":"idle"});
+  const [referenceSourceUrl,setReferenceSourceUrl]=useState(p.assets.colorReferenceImage||p.assets.garmentImage||"");
   const [referenceCropOpen,setReferenceCropOpen]=useState(false);
   const [referenceCropDraft,setReferenceCropDraft]=useState<CropRegion|undefined>(p.assets.colorReferenceCropRegion);
   const [colors,setColors]=useState<TargetColor[]>(p.targetColors||[]);
@@ -206,8 +206,8 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,refres
 
       <div className="recolor-source-reference-grid">
         <div className="recolor-reference-column">
-          <div className="recolor-section-title"><div><h3>颜色参考图</h3><small>{p.assets.colorReferenceCropImage?"只显示已框选的服装部位":"上传后框选需要识别的服装"}</small></div></div>
-          <div className="recolor-reference-upload"><AssetUploadCard label="颜色参考图" description="上传后可框选服装区域" value={reference} onChange={asset=>run(()=>persist(asset,"colorReferenceImage","color-reference"))} onDelete={()=>run(async()=>{await fetch(`/api/projects/${p.id}/colors/reference-crop`,{method:"DELETE"});await deleteAsset("colorReferenceImage");setReference({status:"idle"});setReferenceSourceUrl("");setReferenceCropOpen(false)})} onPreview={()=>reference.url&&setPreview({images:[reference.url],index:0})}/></div>
+          <div className="recolor-section-title"><div><h3>颜色参考图</h3><small>{p.assets.colorReferenceCropImage?"只显示已框选的服装部位":p.assets.colorReferenceImage?"上传的多颜色参考图":"已自动使用产品主图，可重新上传多颜色参考图"}</small></div></div>
+          <div className="recolor-reference-upload"><AssetUploadCard label="颜色参考图" description={p.assets.colorReferenceImage?"上传后可框选服装区域":"未单独上传时自动使用产品主图识别颜色" } value={reference} onChange={asset=>run(()=>persist(asset,"colorReferenceImage","color-reference"))} onDelete={()=>run(async()=>{await fetch(`/api/projects/${p.id}/colors/reference-crop`,{method:"DELETE"});await deleteAsset("colorReferenceImage");const fallback=p.assets.garmentImage;setReference(fallback?{url:fallback,name:"产品主图（自动作为颜色参考）",status:"saved"}:{status:"idle"});setReferenceSourceUrl(fallback||"");setReferenceCropOpen(false)})} onPreview={()=>reference.url&&setPreview({images:[reference.url],index:0})}/></div>
           {referenceSourceUrl&&<button type="button" className="reference-crop-trigger" onClick={()=>setReferenceCropOpen(true)}>▣ {p.assets.colorReferenceCropImage?"重新框选识别部位":"框选识别部位"}</button>}
           <div className="recolor-reference-note"><b>识别原则</b><span>只分析框选区域内的服装，同时识别主体色及领口、袖口、下摆、包边等局部配色；名称按“主体色＋边色”输出，不识别模特、背景和文字。</span></div>
         </div>
