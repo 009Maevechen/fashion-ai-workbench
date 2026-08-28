@@ -11,22 +11,23 @@ import type { WorkflowType } from "@/lib/ai/types";
 import type { ModelWorkflowType } from "@/lib/ai/provider-settings-types";
 import {
   AppLogo,
-  IconBell,
   IconCheck,
   IconChevron,
   IconClock,
   IconDoc,
   IconEye,
+  IconFolder,
   IconGear,
   IconGrid,
-  IconHelp,
   IconLibrary,
   IconPalette,
   IconPlus,
   IconPose,
   IconShirt,
-  IconStack,
 } from "@/components/icons";
+import TaskCenter from "@/components/TaskCenter";
+import LocalFilesMenu from "@/components/LocalFilesMenu";
+import ModelStatusMenu from "@/components/ModelStatusMenu";
 
 const MODULES = [
   { segment: "details", icon: IconDoc, label: "商品资料" },
@@ -44,7 +45,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     [monthly, setMonthly] = useState(0),
     [projects, setProjects] = useState<Project[]>([]),
     [projectsLoaded, setProjectsLoaded] = useState(false),
-    [projectQuery, setProjectQuery] = useState("");
+    [projectQuery, setProjectQuery] = useState(""),
+    [activeMenu, setActiveMenu] = useState<"tasks" | "files" | "model" | null>(null),
+    [runningCount, setRunningCount] = useState(0);
   const parts = pathname.split("/"),
     projectId = pathname.startsWith("/projects/") ? parts[2] : "",
     activeModule = parts[3] || "",
@@ -146,9 +149,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
         <div className="global-spacer" />
-        <span className={`api-pill ${apiState === "API正常" ? "ok" : "warn"}`}>
+        <button className={`api-pill ${apiState === "API正常" ? "ok" : "warn"}`} onClick={() => setActiveMenu("model")} title="模型状态">
           ● {apiState}
-        </span>
+        </button>
         {activeWorkflow && current && (
           <WorkflowSkuExport
             project={current}
@@ -163,11 +166,12 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         {activeModelWorkflow && (
           <WorkflowModelSelector workflow={activeModelWorkflow} />
         )}
-        <button className="icon-button" title="帮助">
-          <IconHelp />
+        <button className={`icon-button ${activeMenu === "tasks" ? "active" : ""}`} title="任务中心" onClick={() => setActiveMenu(activeMenu === "tasks" ? null : "tasks")}>
+          <IconClock />
+          {runningCount > 0 && <span className="icon-badge">{runningCount}</span>}
         </button>
-        <button className="icon-button" title="通知">
-          <IconBell />
+        <button className={`icon-button ${activeMenu === "files" ? "active" : ""}`} title="本地文件" onClick={() => setActiveMenu(activeMenu === "files" ? null : "files")}>
+          <IconFolder />
         </button>
       </header>
       <aside className="sidebar">
@@ -230,7 +234,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
             <p className="nav-group">素材与模板</p>
             <Link
               className={
-                pathname.startsWith("/libraries/poses")
+                pathname.startsWith("/libraries/poses") || pathname.startsWith("/inventory/poses")
                   ? "nav-link active"
                   : "nav-link"
               }
@@ -238,17 +242,6 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
             >
               <span className="nav-icon"><IconLibrary /></span>
               <span className="nav-label">姿势库</span>
-            </Link>
-            <Link
-              className={
-                pathname.startsWith("/inventory/poses")
-                  ? "nav-link active"
-                  : "nav-link"
-              }
-              href="/inventory/poses"
-            >
-              <span className="nav-icon"><IconStack /></span>
-              <span className="nav-label">姿势库存</span>
             </Link>
             <Link
               className={
@@ -298,6 +291,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         </button>
       </aside>
       <main className="app-main">{children}</main>
+      <TaskCenter open={activeMenu === "tasks"} onClose={() => setActiveMenu(null)} onRunningCount={setRunningCount} />
+      <LocalFilesMenu open={activeMenu === "files"} onClose={() => setActiveMenu(null)} sku={current?.sku} />
+      <ModelStatusMenu open={activeMenu === "model"} onClose={() => setActiveMenu(null)} />
     </div>
   );
 }

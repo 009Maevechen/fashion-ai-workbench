@@ -6,6 +6,7 @@ import {
   runtimeFinalDir,
   runtimeOutputsDir,
   runtimePoseLibraryDir,
+  runtimeVisualReferenceDir,
   saveRuntimeFinalDir,
   saveRuntimeOutputsDir,
   saveRuntimePoseLibraryDir,
@@ -33,10 +34,12 @@ export async function GET() {
   const stats = await storageStats();
   const finalDir = runtimeFinalDir();
   const poseLibraryDir = runtimePoseLibraryDir();
+  const visualReferenceDir = runtimeVisualReferenceDir();
   const tempDir = runtimeOutputsDir();
-  const [finalBytes, poseLibraryBytes, finalManifest, poseManifest] = await Promise.all([
+  const [finalBytes, poseLibraryBytes, visualReferenceBytes, finalManifest, poseManifest] = await Promise.all([
     dirSize(finalDir),
     dirSize(poseLibraryDir),
+    dirSize(visualReferenceDir),
     readManifest(finalDir),
     readManifest(poseLibraryDir),
   ]);
@@ -47,8 +50,10 @@ export async function GET() {
     finalExplicit: hasExplicitFinalDir(),
     poseLibraryPath: poseLibraryDir,
     poseLibraryExplicit: hasExplicitPoseLibraryDir(),
+    visualReferencePath: visualReferenceDir,
     finalBytes,
     poseLibraryBytes,
+    visualReferenceBytes,
     finalCount: finalManifest.images.length,
     poseLibraryCount: poseManifest.images.length,
   });
@@ -70,7 +75,7 @@ export async function POST(request: Request) {
     else if (action === "set-visual-reference-path") await saveRuntimeVisualReferenceDir(String(body.path || ""));
     else if (action === "open-dir") {
       const which = String(body.path || "temp");
-      const dir = which === "final" ? runtimeFinalDir() : which === "pose" ? runtimePoseLibraryDir() : runtimeOutputsDir();
+      const dir = which === "final" ? runtimeFinalDir() : which === "pose" ? runtimePoseLibraryDir() : which === "visual" ? runtimeVisualReferenceDir() : runtimeOutputsDir();
       await fs.mkdir(dir, { recursive: true });
       return NextResponse.json({ opened: dir });
     } else throw new Error("不支持的存储操作");
