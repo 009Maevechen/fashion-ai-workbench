@@ -42,6 +42,7 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,refres
   const [batchColorIds,setBatchColorIds]=useState<string[]>(saved?.selectedBatchColorIds||(p.targetColors||[]).map(color=>color.id));
   const [colorsLocked,setColorsLocked]=useState(saved?.colorsLocked??false);
   const [analyzing,setAnalyzing]=useState(false);
+  const [analysisNotice,setAnalysisNotice]=useState("");
   const [paletteVisible,setPaletteVisible]=useState(false);
   const [retrySlots,setRetrySlots]=useState<number[]>([]);
   const [preview,setPreview]=useState<{images:string[];index:number}|null>(null);
@@ -83,16 +84,19 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,refres
   async function analyzeReference(){
     setAnalyzing(true);
     try{
-      const response=await fetch(`/api/projects/${p.id}/colors/analyze`,{method:"POST"}),data=await response.json() as {colors?:Array<{name:string;hex:string;trimColorName?:string;trimHex?:string}>;error?:string};
+      const response=await fetch(`/api/projects/${p.id}/colors/analyze`,{method:"POST"}),data=await response.json() as {colors?:Array<{name:string;hex:string;trimColorName?:string;trimHex?:string}>;needsReview?:boolean;reviewReason?:string;confidence?:number;error?:string};
       if(!response.ok||!data.colors)throw new Error(data.error||"颜色分析失败");
-      // 尚未生成结果时替换旧色卡；已有结果时更新同色卡的边饰信息并只补充新候选，避免误删产物。
-      const hasGeneratedColors=colors.some(color=>color.poseResults?.length);
-      const merged=hasGeneratedColors?mergeAnalyzedColorDetails(colors,data.colors):{colors:[],unmatched:data.colors};
+      // 人工修改优先：已有色卡时只补充 AI 新识别到的颜色，不覆盖用户已填/已修改的颜色。
+      const hasExisting=colors.length>0;
+      const merged=hasExisting?mergeAnalyzedColorDetails(colors,data.colors):{colors:[],unmatched:data.colors};
       const additions=merged.unmatched.map(color=>({id:crypto.randomUUID(),name:analyzedColorName(color),baseHex:color.hex,hex:color.hex,trimColorName:color.trimColorName,trimHex:color.trimHex,status:"ready" as const}));
-      const next=colors.length&&hasGeneratedColors?[...merged.colors,...additions].slice(0,5):additions;
+      const next=hasExisting?[...merged.colors,...additions].slice(0,6):additions;
       if(!next.length)throw new Error("参考图中的颜色已经全部存在");
       const nextActive=activeId&&next.some(color=>color.id===activeId)?activeId:next[0].id;
       setColorsLocked(false);setBatchColorIds(next.map(color=>color.id));setActiveId(nextActive);await persistColors(next,nextActive,false);
+      if(data.needsReview)setAnalysisNotice(`颜色识别置信度 ${data.confidence??"?"}%：${data.reviewReason||"部分颜色需要人工确认"}，请检查并修改后再锁定。`);
+      else if(data.confidence!==undefined)setAnalysisNotice(`颜色识别完成（置信度 ${data.confidence}%），请检查后锁定。`);
+      else setAnalysisNotice("");
     }finally{setAnalyzing(false)}
   }
   async function saveReferenceCrop(){
@@ -224,6 +228,7 @@ export default function RecolorPanel({p,jobs,health,modelRouting,busy,run,refres
           <ReferenceColorSampler src={reference.url} existingNames={colors.map(color=>color.name)} disabled={busy} extracting={analyzing} onExtractAll={()=>run(()=>analyzeReference())} onAdd={addSampledColor}/>
           <section className="card recolor-analysis-card">
             <div className="panel-head"><div><h2>颜色识别与色卡管理</h2><small>服装类型：{p.productType} {p.profile?.attributes?.fit?`· 版型：${p.profile.attributes.fit}`:""}</small></div><div className="panel-actions"><button type="button" className="recolor-analyze-button" disabled={!reference.url||analyzing||busy} onClick={()=>run(()=>analyzeReference())}>{analyzing?"正在识别…":"▶ 开始识别颜色"}</button><button type="button" className="secondary" disabled={!reference.url||analyzing||busy} onClick={()=>run(()=>analyzeReference())}>重新分析颜色</button><button type="button" className="secondary" disabled={colorsLocked} onClick={()=>run(addColor)}>＋ 手动添加颜色</button></div></div>
+            {analysisNotice&&<div className="notice">{analysisNotice}</div>}
             {colors.length?<div className="recolor-color-editor-list">{colors.map((color,index)=>{const count=colorResultCount(color),issue=count?`已收集 ${count} 张`:colorSetIssue(color,duplicateNames),required=expectedColorResultCount(color),checked=batchColorIds.includes(color.id);return <div className={`recolor-color-editor ${color.id===activeId?"active":""}`} key={color.id}>
               <label className="recolor-batch-check"><input type="checkbox" checked={checked} onChange={()=>setBatchColorIds(ids=>checked?ids.filter(id=>id!==color.id):[...ids,color.id])}/></label>
               <button className="recolor-swatch-input" type="button" style={{background:VALID_HEX.test(color.hex||"")?color.hex:"#C8A06A"}} aria-label={`调整${color.name||`颜色${index+1}`}`} onClick={()=>{setActiveId(color.id);setPaletteVisible(true)}}/>
