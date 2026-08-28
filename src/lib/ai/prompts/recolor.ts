@@ -1,7 +1,7 @@
 import {faceVisibilityPrompt} from "./face-visibility";
 import {protectedClothingForArea,type RecolorGarmentArea} from "../../recolor-scope";
 
-export const RECOLOR_PROMPT_VERSION="recolor-v3-target-color-material-lock";
+export const RECOLOR_PROMPT_VERSION="recolor-v4-detail-aware";
 export function recolorPrompt(area:string,color:string,hex:string,protectedAreas:string[],extra:string,showFace=false,trimColorName="",trimHex=""){const lockedArea=area as RecolorGarmentArea;return `任务：服装商品精准复色。第一张图片是需要修改颜色的模特商品图。如果有第二张图片，它只是目标颜色样本。只提取颜色本身，严禁从参考图复制服装款式、版型、长度、领口、袖口、纽扣、图案、印花、材质、纹理或任何结构。只修改第一张图片中指定服装区域的主体面料颜色。
 目标服装区域：${area}\n目标颜色名称：${color}\n目标HEX色值：${hex||"未指定"}
 复色成功硬性标准：目标服装区域的主体面料必须完整、清晰、可见地变为上述目标颜色；不得保留原主体颜色，不得只轻微调色，不得只改变局部、阴影、背景或未选区域。若原色与目标色接近，也必须统一校准到目标色名称与 HEX 所代表的色相、明度和饱和度。没有真正改变目标服装主体颜色必须视为生成失败，严禁返回未改色原图。
@@ -9,6 +9,7 @@ export function recolorPrompt(area:string,color:string,hex:string,protectedAreas
 指定边饰颜色：${trimColorName||"沿用第一张输入图的原色"}${trimHex?`（${trimHex}）`:""}
 ${faceVisibilityPrompt(showFace)}
 复色前必须检查第一张输入图的色块布局。领口包边、袖口荷叶边、下摆、门襟、拼接和其他撞色区域的位置、宽度、形状、数量必须与原服装完全一致；不得把主色覆盖到包边，不得新增、删除或移动色块。若指定了边饰颜色，只把原服装中已存在的边饰区域统一调整为该颜色。
+颜色版本细节差异（重要）：复色不仅是替换颜色，更要留意不同颜色版本之间可能存在的设计细节差异。同一款服装的不同颜色版本，其主体面料材质总体保持一致，但边饰、拼接、撞色、局部配色、装饰等细节可能随颜色版本而变化。复色时必须忠实还原这些「随颜色版本而变化的设计细节」，不得把所有颜色版本都生成为完全相同的单调款式——目标颜色应有的边饰色、撞色、局部配色必须如实呈现，同时总体面料材质、织法、纹理、手感与原服装保持同一面料。
 材质与设计强制锁定：复色只能替换颜色，不得改变面料材质、织法/针法、罗纹或纹理方向与密度、绒感、透视度、光泽、褶皱响应和垂坠感。原商品如有渐变，必须保留相同渐变方向、层次和过渡边界，只把渐变整体映射到目标色系；色块、拼接和特殊设计的布局与比例必须保持一致。
 必须保持同一个模特、姿势身体比例、背景光线阴影构图、服装版型长度轮廓和全部结构细节、3:4比例；每次只输出一张独立图片。
 以下区域必须保持不变：${protectedAreas.join("、")}\n补充要求：${extra}

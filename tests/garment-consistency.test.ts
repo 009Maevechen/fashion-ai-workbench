@@ -16,7 +16,7 @@ test("姿势一致性忽略姿势背景但锁定服装材质设计",()=>{
 test("换装一致性以原产品服装为基准并忽略模特差异",()=>{
   const prompt=garmentConsistencyPrompt("tryon",project,job);
   assert.match(prompt,/这是服装换装候选图/);
-  assert.match(prompt,/版型、材质、纹理、颜色、包边和全部设计细节一致/);
+  assert.match(prompt,/服装类型、版型、材质、面料、纹理、颜色、包边和全部设计细节完全一致/);
   assert.match(prompt,/模特、姿势、构图和背景差异不算服装不一致/);
 });
 
