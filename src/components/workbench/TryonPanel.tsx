@@ -88,7 +88,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 </label>
 <div className="upload-pair">
       <AssetUploadCard label="服装产品图" description="上传真实服装产品图" value={garment} onChange={a=>run(()=>saveAsset(a,"garmentImage","garment",setGarment))} onDelete={()=>run(async()=>{await deleteAsset("garmentImage");setGarment({status:"idle"})})} onPreview={()=>garment.url&&setPreview({images:allImages,index:allImages.indexOf(garment.url)})}/>
-      <AssetUploadCard label="模特参考图" description="保留模特、姿势、构图和背景" value={model} onChange={a=>run(()=>saveAsset(a,"modelReferenceImage","model-reference",setModel))} onDelete={()=>run(async()=>{await deleteAsset("modelReferenceImage");setModel({status:"idle"})})} onPreview={()=>model.url&&setPreview({images:allImages,index:allImages.indexOf(model.url)})}/>
+      <AssetUploadCard label="模特参考图" description="只参考姿势、场景和背景，不参考模特服装" value={model} onChange={a=>run(()=>saveAsset(a,"modelReferenceImage","model-reference",setModel))} onDelete={()=>run(async()=>{await deleteAsset("modelReferenceImage");setModel({status:"idle"})})} onPreview={()=>model.url&&setPreview({images:allImages,index:allImages.indexOf(model.url)})}/>
     </div>
 {missing.length>0&&<div className="notice">开始换装前还需要保存：{missing.join("、")}。</div>}
 <label className="field">服装描述<textarea maxLength={500} value={description} onChange={e=>setDescription(e.target.value)}/>
