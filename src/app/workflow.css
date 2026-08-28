@@ -203,16 +203,21 @@
 @media(max-width:1050px){.recolor-source-reference-grid{grid-template-columns:1fr}.recolor-reference-column .recolor-reference-upload{max-width:460px}.recolor-reference-column .recolor-reference-upload .upload-card{height:320px;min-height:320px}.recolor-reference-column .recolor-reference-upload .upload-card img,.recolor-reference-column .recolor-reference-upload .upload-empty{height:260px;min-height:260px}}
 @media(max-width:720px){.recolor-source-column .recolor-source-gallery,.recolor-source-column .recolor-upload-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}.recolor-source-reference-grid .recolor-section-title{min-height:0}.recolor-source-reference-grid .segment.compact{flex-basis:auto;width:100%;max-width:none}}
 
-/* 换装页：输入素材 | 放大的换装结果 | 紧凑生成设置。 */
-.workbench-grid:has(>.tryon-input-panel){grid-template-columns:minmax(300px,30fr) minmax(500px,46fr) minmax(280px,24fr)}
+/* 换装页：输入素材 | 放大的换装结果 | 生成设置放到底部整行。 */
+.workbench-grid:has(>.tryon-input-panel){grid-template-columns:minmax(320px,34fr) minmax(520px,66fr)}
 .workbench-grid>.tryon-input-panel{order:1}
 .workbench-grid>.tryon-results-panel{order:2}
-.workbench-grid>.tryon-settings-panel{order:3}
+.workbench-grid>.tryon-settings-panel{order:3;grid-column:1/-1}
 .tryon-results-panel .result-grid{gap:14px}
 .tryon-results-panel .result-card{padding:12px}
 .tryon-results-panel .result-card.selected{padding:11px}
 .tryon-results-panel .result-image,.tryon-results-panel .result-placeholder{width:100%;max-height:none;aspect-ratio:3/4}
-@media(max-width:1279px){.workbench-grid:has(>.tryon-input-panel){grid-template-columns:minmax(290px,36fr) minmax(420px,64fr)}.workbench-grid>.tryon-settings-panel{grid-column:1/-1;order:3}.workbench-grid>.tryon-results-panel{order:2}}
+/* 输入素材图放大展示 */
+.tryon-input-panel .upload-pair{grid-template-columns:1fr;gap:12px}
+.tryon-input-panel .upload-card{min-height:auto}
+.tryon-input-panel .upload-card img{height:auto;max-height:360px;object-fit:contain}
+.tryon-input-panel .upload-empty{min-height:260px}
+@media(max-width:1050px){.workbench-grid:has(>.tryon-input-panel){grid-template-columns:1fr}.workbench-grid>.tryon-input-panel,.workbench-grid>.tryon-results-panel,.workbench-grid>.tryon-settings-panel{order:initial;grid-column:auto}}
 @media(max-width:800px){.workbench-grid:has(>.tryon-input-panel){grid-template-columns:1fr}.workbench-grid>.tryon-input-panel,.workbench-grid>.tryon-results-panel,.workbench-grid>.tryon-settings-panel{grid-column:auto}}
 
 /* 姿势页：参考图只在结果区完整展示，设置区改为横向对齐。 */
@@ -231,16 +236,19 @@
 @media(max-width:1050px){.workbench-grid>.settings-panel{grid-template-columns:1fr 1fr}.settings-panel>.setting-help,.settings-panel>.field:has(textarea),.settings-panel>.generate-footer{grid-column:auto}.settings-panel>.model-card{grid-column:1}.settings-panel>.generate-footer{grid-column:2}}
 @media(max-width:720px){.workbench-grid>.settings-panel{display:block}.settings-panel>*{margin-top:12px!important}.pose-reference-pair{aspect-ratio:3/4}}
 
-/* 换装页独立排版：输入素材 → 生成设置 → 换装结果。 */
+/* 换装页独立排版：输入素材 | 换装结果，生成设置放到下方整行横向排列。 */
 .workbench-grid>.tryon-input-panel{order:1}
-.workbench-grid>.tryon-settings-panel{order:2;grid-column:auto;display:block}
-.workbench-grid>.tryon-results-panel{order:3}
+.workbench-grid>.tryon-results-panel{order:2}
+.workbench-grid>.tryon-settings-panel{order:3;grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 18px;align-items:start}
 .tryon-input-panel,.tryon-results-panel{min-width:0;height:100%;align-self:stretch}
 .tryon-settings-panel{min-width:0;height:auto;align-self:start}
 .tryon-input-panel>.panel-head,.tryon-settings-panel>.panel-head,.tryon-results-panel>.panel-head{min-height:42px;align-items:flex-start;margin-bottom:14px}
-.tryon-settings-panel>.panel-head,.tryon-settings-panel>h3,.tryon-settings-panel>.mode-grid,.tryon-settings-panel>.protection-grid,.tryon-settings-panel>.model-card,.tryon-settings-panel>.generate-footer{grid-column:auto;margin-left:0;margin-right:0}
-.tryon-settings-panel>.protection-grid{margin-top:0}
-.tryon-settings-panel>.setting-help{margin-top:6px}
+.tryon-settings-panel>.panel-head{grid-column:1/-1}
+.tryon-setting-group{display:grid;gap:8px;align-content:start;min-width:0}
+.tryon-setting-group h3{margin:0}
+.tryon-setting-group .mode-grid,.tryon-setting-group .segment,.tryon-setting-group .protection-grid,.tryon-setting-group .model-card,.tryon-setting-group .generate-footer,.tryon-setting-group .structure-prompt-preview{margin:0}
+@media(max-width:1050px){.workbench-grid>.tryon-settings-panel{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.workbench-grid>.tryon-settings-panel{grid-template-columns:1fr}}
 .tryon-results-panel{display:flex;flex-direction:column}
 .tryon-results-panel>.confirm-block{margin-top:auto}
 @media(max-width:1050px){.workbench-grid>.tryon-input-panel,.workbench-grid>.tryon-settings-panel,.workbench-grid>.tryon-results-panel{order:initial;grid-column:auto}}
@@ -349,3 +357,17 @@
 .inventory-detail-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 16px}.inventory-detail-meta p{margin:0;padding:8px 0;border-bottom:1px solid #efedf3;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 @media(max-width:900px){.inventory-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.pose-inventory-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.pose-inventory-stats,.inventory-filters,.inventory-detail-meta{grid-template-columns:1fr}.inventory-toolbar{align-items:stretch}.inventory-toolbar .field{min-width:100%}.inventory-toolbar button{flex:1}.inventory-grid{grid-template-columns:1fr}.inventory-detail-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* 换装页最终布局覆盖：输入素材(放大) | 换装结果，生成设置整行放底部横排 */
+.workbench-grid:has(>.tryon-input-panel){grid-template-columns:minmax(320px,34fr) minmax(520px,66fr);align-items:start}
+.workbench-grid>.tryon-input-panel{order:1;grid-column:auto}
+.workbench-grid>.tryon-results-panel{order:2;grid-column:auto}
+.workbench-grid>.tryon-settings-panel{order:3;grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 18px;align-items:start}
+.tryon-input-panel .upload-pair{grid-template-columns:1fr;gap:12px}
+.tryon-input-panel .upload-card{min-height:auto}
+.tryon-input-panel .upload-card img{height:auto;max-height:340px;object-fit:contain;flex:1}
+.tryon-input-panel .upload-empty{min-height:240px}
+.tryon-setting-group{display:grid;gap:8px;align-content:start;min-width:0}
+.tryon-setting-group h3{margin:0}
+@media(max-width:1050px){.workbench-grid:has(>.tryon-input-panel){grid-template-columns:1fr}.workbench-grid>.tryon-settings-panel{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.workbench-grid>.tryon-settings-panel{grid-template-columns:1fr}.tryon-input-panel .upload-pair{grid-template-columns:1fr}}

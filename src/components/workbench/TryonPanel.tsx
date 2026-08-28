@@ -119,34 +119,46 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 <h2>生成设置</h2>
 <small>真实模型状态</small>
 </div>
+<div className="tryon-setting-group">
 <h3>生成模式</h3>
 <div className="mode-grid">{TRYON_MODE_OPTIONS.map(option=>{
 const sub=option.id==="quality"?(routed?route.primary.model:health.tryonProvider==="custom"?"自定义模型":"FASHN Try-On Max"):standardProvider;
 return <button key={`tryon-mode-${option.id}`} className={`mode-card ${mode===option.id?"active":""}`} onClick={()=>setMode(option.id)}>
 <b>{option.label}</b>
 <small>{sub}</small>{option.id==="quality"&&!routed&&health.tryonProvider!=="custom"&&!health.fashn&&<em>未配置</em>}</button>})}</div>
+</div>
+<div className="tryon-setting-group">
 <h3 className="section-label">候选数量</h3>
 <div className="segment">
 <button className={count===1?"active":""} onClick={()=>setCount(1)}>生成1张</button>
 <button className={count===2?"active":""} onClick={()=>setCount(2)}>生成2张</button>
 </div>
+</div>
+<div className="tryon-setting-group">
 <h3 className="section-label">人物显示</h3>
 <label className="check-item face-visibility-toggle"><input type="checkbox" checked={face} onChange={event=>setFace(event.target.checked)}/>露出脸部</label>
 <small className="setting-help">{face?"已开启：允许露出并保持原模特脸部。":"默认关闭：生成结果不得露出或补画脸部。"}</small>
+</div>
+<div className="tryon-setting-group">
 <h3 className="section-label">细节保护</h3>
 <div className="protection-grid">{TRYON_PROTECTION_OPTIONS.map(option=>
 <label className="check-item" key={`tryon-protection-${option.id}`}>
 <input type="checkbox" checked={protectedItems.includes(option.label)} onChange={()=>setProtected(value=>value.includes(option.label)?value.filter(item=>item!==option.label):[...value,option.label])}/>{option.label}</label>)}</div>
 <details className="structure-prompt-preview"><summary>查看自动组成的商品结构保护提示</summary><pre>{structurePrompt}</pre></details>
+</div>
+<div className="tryon-setting-group">
 <div className="model-card">
 <div className="model-row">
 <span>{modelName}</span>
 <span className={`badge ${configured?"success":"failed"}`}>{configured?"可用":"未配置"}</span>
 </div><small>提供商：{route.primary.providerName}</small><small>备用模型：{route.fallback.configured?`${route.fallback.providerName} / ${route.fallback.model}`:"未配置"}</small>{mode==="quality"&&!routed&&health.tryonProvider!=="custom"&&<small>精细模式使用 FASHN quality · 2K，每张候选独立生成。</small>}</div>
 <div className="cost-card">{mode==="quality"&&health.tryonProvider!=="custom"?"FASHN 预计消耗：每张 4 credits":"预计费用暂不可用"}</div>
+</div>
+<div className="tryon-setting-group">
 <div className="generate-footer">
 <button className="primary" disabled={busy||!productType||!garment.url||!model.url||!configured} onClick={()=>run(()=>start())}>{busy?"处理中…":"▷ 开始换装"}</button>
 <div className="status-line">{configured?"输入与设置会保存在当前项目":health.tryonProvider==="custom"?"请先在服务器完成自定义图像 API 配置":mode==="quality"?"请先在服务器配置 FASHN_API_KEY，配置后重启工作台":"当前模型 API 尚未配置"}</div>
+</div>
 </div>
 </section>
   </div>{preview&&<ImagePreviewDialog {...preview} onClose={()=>setPreview(null)}/>}</>;
