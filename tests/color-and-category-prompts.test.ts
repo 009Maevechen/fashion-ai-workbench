@@ -10,6 +10,19 @@ test("换装提示词明确包含必选服装类目",()=>{
   assert.match(prompt,/不得改成其他服装类目/);
 });
 
+test("换装只把产品图作为服装真值并锁定尺寸材质与垂感",()=>{
+  const prompt=tryonPrompt("上衣","针织短款上衣","保持领口和下摆");
+  assert.match(prompt,/服装产品图：这是生成结果中服装外观的唯一真值、唯一来源和最高优先级依据/);
+  assert.match(prompt,/模特参考图绝不参与服装设计/);
+  assert.match(prompt,/模特参考图里的服装只是需要被移除的遮挡物/);
+  assert.match(prompt,/整体尺寸比例、衣长\/裤长\/裙长、宽度、围度、松量/);
+  assert.match(prompt,/不得为了贴合模特参考图原服装而改变产品大小、长度或覆盖范围/);
+  assert.match(prompt,/厚薄、重量感、硬挺或柔软程度、弹性/);
+  assert.match(prompt,/重力下垂方向和垂坠感/);
+  assert.match(prompt,/布料贴合身体后的自然褶皱可以随姿势变化，但材质属性、垂感强弱和结构尺寸不得改变/);
+  assert.match(prompt,/不得新增、删除、移动、替换或重新设计任何结构/);
+});
+
 test("复色提示词只提取颜色且禁止复制参考图款式",()=>{
   const prompt=recolorPrompt("裙子","焦糖色","#C8A06A",["印花"],"保持背景",false,"白色","#FFFFFF");
   assert.match(prompt,/只提取颜色本身/);
