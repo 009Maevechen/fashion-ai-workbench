@@ -78,8 +78,14 @@ export default function TaskCenter({
   }, [jobs]);
 
   useEffect(() => {
-    onRunningCount(stats.running);
-  }, [stats.running, onRunningCount]);
+    if (open) onRunningCount(stats.running);
+  }, [stats.running, open, onRunningCount]);
+
+  useEffect(() => {
+    if (!open) onRunningCount(0);
+  }, [open, onRunningCount]);
+
+  if (!open) return null;
 
   async function retry(job: Job) {
     setBusy(job.id);

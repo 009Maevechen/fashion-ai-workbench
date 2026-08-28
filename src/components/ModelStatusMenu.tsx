@@ -47,6 +47,8 @@ export default function ModelStatusMenu({ open, onClose }: { open: boolean; onCl
       .catch(() => setData(null));
   }, [open]);
 
+  if (!open) return null;
+
   return (
     <div className="top-menu-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <aside className="top-menu-panel model-status-panel" role="dialog" aria-label="模型状态">

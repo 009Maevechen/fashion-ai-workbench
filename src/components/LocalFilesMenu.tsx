@@ -36,6 +36,8 @@ export default function LocalFilesMenu({
       .catch(() => setInfo(null));
   }, [open]);
 
+  if (!open) return null;
+
   async function openDir(which: "temp" | "final" | "pose" | "visual") {
     setNotice("");
     try {
