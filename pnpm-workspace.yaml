@@ -7,6 +7,8 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+  fs-xattr: set this to true or false
+  macos-alias: set this to true or false
   sharp: true
   unrs-resolver: true
 

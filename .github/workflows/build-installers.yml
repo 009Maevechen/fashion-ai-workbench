@@ -54,11 +54,11 @@ jobs:
           $name = "AI服装工作台-Windows-x64-v$version-Setup.exe"
           Copy-Item $exe.FullName $name
           Write-Host "Publishing: $name"
-          gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包 + macOS 包，由 GitHub Actions 自动构建。" 2>$null
+          gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包 + macOS 安装包（Intel / Apple Silicon），由 GitHub Actions 自动构建。" 2>$null
           gh release upload latest $name --clobber
 
   macos-x64:
-    runs-on: macos-latest
+    runs-on: macos-13
     timeout-minutes: 45
     env:
       CI: "true"
@@ -81,18 +81,60 @@ jobs:
         run: pnpm lint
       - name: Test
         run: pnpm test
-      - name: Build macOS app
+      - name: Build macOS app (Intel x64)
         run: pnpm make:mac
       - name: Publish macOS package to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          zip=$(find out/make -name '*.zip' | head -1)
-          if [ -z "$zip" ]; then echo "未找到 macOS zip，尝试 dmg"; zip=$(find out/make -name '*.dmg' | head -1); fi
-          if [ -z "$zip" ]; then echo "未找到任何 macOS 安装包"; ls -R out/make; exit 1; fi
+          pkg=$(find out/make -name '*.dmg' | head -1)
+          if [ -z "$pkg" ]; then pkg=$(find out/make -name '*.zip' | head -1); fi
+          if [ -z "$pkg" ]; then echo "未找到 macOS 安装包"; ls -R out/make; exit 1; fi
           version=$(node -p "require('./package.json').version")
-          name="AI服装工作台-macOS-x64-v${version}.zip"
-          cp "$zip" "$name"
+          ext="${pkg##*.}"
+          name="AI服装工作台-macOS-Intel-x64-v${version}.${ext}"
+          cp "$pkg" "$name"
           echo "Publishing: $name"
-          gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包 + macOS 包，由 GitHub Actions 自动构建。" 2>/dev/null || true
+          gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包 + macOS 安装包（Intel / Apple Silicon），由 GitHub Actions 自动构建。" 2>/dev/null || true
+          gh release upload latest "$name" --clobber
+
+  macos-arm64:
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Type check
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Test
+        run: pnpm test
+      - name: Build macOS app (Apple Silicon arm64)
+        run: pnpm make:mac-arm64
+      - name: Publish macOS package to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pkg=$(find out/make -name '*.dmg' | head -1)
+          if [ -z "$pkg" ]; then pkg=$(find out/make -name '*.zip' | head -1); fi
+          if [ -z "$pkg" ]; then echo "未找到 macOS 安装包"; ls -R out/make; exit 1; fi
+          version=$(node -p "require('./package.json').version")
+          ext="${pkg##*.}"
+          name="AI服装工作台-macOS-AppleSilicon-arm64-v${version}.${ext}"
+          cp "$pkg" "$name"
+          echo "Publishing: $name"
+          gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包 + macOS 安装包（Intel / Apple Silicon），由 GitHub Actions 自动构建。" 2>/dev/null || true
           gh release upload latest "$name" --clobber
