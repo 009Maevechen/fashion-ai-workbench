@@ -10,6 +10,7 @@ import WorkflowSkuExport from "@/components/workbench/WorkflowSkuExport";
 import type { WorkflowType } from "@/lib/ai/types";
 import type { ModelWorkflowType } from "@/lib/ai/provider-settings-types";
 import {
+  AppLogo,
   IconBell,
   IconCheck,
   IconChevron,
@@ -24,7 +25,6 @@ import {
   IconPlus,
   IconPose,
   IconShirt,
-  IconSpark,
   IconStack,
 } from "@/components/icons";
 
@@ -116,7 +116,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     <div className={collapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <header className="global-header">
         <Link className="wordmark" href="/workbench">
-          <span className="wordmark-icon"><IconSpark /></span>
+          <span className="wordmark-icon"><AppLogo /></span>
           <b>AI服装工作台</b>
         </Link>
         <div className="project-selector">

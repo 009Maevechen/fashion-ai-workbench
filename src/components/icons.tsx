@@ -164,3 +164,35 @@ export function IconChevron(props: IconProps) {
     </svg>
   );
 }
+
+/** 应用 Logo：与桌面图标一致的「跨境 + AI + 艺术感」标识。 */
+export function AppLogo(props: IconProps) {
+  const { size = 30, ...rest } = props;
+  return (
+    <svg width={size} height={size} viewBox="0 0 512 512" {...rest}>
+      <defs>
+        <linearGradient id="applogo-bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#7c5cf1" />
+          <stop offset="0.55" stopColor="#5a3fe0" />
+          <stop offset="1" stopColor="#3b7bff" />
+        </linearGradient>
+        <linearGradient id="applogo-arc" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#9be7ff" />
+          <stop offset="1" stopColor="#c9b8ff" />
+        </linearGradient>
+      </defs>
+      <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#applogo-bg)" />
+      <circle cx="256" cy="256" r="176" fill="none" stroke="#ffffff" strokeOpacity="0.16" strokeWidth="10" />
+      <circle cx="256" cy="256" r="128" fill="none" stroke="#ffffff" strokeOpacity="0.28" strokeWidth="10" />
+      <ellipse cx="256" cy="256" rx="128" ry="46" fill="none" stroke="#ffffff" strokeOpacity="0.55" strokeWidth="9" strokeLinecap="round" />
+      <ellipse cx="256" cy="256" rx="46" ry="128" fill="none" stroke="#ffffff" strokeOpacity="0.55" strokeWidth="9" strokeLinecap="round" />
+      <path d="M212 300 L212 356 M300 300 L300 356 M212 356 L300 356" stroke="#ffffff" strokeWidth="14" strokeLinecap="round" />
+      <path d="M212 300 L244 268 L256 256 L268 268 L300 300" fill="none" stroke="#ffffff" strokeWidth="14" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M128 220 C 150 150, 220 130, 300 148" fill="none" stroke="url(#applogo-arc)" strokeWidth="11" strokeLinecap="round" />
+      <circle cx="176" cy="140" r="11" fill="#ffffff" />
+      <circle cx="344" cy="356" r="9" fill="#ffffff" fillOpacity="0.9" />
+      <circle cx="362" cy="132" r="7" fill="#ffffff" fillOpacity="0.8" />
+      <circle cx="150" cy="352" r="6" fill="#ffffff" fillOpacity="0.7" />
+    </svg>
+  );
+}

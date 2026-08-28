@@ -61,14 +61,14 @@ a {
   height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  color: white;
-  background: linear-gradient(145deg, var(--purple-2), #5534d6);
+  border-radius: 9px;
+  flex: none;
+  overflow: hidden;
   box-shadow: 0 5px 12px #6b4ae83a;
 }
 .wordmark-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 30px;
+  height: 30px;
   display: block;
 }
 .global-spacer {
