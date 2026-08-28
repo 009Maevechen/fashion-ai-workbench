@@ -8,6 +8,7 @@ import type {
   WorkflowModelBindings,
   WorkflowRuntimeSummary,
 } from "@/lib/ai/provider-settings-types";
+import { inferCapabilities, CAPABILITY_LABELS } from "@/lib/model-capability-utils";
 
 const TYPE_LABEL: Record<ApiProviderType, string> = {
   "openai-compatible": "OpenAI兼容中转站",
@@ -92,6 +93,20 @@ export default function WorkflowModelAssignment({
   }
   function providerOptionLabel(provider: ApiProviderPublic) {
     return `${provider.name} · ${provider.defaultModel || TYPE_LABEL[provider.type]}`;
+  }
+  function capabilityHint(provider: ApiProviderPublic, workflow: ModelWorkflowType, slot: "primary" | "fallback") {
+    const model =
+      workflow === "product"
+        ? slot === "primary" ? provider.visionModel : provider.chatModel
+        : workflow === "qc"
+          ? provider.visionModel || provider.chatModel
+          : workflow === "research" || workflow === "assistant"
+            ? provider.chatModel || provider.defaultModel
+            : provider.defaultModel;
+    if (!model) return "";
+    const caps = inferCapabilities(provider.type, model);
+    const labels = caps.map((cap) => CAPABILITY_LABELS[cap]);
+    return labels.length ? ` · [${labels.join(" / ")}]` : "";
   }
   function workflowProviderOptionLabel(provider: ApiProviderPublic, workflow: ModelWorkflowType, slot: "primary" | "fallback") {
     if (workflow === "product") {
@@ -182,7 +197,7 @@ export default function WorkflowModelAssignment({
                     </option>
                     {compatibleProviders.map((provider) => (
                       <option value={provider.id} key={provider.id}>
-                        {workflowProviderOptionLabel(provider, workflow.key, slot)}
+                        {workflowProviderOptionLabel(provider, workflow.key, slot)}{capabilityHint(provider, workflow.key, slot)}
                       </option>
                     ))}
                   </select>
