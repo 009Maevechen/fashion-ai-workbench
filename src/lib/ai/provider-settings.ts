@@ -450,24 +450,6 @@ export async function saveSycConfig(input: SycConfigInput) {
     record.codexCliCompatible = value.codexCliCompatible;
     record.timeoutSeconds = value.timeoutSeconds;
 
-    // Keep the dedicated product-analysis routing in sync with the SYC fields.
-    // Older installs used the image generation model as the product primary
-    // model, which leaves a stale gpt-image-* binding after upgrading.
-    const productBinding = store.workflowModelBindings.product;
-    if (value.visionModel)
-      productBinding.primary = {
-        providerId: record.id,
-        model: value.visionModel,
-      };
-    else if (productBinding.primary?.providerId === record.id)
-      delete productBinding.primary;
-    if (value.chatModel)
-      productBinding.fallback = {
-        providerId: record.id,
-        model: value.chatModel,
-      };
-    else if (productBinding.fallback?.providerId === record.id)
-      delete productBinding.fallback;
     if (connectionChanged) {
       record.lastTestStatus = "untested";
       record.lastTestAt = undefined;
@@ -591,7 +573,7 @@ function validSelection(value: unknown): WorkflowModelSelection | undefined {
   return { providerId: item.providerId.trim(), model: item.model.trim() };
 }
 function looksLikeImageGenerationModel(model: string) {
-  return /(?:gpt[-_.]?image|seedream|flux|fashn|virtual[-_.]?try[-_.]?on)/i.test(
+  return /(?:gpt[-_.]?image|seedream|flux|fashn|virtual[-_.]?try[-_.]?on|dall[-_.]?e|imagen|midjourney|stable[-_.]?diffusion)/i.test(
     model,
   );
 }

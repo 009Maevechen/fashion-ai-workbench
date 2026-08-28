@@ -248,7 +248,8 @@ export default function ProviderSettingsManager({
     [busy, setBusy] = useState(""),
     [message, setMessage] = useState(""),
     [error, setError] = useState(""),
-    [testImage, setTestImage] = useState("");
+    [testImage, setTestImage] = useState(""),
+    [providerModels, setProviderModels] = useState<string[]>([]);
   const activeCatalog =
     ALL_CATALOG.find((item) => item.id === activeCatalogId) || GENERIC_CATALOG;
   const catalogProviders = providers.filter((provider) =>
@@ -442,6 +443,24 @@ export default function ProviderSettingsManager({
     } catch (e) {
       await reload();
       setError(e instanceof Error ? e.message : "测试失败");
+    } finally {
+      setBusy("");
+    }
+  }
+  async function fetchModels() {
+    if (!editingProvider) return;
+    setBusy("models");
+    clearFeedback();
+    try {
+      const data = await requestJson(`/api/settings/providers/${editingProvider.id}/models`);
+      setProviderModels(Array.isArray(data.models) ? data.models : []);
+      if (!data.models?.length) {
+        setError("该提供商没有返回模型列表，请手动填写模型 ID");
+      } else {
+        setMessage(`已获取 ${data.models.length} 个真实模型，可从列表选择`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "获取模型列表失败");
     } finally {
       setBusy("");
     }
@@ -770,6 +789,33 @@ export default function ProviderSettingsManager({
                           }
                           placeholder={meta.modelPlaceholder}
                         />
+                        {editingProvider &&
+                          !["bfl", "fashn"].includes(editingProvider.type) && (
+                            <button
+                              type="button"
+                              className="secondary"
+                              style={{ marginTop: 6 }}
+                              disabled={!!busy}
+                              onClick={() => void fetchModels()}
+                            >
+                              {busy === "models" ? "获取中…" : "获取模型列表"}
+                            </button>
+                          )}
+                        {providerModels.length > 0 && (
+                          <select
+                            style={{ marginTop: 6 }}
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value)
+                                setForm({ ...form, defaultModel: e.target.value });
+                            }}
+                          >
+                            <option value="">从列表选择模型…</option>
+                            {providerModels.map((model) => (
+                              <option key={model} value={model}>{model}</option>
+                            ))}
+                          </select>
+                        )}
                       </label>
                     </>
                   );

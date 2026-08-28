@@ -22,6 +22,19 @@ export async function testProviderConnection(id:string){
   return {ok:true,message:"连接测试成功",httpStatus:response.status};
 }
 
+/** 获取 OpenAI 兼容 Provider 的真实模型列表，供配置表单选择。 */
+export async function listProviderModels(id:string){
+  const provider=await getProviderRuntime(id);
+  if(provider.type==="bfl"||provider.type==="fashn")return {models:[]};
+  const url=modelsEndpoint(provider.baseUrl);
+  let response:Response;
+  try{response=await fetch(url,{headers:connectionHeaders(provider.type,provider.apiKey),signal:AbortSignal.timeout(Math.min(timeout(),30000))})}catch(error){if(error instanceof Error&&error.name==="TimeoutError")throw new Error("获取模型列表超时");throw new Error(`无法连接提供商：${error instanceof Error?error.message:"网络错误"}`)}
+  if(!response.ok)throw new Error(`获取模型列表失败（HTTP ${response.status}）`);
+  const data=await response.json().catch(()=>({})) as {data?:Array<{id?:string}>;models?:Array<{id?:string}|string>};
+  const ids=[...(data.data||[]).map((item)=>item.id).filter(Boolean),(data.models||[]).map((item)=>typeof item==="string"?item:item.id).filter(Boolean)];
+  return {models:[...new Set(ids as string[])]};
+}
+
 export async function testProviderImage(id:string){
   const provider=await getProviderRuntime(id);
   let workflow:"tryon"|"pose"="pose",images:string[]=[],prompt="一件白色基础款服装的简洁电商产品摄影，白色背景，单张图片，无文字，无水印";
