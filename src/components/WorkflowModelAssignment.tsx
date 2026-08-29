@@ -70,17 +70,22 @@ export default function WorkflowModelAssignment({
 
   function updateSelection(workflow: ModelWorkflowType, slot: "primary" | "fallback", providerId: string) {
     const provider = providers.find((item) => item.id === providerId);
+    if (!provider) {
+      setBindings((current) => ({ ...current, [workflow]: { ...current[workflow], [slot]: undefined } }));
+      return;
+    }
+    // 按工作流取最合适的模型字段，依次回退，避免写入空字符串
     const model =
       workflow === "product"
-        ? slot === "primary" ? provider?.visionModel || "" : provider?.chatModel || ""
+        ? slot === "primary" ? provider.visionModel || provider.defaultModel : provider.chatModel || provider.defaultModel
         : workflow === "qc"
-          ? provider?.visionModel || provider?.chatModel || ""
+          ? provider.visionModel || provider.chatModel || provider.defaultModel
           : workflow === "research" || workflow === "assistant"
-            ? provider?.chatModel || provider?.defaultModel || ""
-            : provider?.defaultModel || "";
+            ? provider.chatModel || provider.defaultModel
+            : provider.defaultModel;
     setBindings((current) => ({
       ...current,
-      [workflow]: { ...current[workflow], [slot]: provider ? { providerId: provider.id, model } : undefined },
+      [workflow]: { ...current[workflow], [slot]: { providerId: provider.id, model: model || "" } },
     }));
   }
   function updateModel(workflow: ModelWorkflowType, slot: "primary" | "fallback", model: string) {
@@ -130,6 +135,16 @@ export default function WorkflowModelAssignment({
   }
 
   async function saveBindings() {
+    // 前端先校验：已选择 Provider 但模型名为空的绑定，给出清晰提示，避免后端 zod 报难懂的错误
+    for (const workflow of WORKFLOWS) {
+      for (const slot of ["primary", "fallback"] as const) {
+        const selection = bindings[workflow.key][slot];
+        if (selection && !selection.model.trim()) {
+          setError(`「${workflow.label}」的${slot === "primary" ? "主" : "备用"}模型已选择提供商但模型名称为空，请填写模型名称（例如 mix-gpt-5.4）`);
+          return;
+        }
+      }
+    }
     setBusy(true);
     setError("");
     setMessage("");
