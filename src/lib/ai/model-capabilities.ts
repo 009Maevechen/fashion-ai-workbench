@@ -26,6 +26,7 @@ export const WORKFLOW_REQUIRED_CAPABILITIES: Record<
   research: ["text", "reasoning"],
   assistant: ["text"],
   correction: ["text"],
+  "prompt-optimize": ["prompt-optimization"],
 };
 
 export const WORKFLOW_LABELS: Record<ModelWorkflowType, string> = {
@@ -37,6 +38,7 @@ export const WORKFLOW_LABELS: Record<ModelWorkflowType, string> = {
   research: "爆款研究 / 文本分析",
   assistant: "工作台AI助手",
   correction: "咒语矫正",
+  "prompt-optimize": "Prompt优化模型",
 };
 
 export const WORKFLOW_DESCRIPTIONS: Record<ModelWorkflowType, string> = {
@@ -48,4 +50,5 @@ export const WORKFLOW_DESCRIPTIONS: Record<ModelWorkflowType, string> = {
   research: "爆款共同点总结、趋势研究、设计Brief、卖点总结",
   assistant: "工作台内的通用文本问答助手",
   correction: "把用户口语化的修改要求改写成精确、严格按方向的修改指令",
+  "prompt-optimize": "把简单中文咒语整理成结构化高质量 Prompt，再交给图片模型执行",
 };

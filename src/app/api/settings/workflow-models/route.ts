@@ -23,6 +23,7 @@ const schema = z.object({
   research: binding,
   assistant: binding,
   correction: binding,
+  "prompt-optimize": binding,
 });
 export const dynamic = "force-dynamic";
 export async function GET() {

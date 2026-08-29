@@ -61,6 +61,7 @@ const cleanBindings = (
   research: { ...(value?.research || {}) },
   assistant: { ...(value?.assistant || {}) },
   correction: { ...(value?.correction || {}) },
+  "prompt-optimize": { ...(value?.["prompt-optimize"] || {}) },
 });
 
 async function loadStore(): Promise<SettingsStore> {
@@ -292,7 +293,7 @@ export async function deleteApiProvider(id: string) {
     const exists = store.apiProviders.some((item) => item.id === id);
     if (!exists) throw new Error("API 提供商不存在");
     store.apiProviders = store.apiProviders.filter((item) => item.id !== id);
-    for (const workflow of ["product", "tryon", "pose", "recolor", "qc", "research", "assistant", "correction"] as const) {
+    for (const workflow of ["product", "tryon", "pose", "recolor", "qc", "research", "assistant", "correction", "prompt-optimize"] as const) {
       const binding = store.workflowModelBindings[workflow];
       if (binding.primary?.providerId === id) delete binding.primary;
       if (binding.fallback?.providerId === id) delete binding.fallback;
@@ -612,6 +613,7 @@ export async function saveWorkflowModelBindings(
       "research",
       "assistant",
       "correction",
+      "prompt-optimize",
     ] as const;
     for (const workflow of workflows) {
       for (const slot of ["primary", "fallback"] as const) {
@@ -832,6 +834,17 @@ export async function resolveCorrectionModel(slot: ModelSlot = "primary") {
   );
 }
 
+/** Prompt 优化模型：把简单中文咒语整理成结构化高质量 Prompt，再交给图片模型执行。 */
+export async function resolvePromptOptimizeModel(slot: ModelSlot = "primary") {
+  const selection = (await getWorkflowModelBindings())["prompt-optimize"][slot];
+  if (selection) return getProviderRuntime(selection.providerId, selection.model);
+  throw new Error(
+    slot === "fallback"
+      ? "Prompt优化尚未配置备用文本模型，请到“API与模型设置 → 工作流模型分配”中选择"
+      : "Prompt优化尚未配置文本模型，请到“API与模型设置 → 工作流模型分配”中选择 DeepSeek 等文本模型",
+  );
+}
+
 async function runtimeSummary(
   workflow: ModelWorkflowType,
   slot: ModelSlot,
@@ -855,9 +868,11 @@ async function runtimeSummary(
           ? await resolveQcModel(slot)
           : workflow === "correction"
             ? await resolveCorrectionModel(slot)
-            : workflow === "research" || workflow === "assistant"
-              ? await resolveTextModel(workflow, slot)
-              : await resolveWorkflowModel(workflow, "standard", slot);
+            : workflow === "prompt-optimize"
+              ? await resolvePromptOptimizeModel(slot)
+              : workflow === "research" || workflow === "assistant"
+                ? await resolveTextModel(workflow, slot)
+                : await resolveWorkflowModel(workflow, "standard", slot);
     return {
       slot,
       configured: true,
@@ -881,7 +896,7 @@ async function runtimeSummary(
 }
 export async function getWorkflowRuntimeSummary(): Promise<WorkflowRuntimeSummary> {
   const entries = await Promise.all(
-    (["product", "tryon", "pose", "recolor", "qc", "research", "assistant", "correction"] as const).map(
+    (["product", "tryon", "pose", "recolor", "qc", "research", "assistant", "correction", "prompt-optimize"] as const).map(
       async (workflow) =>
         [
           workflow,

@@ -5,7 +5,8 @@ export type ModelWorkflowType =
   | "qc"
   | "research"
   | "assistant"
-  | "correction";
+  | "correction"
+  | "prompt-optimize";
 
 export type ApiProviderType =
   | "openai-compatible"
@@ -14,7 +15,8 @@ export type ApiProviderType =
   | "bfl"
   | "volcengine"
   | "flux"
-  | "custom";
+  | "custom"
+  | "deepseek";
 
 /** 模型能力标签：模型中心据此判断“这个模型能做什么、不能做什么”。 */
 export type ModelCapability =
@@ -28,7 +30,13 @@ export type ModelCapability =
   | "qc"
   | "embedding"
   | "ocr"
-  | "upscale";
+  | "upscale"
+  | "prompt-optimization"
+  | "prompt-rewrite"
+  | "product-rule"
+  | "negative-constraint"
+  | "qc-report"
+  | "research";
 
 /** 模型库存条目：从已配置 Provider 推导出的可调度模型。 */
 export type ModelInventoryEntry = {
@@ -210,4 +218,5 @@ export const EMPTY_WORKFLOW_BINDINGS: WorkflowModelBindings = {
   research: {},
   assistant: {},
   correction: {},
+  "prompt-optimize": {},
 };

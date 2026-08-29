@@ -53,6 +53,7 @@ const TYPE_LABEL: Record<ApiProviderType, string> = {
   volcengine: "火山方舟",
   flux: "FLUX兼容接口",
   custom: "自定义兼容接口",
+  deepseek: "DeepSeek 文本模型",
 };
 const PROVIDER_FORM_META: Record<
   Exclude<ApiProviderType, "syc-openai-compatible">,
@@ -134,6 +135,17 @@ const PROVIDER_FORM_META: Record<
     defaultModel: "",
     help: "当前自定义接口按 OpenAI 兼容格式调用；如果服务商的请求字段或鉴权方式不是 Bearer Token，请选择其专用提供商类型。",
   },
+  deepseek: {
+    baseUrlLabel: "DeepSeek API Base URL",
+    baseUrlPlaceholder: "https://api.deepseek.com",
+    keyLabel: "DeepSeek API Key",
+    keyPlaceholder: "sk-…",
+    modelLabel: "文本模型 ID",
+    modelPlaceholder: "例如：deepseek-v4-flash、deepseek-v4-pro",
+    defaultBaseUrl: "https://api.deepseek.com",
+    defaultModel: "deepseek-v4-flash",
+    help: "DeepSeek 只用于文本理解与推理（Prompt优化、咒语改写、商品规则整理、负面约束生成、QC报告总结、爆款研究），不作为图片生成或图片编辑模型。",
+  },
 };
 const CATALOG: CatalogItem[] = [
   {
@@ -189,12 +201,12 @@ const CATALOG: CatalogItem[] = [
   {
     id: "deepseek",
     label: "DeepSeek",
-    types: ["openai-compatible"],
-    newType: "openai-compatible",
-    model: "deepseek-chat",
-    defaultModel: "deepseek-chat",
-    baseUrl: "https://api.deepseek.com/v1",
-    description: "文本理解与推理，用于爆款研究、AI助手",
+    types: ["deepseek"],
+    newType: "deepseek",
+    model: "deepseek-v4-flash",
+    defaultModel: "deepseek-v4-flash",
+    baseUrl: "https://api.deepseek.com",
+    description: "文本理解与推理：Prompt优化、咒语改写、QC总结、爆款研究",
   },
   {
     id: "xiaomi",
@@ -884,6 +896,18 @@ export default function ProviderSettingsManager({
                           : "测试连接"}
                       </button>
                     </article>
+                    {editingProvider.type === "deepseek" ? (
+                      <article>
+                        <b>文本能力</b>
+                        <span>可用</span>
+                        <small>
+                          Prompt优化 · 咒语改写 · 商品规则整理 · 负面约束生成 · QC报告总结 · 爆款研究
+                        </small>
+                        <p>
+                          DeepSeek 只用于文本理解与推理，不作为图片生成或图片编辑模型，无需图片能力测试。
+                        </p>
+                      </article>
+                    ) : (
                     <article>
                       <b>真实图片能力</b>
                       <span>
@@ -926,6 +950,7 @@ export default function ProviderSettingsManager({
                           : "测试图片生成"}
                       </button>
                     </article>
+                    )}
                   </div>
                 ) : (
                   <div className="notice">

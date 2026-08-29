@@ -12,6 +12,7 @@ const WORKFLOW_LABEL: Record<string, string> = {
   research: "爆款研究",
   assistant: "AI助手",
   correction: "咒语矫正",
+  "prompt-optimize": "Prompt优化",
 };
 
 export async function GET() {

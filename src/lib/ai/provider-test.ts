@@ -37,6 +37,7 @@ export async function listProviderModels(id:string){
 
 export async function testProviderImage(id:string){
   const provider=await getProviderRuntime(id);
+  if(provider.type==="deepseek")throw new Error("DeepSeek 只用于文本理解与推理，不支持图片生成或图片编辑，无需图片能力测试");
   let workflow:"tryon"|"pose"="pose",images:string[]=[],prompt="一件白色基础款服装的简洁电商产品摄影，白色背景，单张图片，无文字，无水印";
   if(provider.type==="bfl"||provider.type==="fashn"){
     const project=(await listProjects()).find(item=>item.assets.garmentImage&&(item.assets.modelReferenceImage||item.assets.modelImage));

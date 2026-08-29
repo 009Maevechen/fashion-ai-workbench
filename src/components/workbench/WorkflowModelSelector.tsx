@@ -17,12 +17,16 @@ const LABEL: Record<ModelWorkflowType, string> = {
   research: "爆款研究",
   assistant: "AI助手",
   correction: "咒语矫正",
+  "prompt-optimize": "Prompt优化",
 };
 
 function supportsWorkflow(
   provider: ApiProviderPublic,
   workflow: ModelWorkflowType,
 ) {
+  // DeepSeek 只做文本/推理，绝不参与图片生成或图片编辑工作流。
+  if (provider.type === "deepseek")
+    return ["research", "assistant", "correction", "prompt-optimize"].includes(workflow);
   if (workflow === "product")
     return [
       "syc-openai-compatible",

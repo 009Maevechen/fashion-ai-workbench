@@ -15,6 +15,12 @@ export const CAPABILITY_LABELS: Record<ModelCapability, string> = {
   embedding: "Embedding",
   ocr: "OCR",
   upscale: "Upscale",
+  "prompt-optimization": "Prompt优化",
+  "prompt-rewrite": "咒语改写",
+  "product-rule": "商品规则整理",
+  "negative-constraint": "负面约束生成",
+  "qc-report": "QC报告总结",
+  research: "爆款研究",
 };
 
 const IMAGE_GEN_PATTERN = /(?:gpt[-_.]?image|seedream|flux|dall[-_.]?e|imagen|midjourney|stable[-_.]?diffusion|sdxl|doubao[-_.]?image)/i;
@@ -37,6 +43,18 @@ export function inferCapabilities(
 ): ModelCapability[] {
   const capabilities = new Set<ModelCapability>();
   const normalized = model.toLowerCase();
+  // DeepSeek：纯文本/推理模型，绝不做图片生成或图片编辑。
+  if (type === "deepseek") {
+    capabilities.add("text");
+    capabilities.add("reasoning");
+    capabilities.add("prompt-optimization");
+    capabilities.add("prompt-rewrite");
+    capabilities.add("product-rule");
+    capabilities.add("negative-constraint");
+    capabilities.add("qc-report");
+    capabilities.add("research");
+    return [...capabilities];
+  }
   if (type === "fashn" || type === "bfl" || VTO_PATTERN.test(normalized)) {
     capabilities.add("image-editing");
     capabilities.add("image-generation");
