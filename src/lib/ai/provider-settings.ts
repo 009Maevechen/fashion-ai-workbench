@@ -765,11 +765,35 @@ export async function resolveProductAnalysisModel(slot: ModelSlot = "primary") {
       );
     return getProviderRuntime(selection.providerId, selection.model);
   }
+  // 环境变量兜底：未在工作台存储中绑定时，读取服务器 .env.local 中的视觉识别模型配置
+  const vision = environmentVisionRuntime();
+  if (vision) return vision;
   throw new Error(
     slot === "fallback"
       ? "产品识别尚未配置对话模型，请到“API与模型设置 → 工作流模型分配”中选择"
       : "产品识别尚未配置图片识别模型，请到“API与模型设置 → 工作流模型分配”中选择",
   );
+}
+
+/** 服务器环境变量配置的视觉识别模型（用于产品识别 / QC 等看图工作流兜底）。 */
+function environmentVisionRuntime(): ProviderRuntimeConfig | null {
+  const baseUrl = process.env.VISION_API_BASE_URL?.trim();
+  const apiKey = process.env.VISION_API_KEY?.trim();
+  const model = process.env.VISION_MODEL?.trim();
+  if (!baseUrl && !apiKey && !model) return null;
+  if (!baseUrl || !apiKey || !model)
+    throw new Error(
+      "视觉识别环境变量不完整：请同时配置 VISION_API_BASE_URL、VISION_API_KEY、VISION_MODEL",
+    );
+  return {
+    id: "environment:vision",
+    name: "视觉识别模型（环境变量）",
+    type: "openai-compatible",
+    baseUrl,
+    apiKey,
+    model,
+    source: "environment",
+  };
 }
 
 /**
