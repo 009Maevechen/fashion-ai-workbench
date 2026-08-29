@@ -60,6 +60,7 @@ const cleanBindings = (
   qc: { ...(value?.qc || {}) },
   research: { ...(value?.research || {}) },
   assistant: { ...(value?.assistant || {}) },
+  correction: { ...(value?.correction || {}) },
 });
 
 async function loadStore(): Promise<SettingsStore> {
@@ -291,7 +292,7 @@ export async function deleteApiProvider(id: string) {
     const exists = store.apiProviders.some((item) => item.id === id);
     if (!exists) throw new Error("API 提供商不存在");
     store.apiProviders = store.apiProviders.filter((item) => item.id !== id);
-    for (const workflow of ["product", "tryon", "pose", "recolor", "qc", "research", "assistant"] as const) {
+    for (const workflow of ["product", "tryon", "pose", "recolor", "qc", "research", "assistant", "correction"] as const) {
       const binding = store.workflowModelBindings[workflow];
       if (binding.primary?.providerId === id) delete binding.primary;
       if (binding.fallback?.providerId === id) delete binding.fallback;
@@ -610,6 +611,7 @@ export async function saveWorkflowModelBindings(
       "qc",
       "research",
       "assistant",
+      "correction",
     ] as const;
     for (const workflow of workflows) {
       for (const slot of ["primary", "fallback"] as const) {
@@ -819,6 +821,17 @@ export async function resolveTextModel(workflow: "research" | "assistant", slot:
   );
 }
 
+/** 咒语矫正模型：把用户口语化的修改要求改写成严格按方向的精确修改指令。 */
+export async function resolveCorrectionModel(slot: ModelSlot = "primary") {
+  const selection = (await getWorkflowModelBindings()).correction[slot];
+  if (selection) return getProviderRuntime(selection.providerId, selection.model);
+  throw new Error(
+    slot === "fallback"
+      ? "咒语矫正尚未配置备用文本模型，请到“API与模型设置 → 工作流模型分配”中选择"
+      : "咒语矫正尚未配置文本模型，请到“API与模型设置 → 工作流模型分配”中选择 DeepSeek 等文本模型",
+  );
+}
+
 async function runtimeSummary(
   workflow: ModelWorkflowType,
   slot: ModelSlot,
@@ -840,9 +853,11 @@ async function runtimeSummary(
         ? await resolveProductAnalysisModel(slot)
         : workflow === "qc"
           ? await resolveQcModel(slot)
-          : workflow === "research" || workflow === "assistant"
-            ? await resolveTextModel(workflow, slot)
-            : await resolveWorkflowModel(workflow, "standard", slot);
+          : workflow === "correction"
+            ? await resolveCorrectionModel(slot)
+            : workflow === "research" || workflow === "assistant"
+              ? await resolveTextModel(workflow, slot)
+              : await resolveWorkflowModel(workflow, "standard", slot);
     return {
       slot,
       configured: true,
@@ -866,7 +881,7 @@ async function runtimeSummary(
 }
 export async function getWorkflowRuntimeSummary(): Promise<WorkflowRuntimeSummary> {
   const entries = await Promise.all(
-    (["product", "tryon", "pose", "recolor", "qc", "research", "assistant"] as const).map(
+    (["product", "tryon", "pose", "recolor", "qc", "research", "assistant", "correction"] as const).map(
       async (workflow) =>
         [
           workflow,

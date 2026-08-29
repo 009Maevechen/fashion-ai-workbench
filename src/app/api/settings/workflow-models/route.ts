@@ -22,6 +22,7 @@ const schema = z.object({
   qc: binding,
   research: binding,
   assistant: binding,
+  correction: binding,
 });
 export const dynamic = "force-dynamic";
 export async function GET() {

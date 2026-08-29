@@ -4,7 +4,8 @@ export type ModelWorkflowType =
   | "product"
   | "qc"
   | "research"
-  | "assistant";
+  | "assistant"
+  | "correction";
 
 export type ApiProviderType =
   | "openai-compatible"
@@ -208,4 +209,5 @@ export const EMPTY_WORKFLOW_BINDINGS: WorkflowModelBindings = {
   qc: {},
   research: {},
   assistant: {},
+  correction: {},
 };

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import {addOperation,getJob,getOperation,listOperations,markInterruptedJobs,markInterruptedOperations,patchOperation,reconcileGeneratingProjects,type Operation} from "./db";
 import type {ModelSlot} from "./ai/provider-settings-types";
 import {executePose,executeRecolor,executeTryon} from "./workflow";
+import {refineCorrectionRequest} from "./ai/correction-refine";
 import type {WorkflowType} from "./ai/types";
 
 type JobRuntimeGlobal=typeof globalThis&{
@@ -50,7 +51,8 @@ export async function retryJob(id:string,modelPreference:ModelSlot="primary",cor
   const correction=correctionRequest?.trim();
   if(correction){
     payload.correctionRequest=correction;
-    const lock=`\n本次咒语矫正：${correction}\n只修正上述明确问题；其余人物、姿势、构图、背景、服装类型、版型、长度、颜色、材质、面料、纹理、垂感和全部设计细节必须保持不变。`;
+    const refined=await refineCorrectionRequest(correction);
+    const lock=`\n本次咒语矫正：${refined}\n只修正上述明确问题；其余人物、姿势、构图、背景、服装类型、版型、长度、颜色、材质、面料、纹理、垂感和全部设计细节必须保持不变。`;
     if(job.workflow==="tryon"){
       payload.modelImage=job.outputImages[0];
       payload.detailRequirements=`${String(payload.detailRequirements||"")}${lock}`;

@@ -32,12 +32,13 @@ const WORKFLOWS: {
   { key: "qc", label: "QC质量检查", description: "商品结构比对、模特一致性、面料、手部异常、露脸检测，需要视觉理解模型" },
   { key: "research", label: "爆款研究 / 文本分析", description: "爆款共同点、趋势研究、设计Brief、卖点总结，需要文本推理模型（预留）" },
   { key: "assistant", label: "工作台AI助手", description: "工作台内通用文本问答（预留）" },
+  { key: "correction", label: "咒语矫正", description: "把用户口语化的图片修改要求改写成精确、严格按方向的修改指令，需要文本模型（如 DeepSeek）" },
 ];
 
 function supportsWorkflow(provider: ApiProviderPublic, workflow: ModelWorkflowType) {
   if (workflow === "product" || workflow === "qc")
     return ["syc-openai-compatible", "openai-compatible", "volcengine", "custom"].includes(provider.type);
-  if (workflow === "research" || workflow === "assistant")
+  if (workflow === "research" || workflow === "assistant" || workflow === "correction")
     return ["syc-openai-compatible", "openai-compatible", "volcengine", "custom"].includes(provider.type);
   if (workflow === "tryon") return true;
   return provider.type !== "bfl" && provider.type !== "fashn";
@@ -80,7 +81,7 @@ export default function WorkflowModelAssignment({
         ? slot === "primary" ? provider.visionModel || provider.defaultModel : provider.chatModel || provider.defaultModel
         : workflow === "qc"
           ? provider.visionModel || provider.chatModel || provider.defaultModel
-          : workflow === "research" || workflow === "assistant"
+          : workflow === "research" || workflow === "assistant" || workflow === "correction"
             ? provider.chatModel || provider.defaultModel
             : provider.defaultModel;
     setBindings((current) => ({
@@ -105,7 +106,7 @@ export default function WorkflowModelAssignment({
         ? slot === "primary" ? provider.visionModel : provider.chatModel
         : workflow === "qc"
           ? provider.visionModel || provider.chatModel
-          : workflow === "research" || workflow === "assistant"
+          : workflow === "research" || workflow === "assistant" || workflow === "correction"
             ? provider.chatModel || provider.defaultModel
             : provider.defaultModel;
     if (!model) return "";
@@ -122,7 +123,7 @@ export default function WorkflowModelAssignment({
       const model = provider.visionModel || provider.chatModel;
       return `${provider.name} · ${model || "未配置视觉模型"}`;
     }
-    if (workflow === "research" || workflow === "assistant") {
+    if (workflow === "research" || workflow === "assistant" || workflow === "correction") {
       const model = provider.chatModel || provider.defaultModel;
       return `${provider.name} · ${model || "未配置文本模型"}`;
     }
@@ -158,7 +159,7 @@ export default function WorkflowModelAssignment({
       if (!response.ok) throw new Error(data.error || "模型绑定保存失败");
       setBindings(data.bindings);
       setRuntime(data.runtime);
-      setMessage("七个工作流的主模型与备用模型已保存");
+      setMessage("八个工作流的主模型与备用模型已保存");
     } catch (e) {
       setError(e instanceof Error ? e.message : "模型绑定保存失败");
     } finally {
@@ -193,7 +194,7 @@ export default function WorkflowModelAssignment({
                       ? slot === "primary" ? "图片识别模型" : "对话模型"
                       : workflow.key === "qc"
                         ? slot === "primary" ? "QC视觉模型" : "QC备用视觉模型"
-                        : workflow.key === "research" || workflow.key === "assistant"
+                        : workflow.key === "research" || workflow.key === "assistant" || workflow.key === "correction"
                           ? slot === "primary" ? "主文本模型" : "备用文本模型"
                           : slot === "primary" ? "主模型" : "备用模型"}
                   </b>
@@ -206,7 +207,7 @@ export default function WorkflowModelAssignment({
                         ? slot === "primary" ? "选择图片识别 API" : "选择对话 API"
                         : workflow.key === "qc"
                           ? slot === "primary" ? "选择QC视觉模型 API" : "不配置备用模型"
-                          : workflow.key === "research" || workflow.key === "assistant"
+                          : workflow.key === "research" || workflow.key === "assistant" || workflow.key === "correction"
                             ? slot === "primary" ? "选择文本模型 API" : "不配置备用模型"
                             : slot === "primary" ? environmentOptionLabel(summary.primary) : "不配置备用模型"}
                     </option>
@@ -225,7 +226,7 @@ export default function WorkflowModelAssignment({
                         ? slot === "primary" ? "图片识别模型 ID" : "对话模型 ID"
                         : workflow.key === "qc"
                           ? "视觉理解模型 ID"
-                          : workflow.key === "research" || workflow.key === "assistant"
+                          : workflow.key === "research" || workflow.key === "assistant" || workflow.key === "correction"
                             ? "文本模型 ID"
                             : "模型名称"
                     }

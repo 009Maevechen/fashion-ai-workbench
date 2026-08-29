@@ -25,6 +25,7 @@ export const WORKFLOW_REQUIRED_CAPABILITIES: Record<
   qc: ["vision"],
   research: ["text", "reasoning"],
   assistant: ["text"],
+  correction: ["text"],
 };
 
 export const WORKFLOW_LABELS: Record<ModelWorkflowType, string> = {
@@ -35,6 +36,7 @@ export const WORKFLOW_LABELS: Record<ModelWorkflowType, string> = {
   qc: "QC质量检查",
   research: "爆款研究 / 文本分析",
   assistant: "工作台AI助手",
+  correction: "咒语矫正",
 };
 
 export const WORKFLOW_DESCRIPTIONS: Record<ModelWorkflowType, string> = {
@@ -45,4 +47,5 @@ export const WORKFLOW_DESCRIPTIONS: Record<ModelWorkflowType, string> = {
   qc: "商品结构比对、模特一致性、面料、手部异常、露脸检测",
   research: "爆款共同点总结、趋势研究、设计Brief、卖点总结",
   assistant: "工作台内的通用文本问答助手",
+  correction: "把用户口语化的修改要求改写成精确、严格按方向的修改指令",
 };
