@@ -1,5 +1,5 @@
 import {faceVisibilityPrompt} from "./face-visibility";
-import {PHOTOREAL_QUALITY_PROMPT} from "./image-quality";
+import {PHOTOREAL_QUALITY_PROMPT,QUALITY_SELF_CHECK_PROMPT} from "./image-quality";
 
 export const TRYON_PROMPT_VERSION="tryon-v8-model-subject-priority";
 export function tryonPrompt(productType:string,description:string,details:string,showFace=false){return `任务：真实服装商品换装。
@@ -23,4 +23,4 @@ ${faceVisibilityPrompt(showFace)}
 设计细节强制锁定（一比一复刻）：必须保持领口、袖口、肩部、门襟、下摆、腰头、裤脚、口袋、纽扣的数量/颜色/形状/位置、拉链、抽绳、印花、图案、条纹数量、拼接、包边、渐变方向、过渡范围、色块边界、各设计面积比例和特殊装饰布局。服装类型和商品原始颜色必须与产品图完全一致，不得新增、删除、移动、替换或重新设计任何结构。
  禁止：更换模特或改变模特的脸部、发型、姿势、景别、构图、场景、背景或光线；把结果生成为接近产品图的商品展示图；沿用产品图的人物、构图、展示方式或整体画面；改变服装长度；增加或删除结构装饰；改变服装类型；参考或混入模特原服装的款式、颜色、图案、面料或细节；直接返回原模特图或产品图；生成多宫格、对比图、文字或水印；每次只输出一张独立换装图。
 服装描述：${description||"未填写"}
-重点细节：${details}${PHOTOREAL_QUALITY_PROMPT}`}
+ 重点细节：${details}${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`}

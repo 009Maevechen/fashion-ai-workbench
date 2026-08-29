@@ -1,5 +1,5 @@
 import {faceVisibilityPrompt} from "./face-visibility";
-import {PHOTOREAL_QUALITY_PROMPT} from "./image-quality";
+import {PHOTOREAL_QUALITY_PROMPT,QUALITY_SELF_CHECK_PROMPT} from "./image-quality";
 
 export const POSE_PROMPT_VERSION="pose-v5-material-design-lock";
 export const POSES=["自然站立，身体正面或轻微侧向镜头，双手自然放置，完整清晰地展示服装。","模特轻微迈步或自然转移重心，动作自然，不遮挡服装重点。","身体轻微侧转，一只手自然弯曲，展示服装侧面、袖型、腰线、裙型或裤型。"];
@@ -25,4 +25,4 @@ export function posePrompt(pose:string,productType:string,shot:string,face:boole
 ${faceVisibilityPrompt(face)}
 背景要求：${background?"严格保持第一张图背景":"背景可自然调整，但不得影响姿势复刻"}
 细节保护：${details}
-禁止更换模特、改变服装设计或颜色、增删细节、修改参考姿势、拼图多宫格、文字水印边框、额外肢体或畸形、直接返回任一输入图。${PHOTOREAL_QUALITY_PROMPT}`}
+禁止更换模特、改变服装设计或颜色、增删细节、修改参考姿势、拼图多宫格、文字水印边框、额外肢体或畸形、直接返回任一输入图。${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`}
