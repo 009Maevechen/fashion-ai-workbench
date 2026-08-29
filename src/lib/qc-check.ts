@@ -1,11 +1,7 @@
 import "server-only";
-import fs from "node:fs/promises";
-import path from "node:path";
 import sharp from "sharp";
 import type { Project } from "./db";
 import { localImage, storageStats } from "./ai/storage";
-import { runtimeOutputsDir } from "./runtime-paths";
-import { readableSegment } from "./final-archive";
 import { sha } from "./ai/validators";
 
 /** 第一层 QC：纯本地检查，不依赖 AI。返回问题描述数组。 */
@@ -70,31 +66,15 @@ export async function tempStorageStats() {
   return storageStats();
 }
 
-/** 清理 SKU 对应的临时目录。返回删除的字节估算。 */
+/**
+ * 商品流程文件已改为长期保存。保留这个兼容函数避免旧调用崩溃，但绝不再删除 SKU 目录。
+ */
 export async function cleanupSkuTemp(sku: string): Promise<number> {
-  const root = runtimeOutputsDir();
-  const target = path.resolve(root, readableSegment(sku));
-  if (!target.startsWith(root + path.sep)) return 0;
-  let bytes = 0;
-  async function size(dir: string): Promise<number> {
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      let total = 0;
-      for (const entry of entries) {
-        const p = path.join(dir, entry.name);
-        if (entry.isDirectory()) total += await size(p);
-        else total += (await fs.stat(p)).size;
-      }
-      return total;
-    } catch {
-      return 0;
-    }
-  }
-  bytes = await size(target);
-  await fs.rm(target, { recursive: true, force: true });
-  return bytes;
+  void sku;
+  return 0;
 }
 
 export function canAutoCleanTemp(project: Project): boolean {
-  return project.status === "已完成";
+  void project;
+  return false;
 }

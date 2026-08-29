@@ -5,8 +5,9 @@ import crypto from "node:crypto";
 import type {GenerationMode,GenerationStatus,WorkflowType} from "./ai/types";
 import type {ApiProviderType,ModelSlot} from "./ai/provider-settings-types";
 import type {ColorAdjustment} from "./color-adjustment";
-import {runtimeDataDir} from "./runtime-paths";
+import {runtimeDataDir,runtimeProjectProcessDir} from "./runtime-paths";
 import {findProjectByRouteKey} from "./project-lookup";
+import {safeSegment} from "./ai/validators";
 
 export type ProductType="上衣"|"裤装"|"连衣裙"|"半身裙"|"套装";
 export type PoseShotType="full_body"|"half_body"|"upper_body"|"lower_body";
@@ -58,7 +59,18 @@ async function replaceStoreFile(tmp:string,target:string){
   }
   throw lastError;
 }
-async function mutate<T>(fn:(s:Store)=>T|Promise<T>){let result!:T;queue=queue.then(async()=>{const s=await load();result=await fn(s);await fs.mkdir(dataDir,{recursive:true});try{await fs.copyFile(file,backup)}catch{}const tmp=path.join(dataDir,`store.${process.pid}.${crypto.randomUUID()}.tmp`);try{await fs.writeFile(tmp,JSON.stringify(s,null,2));await replaceStoreFile(tmp,file)}finally{await fs.unlink(tmp).catch(()=>{})}});await queue;return result}
+async function persistProjectProcessFiles(store:Store){
+  const root=runtimeProjectProcessDir();
+  await Promise.all(store.projects.map(async project=>{
+    const directory=path.resolve(root,safeSegment(project.sku));
+    if(!directory.startsWith(root+path.sep))throw new Error("非法商品流程目录");
+    await fs.mkdir(directory,{recursive:true});
+    const target=path.join(directory,"project-process.json"),temporary=`${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    const snapshot={schemaVersion:SCHEMA_VERSION,savedAt:new Date().toISOString(),project,jobs:store.jobs.filter(job=>job.projectId===project.id),operations:store.operations.filter(operation=>operation.projectId===project.id)};
+    try{await fs.writeFile(temporary,JSON.stringify(snapshot,null,2));await replaceStoreFile(temporary,target)}finally{await fs.unlink(temporary).catch(()=>{})}
+  }));
+}
+async function mutate<T>(fn:(s:Store)=>T|Promise<T>){let result!:T;queue=queue.then(async()=>{const s=await load();result=await fn(s);await fs.mkdir(dataDir,{recursive:true});try{await fs.copyFile(file,backup)}catch{}const tmp=path.join(dataDir,`store.${process.pid}.${crypto.randomUUID()}.tmp`);try{await fs.writeFile(tmp,JSON.stringify(s,null,2));await replaceStoreFile(tmp,file);await persistProjectProcessFiles(s)}finally{await fs.unlink(tmp).catch(()=>{})}});await queue;return result}
 const normalize=(p:Project):Project=>({...p,assets:p.assets||{},profile:p.profile||{reviewStatus:"draft",tags:[],attributes:{}},settings:p.settings||{},stepStatuses:p.stepStatuses||{"1":"ready","2":"not_started","3":"not_started","4":"not_started","5":"not_started"},dependencyStatus:p.dependencyStatus||"current",targetColors:p.targetColors||[],poseReferenceInputs:p.poseReferenceInputs||[],poseReviewStates:p.poseReviewStates||{}});
 export const listProjects=async()=>{const s=await load();return s.projects.map(normalize).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))};
 // 项目页面地址既接受内部 ID，也接受用户可见的 SKU；这样复制地址或刷新 SKU 路径不会 404。

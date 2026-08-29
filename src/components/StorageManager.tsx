@@ -6,6 +6,8 @@ type Stats = {
   cacheBytes: number;
   outputPath: string;
   tempPath?: string;
+  processPath?:string;
+  processBytes?:number;
   finalPath?: string;
   finalExplicit?: boolean;
   poseLibraryPath?: string;
@@ -78,7 +80,7 @@ export default function StorageManager() {
     await refresh();
     setNotice("输出缓存已清理");
   }
-  async function openDir(which: "temp" | "final" | "pose") {
+  async function openDir(which: "temp" | "process" | "final" | "pose") {
     setError("");
     const response = await fetch("/api/storage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "open-dir", path: which }) });
     const data = await response.json();
@@ -86,7 +88,7 @@ export default function StorageManager() {
     setNotice(`已请求打开目录：${data.opened}`);
   }
   return <section className="card storage-manager">
-    <div className="panel-head"><div><h2>本地文件与存储目录</h2><small>长期只保存姿势参考图与最终成品图，其余均为临时文件</small></div><div className="actions"><button className="secondary" disabled={!stats?.cacheBytes} onClick={() => void clearCache()}>清理缓存</button><button className="danger" disabled={!stats?.trashBytes} onClick={empty}>清空回收站</button></div></div>
+    <div className="panel-head"><div><h2>本地文件与存储目录</h2><small>商品流程素材、生成结果、姿势库与最终成品都持久化保存</small></div><div className="actions"><button className="secondary" disabled={!stats?.cacheBytes} onClick={() => void clearCache()}>只清理可重建缓存</button><button className="danger" disabled={!stats?.trashBytes} onClick={empty}>清空回收站</button></div></div>
     {error && <div className="error">{error}</div>}
     {notice && <div className="notice">{notice}</div>}
 
@@ -98,12 +100,12 @@ export default function StorageManager() {
     <DirectoryEditor label="姿势库位置" placeholder="例如 D:\\AI-Fashion-Library\\姿势库" value={stats?.poseLibraryPath || ""} action="set-pose-library-path" onRefresh={refresh} />
     {stats?.poseLibraryPath && <div className="storage-path-row"><small className="path-text">{stats.poseLibraryPath}</small><span className="muted">{stats.poseLibraryExplicit ? "已自定义" : "默认（临时目录内）"} · {stats.poseLibraryCount ?? 0} 张姿势</span><button className="secondary" onClick={() => void openDir("pose")}>打开文件夹</button></div>}
 
-    <h3 className="section-label">临时工作目录</h3>
-    <DirectoryEditor label="临时文件位置" placeholder="例如 D:\\AI-Fashion-Temp" value={stats?.tempPath || ""} action="set-output-path" onRefresh={refresh} />
-    {stats?.tempPath && <div className="storage-path-row"><small className="path-text">{stats.tempPath}</small><button className="secondary" onClick={() => void openDir("temp")}>打开文件夹</button></div>}
+    <h3 className="section-label">商品流程文件</h3>
+    <DirectoryEditor label="商品流程保存位置" placeholder="例如 D:\\AI-Fashion-Projects" value={stats?.processPath || ""} action="set-process-path" onRefresh={refresh} />
+    {stats?.processPath && <div className="storage-path-row"><small className="path-text">{stats.processPath}</small><span className="muted">按 SKU 分文件夹长期保存，完成项目也不删除</span><button className="secondary" onClick={() => void openDir("process")}>打开文件夹</button></div>}
 
     <div className="grid">
-      <article className="image-card"><h3>临时文件占用</h3><strong>{stats ? format(stats.outputsBytes) : "读取中…"}</strong></article>
+      <article className="image-card"><h3>商品流程文件占用</h3><strong>{stats ? format(stats.processBytes??stats.outputsBytes) : "读取中…"}</strong></article>
       <article className="image-card"><h3>最终成品占用</h3><strong>{stats ? format(stats.finalBytes || 0) : "读取中…"}</strong></article>
       <article className="image-card"><h3>姿势库占用</h3><strong>{stats ? format(stats.poseLibraryBytes || 0) : "读取中…"}</strong></article>
       <article className="image-card"><h3>回收站占用</h3><strong>{stats ? format(stats.trashBytes) : "读取中…"}</strong></article>

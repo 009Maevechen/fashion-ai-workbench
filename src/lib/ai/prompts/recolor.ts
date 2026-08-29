@@ -1,4 +1,5 @@
 import {faceVisibilityPrompt} from "./face-visibility";
+import {PHOTOREAL_QUALITY_PROMPT} from "./image-quality";
 import {protectedClothingForArea,type RecolorGarmentArea} from "../../recolor-scope";
 
 export const RECOLOR_PROMPT_VERSION="recolor-v4-detail-aware";
@@ -13,4 +14,4 @@ ${faceVisibilityPrompt(showFace)}
 材质与设计强制锁定：复色只能替换颜色，不得改变面料材质、织法/针法、罗纹或纹理方向与密度、绒感、透视度、光泽、褶皱响应和垂坠感。原商品如有渐变，必须保留相同渐变方向、层次和过渡边界，只把渐变整体映射到目标色系；色块、拼接和特殊设计的布局与比例必须保持一致。
 必须保持同一个模特、姿势身体比例、背景光线阴影构图、服装版型长度轮廓和全部结构细节、3:4比例；每次只输出一张独立图片。
 以下区域必须保持不变：${protectedAreas.join("、")}\n补充要求：${extra}
-禁止改变模特皮肤头发身体、背景、未选择区域、保护区域、服装结构长度；禁止多宫格文字水印；不得直接返回原图。`}
+禁止改变模特皮肤头发身体、背景、未选择区域、保护区域、服装结构长度；禁止多宫格文字水印；不得直接返回原图。${PHOTOREAL_QUALITY_PROMPT}`}

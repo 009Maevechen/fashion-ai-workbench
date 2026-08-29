@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getProject, listJobs, updateProject } from "@/lib/db";
 import { finalPackagePhotoCount } from "@/lib/final-package";
 import { archiveFinalDeliverables } from "@/lib/final-archive";
-import { cleanupSkuTemp } from "@/lib/qc-check";
 import { hasExplicitFinalDir, runtimeFinalDir } from "@/lib/runtime-paths";
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,17 +18,13 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       dependencyStatus: "current",
       stepStatuses: { ...project.stepStatuses, "5": "completed" },
     });
-    let tempCleanedBytes = 0;
-    // 最终确认后自动清理临时文件（默认开启）
-    if (process.env.AI_STUDIO_DISABLE_AUTO_CLEAN !== "1") {
-      tempCleanedBytes = await cleanupSkuTemp(project.sku);
-    }
     return NextResponse.json({
       ...updated,
       archivedCount: archived.length,
       finalDir: runtimeFinalDir(),
       finalDirExplicit: hasExplicitFinalDir(),
-      tempCleanedBytes,
+      tempCleanedBytes: 0,
+      processFilesPreserved: true,
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "无法完成项目" }, { status: 400 });

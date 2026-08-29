@@ -29,12 +29,14 @@ function userDataBaseDir(): string {
 export const runtimeDataDir = () => resolveRuntimeDirectory(process.env.AI_STUDIO_DATA_DIR, path.join(userDataBaseDir(), "data"));
 const storageSettingsFile = () => path.join(runtimeDataDir(), "storage-settings.json");
 type StorageSettings = {
+  projectProcessDir?: string;
   outputsDir?: string;
   finalDir?: string;
   poseLibraryDir?: string;
   visualReferenceDir?: string;
   visualReferenceEnabled?: boolean;
   visualReferenceModelId?: string;
+  previousProjectProcessDirs?: string[];
   previousOutputDirs?: string[];
   previousFinalDirs?: string[];
   previousPoseLibraryDirs?: string[];
@@ -51,16 +53,34 @@ function savedOutputsDir() {
   return storageSettings().outputsDir?.trim();
 }
 
+/**
+ * 商品流程文件目录：每个 SKU 的上传素材、自动裁图、换装、姿势、复色和过程结果长期保存。
+ * 兼容旧版 outputsDir：已设置过输出目录的用户不会突然换路径。
+ */
+export const defaultRuntimeProjectProcessDir = () =>
+  resolveRuntimeDirectory(process.env.AI_STUDIO_PROCESS_DIR||process.env.AI_STUDIO_OUTPUTS_DIR||process.env.OUTPUTS_DIR, path.join(userDataBaseDir(), "product-process"));
+export const runtimeProjectProcessDir = () => {
+  const settings=storageSettings(),saved=settings.projectProcessDir?.trim()||savedOutputsDir();
+  return resolveRuntimeDirectory(saved,defaultRuntimeProjectProcessDir());
+};
+export const runtimeProjectProcessSearchDirs = () => {
+  const settings=storageSettings();
+  return [...new Set([
+    runtimeProjectProcessDir(),
+    ...(settings.previousProjectProcessDirs||[]).map(item=>path.resolve(item)),
+    ...(settings.previousOutputDirs||[]).map(item=>path.resolve(item)),
+    defaultRuntimeOutputsDir(),
+  ])].filter(Boolean);
+};
+
 export const defaultRuntimeOutputsDir = () =>
   resolveRuntimeDirectory(
     process.env.AI_STUDIO_OUTPUTS_DIR || process.env.OUTPUTS_DIR,
     path.join(userDataBaseDir(), "outputs"),
   );
-export const runtimeOutputsDir = () => resolveRuntimeDirectory(savedOutputsDir(), defaultRuntimeOutputsDir());
-export const runtimeOutputSearchDirs = () => {
-  const settings = storageSettings();
-  return [...new Set([runtimeOutputsDir(), ...(settings.previousOutputDirs || []).map((item) => path.resolve(item))])].filter(Boolean);
-};
+// 保留旧函数名供现有存储代码使用，实际已指向长期商品流程目录。
+export const runtimeOutputsDir = runtimeProjectProcessDir;
+export const runtimeOutputSearchDirs = runtimeProjectProcessSearchDirs;
 
 /**
  * 最终成品目录：QC 通过且人工确认的成品图长期保存于此。
@@ -126,6 +146,13 @@ export async function saveRuntimeOutputsDir(value: string) {
   const existing = storageSettings();
   const previousOutputDirs = [...new Set([...(existing.previousOutputDirs || []), current])].filter((item) => path.resolve(item) !== resolved);
   await persistSettings({ ...existing, outputsDir: resolved, previousOutputDirs });
+  return resolved;
+}
+
+export async function saveRuntimeProjectProcessDir(value:string){
+  const resolved=await assertWritableDir(value),current=runtimeProjectProcessDir(),existing=storageSettings();
+  const previousProjectProcessDirs=[...new Set([...(existing.previousProjectProcessDirs||[]),current])].filter(item=>path.resolve(item)!==resolved);
+  await persistSettings({...existing,projectProcessDir:resolved,previousProjectProcessDirs});
   return resolved;
 }
 

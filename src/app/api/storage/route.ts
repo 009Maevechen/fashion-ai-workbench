@@ -6,10 +6,12 @@ import {
   runtimeFinalDir,
   runtimeOutputsDir,
   runtimePoseLibraryDir,
+  runtimeProjectProcessDir,
   runtimeVisualReferenceDir,
   saveRuntimeFinalDir,
   saveRuntimeOutputsDir,
   saveRuntimePoseLibraryDir,
+  saveRuntimeProjectProcessDir,
   saveRuntimeVisualReferenceDir,
 } from "@/lib/runtime-paths";
 import { readManifest } from "@/lib/manifest";
@@ -36,6 +38,7 @@ export async function GET() {
   const poseLibraryDir = runtimePoseLibraryDir();
   const visualReferenceDir = runtimeVisualReferenceDir();
   const tempDir = runtimeOutputsDir();
+  const processDir=runtimeProjectProcessDir();
   const [finalBytes, poseLibraryBytes, visualReferenceBytes, finalManifest, poseManifest] = await Promise.all([
     dirSize(finalDir),
     dirSize(poseLibraryDir),
@@ -46,6 +49,8 @@ export async function GET() {
   return NextResponse.json({
     ...stats,
     tempPath: tempDir,
+    processPath:processDir,
+    processBytes:stats.outputsBytes,
     finalPath: finalDir,
     finalExplicit: hasExplicitFinalDir(),
     poseLibraryPath: poseLibraryDir,
@@ -69,13 +74,14 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { action?: string; path?: string };
     const action = body.action;
     if (action === "clear-cache") await emptyOutputCache();
+    else if (action === "set-process-path") updateOutputRoot(await saveRuntimeProjectProcessDir(String(body.path || "")));
     else if (action === "set-output-path") updateOutputRoot(await saveRuntimeOutputsDir(String(body.path || "")));
     else if (action === "set-final-path") await saveRuntimeFinalDir(String(body.path || ""));
     else if (action === "set-pose-library-path") await saveRuntimePoseLibraryDir(String(body.path || ""));
     else if (action === "set-visual-reference-path") await saveRuntimeVisualReferenceDir(String(body.path || ""));
     else if (action === "open-dir") {
       const which = String(body.path || "temp");
-      const dir = which === "final" ? runtimeFinalDir() : which === "pose" ? runtimePoseLibraryDir() : which === "visual" ? runtimeVisualReferenceDir() : runtimeOutputsDir();
+      const dir = which === "final" ? runtimeFinalDir() : which === "pose" ? runtimePoseLibraryDir() : which === "visual" ? runtimeVisualReferenceDir() : which==="process"?runtimeProjectProcessDir():runtimeOutputsDir();
       await fs.mkdir(dir, { recursive: true });
       return NextResponse.json({ opened: dir });
     } else throw new Error("不支持的存储操作");

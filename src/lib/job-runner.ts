@@ -41,11 +41,29 @@ export async function enqueueWorkflow(workflow:WorkflowType,payload:{projectId:s
   if(idempotencyKey){const existing=await listOperations(payload.projectId);const dup=existing.find(item=>item.workflow===workflow&&item.payload&&(item.payload as Record<string,unknown>).idempotencyKey===idempotencyKey&&["queued","running","success"].includes(item.status));if(dup)return dup}
   const operation:Operation={id:crypto.randomUUID(),projectId:payload.projectId,workflow,status:"queued",payload:{...payload,idempotencyKey:idempotencyKey||crypto.randomUUID()},jobIds:[],createdAt:now,updatedAt:now};await addOperation(operation);schedule(operation);return operation}
 export async function retryOperation(id:string){const operation=await getOperation(id);if(!operation)throw new Error("本地任务不存在");if(operation.status==="queued"||operation.status==="running")throw new Error("任务仍在执行中");return enqueueWorkflow(operation.workflow,operation.payload as {projectId:string})}
-export async function retryJob(id:string,modelPreference:ModelSlot="primary"){
+export async function retryJob(id:string,modelPreference:ModelSlot="primary",correctionRequest?:string){
   const job=await getJob(id);if(!job)throw new Error("生成任务不存在");
   if(job.phase&&!["success","failed","interrupted"].includes(job.phase))throw new Error("任务仍在执行中");
   const operations=await listOperations(job.projectId),operation=operations.find(item=>item.jobIds.includes(id));
   if(!operation)throw new Error("找不到该任务的原始请求，无法安全重试");
-  const payload={...(operation.payload as Record<string,unknown>),slot:job.slot,modelPreference};
+  const payload:Record<string,unknown>={...(operation.payload as Record<string,unknown>),slot:job.slot,modelPreference};
+  const correction=correctionRequest?.trim();
+  if(correction){
+    payload.correctionRequest=correction;
+    const lock=`\n本次咒语矫正：${correction}\n只修正上述明确问题；其余人物、姿势、构图、背景、服装类型、版型、长度、颜色、材质、面料、纹理、垂感和全部设计细节必须保持不变。`;
+    if(job.workflow==="tryon"){
+      payload.modelImage=job.outputImages[0];
+      payload.detailRequirements=`${String(payload.detailRequirements||"")}${lock}`;
+      payload.extraRequirements=`${String(payload.extraRequirements||"")}${lock}`;
+    }else if(job.workflow==="pose"){
+      payload.sourceImage=job.outputImages[0];
+      payload.detailRequirements=`${String(payload.detailRequirements||"")}${lock}`;
+    }else{
+      const sources=Array.isArray(payload.poseImages)?[...payload.poseImages as string[]]:[];
+      if(job.slot&&job.outputImages[0])sources[job.slot-1]=job.outputImages[0];
+      if(sources.length)payload.poseImages=sources;
+      payload.extraRequirements=`${String(payload.extraRequirements||"")}${lock}`;
+    }
+  }
   return enqueueWorkflow(job.workflow,payload as unknown as {projectId:string});
 }
