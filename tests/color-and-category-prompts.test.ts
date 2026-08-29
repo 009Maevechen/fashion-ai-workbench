@@ -13,8 +13,9 @@ test("换装提示词明确包含必选服装类目",()=>{
 test("换装只把产品图作为服装真值并锁定尺寸材质与垂感",()=>{
   const prompt=tryonPrompt("上衣","针织短款上衣","保持领口和下摆");
   assert.match(prompt,/服装产品图：这是生成结果中服装外观的唯一真值、唯一来源和最高优先级依据/);
-  assert.match(prompt,/模特参考图绝不参与服装设计/);
+  assert.match(prompt,/服装以外的一切 = 模特参考图/);
   assert.match(prompt,/模特参考图里的服装只是需要被移除的遮挡物/);
+  assert.match(prompt,/景别与姿态强制锁定/);
   assert.match(prompt,/整体尺寸比例、衣长\/裤长\/裙长、宽度、围度、松量/);
   assert.match(prompt,/不得为了贴合模特参考图原服装而改变产品大小、长度或覆盖范围/);
   assert.match(prompt,/厚薄、重量感、硬挺或柔软程度、弹性/);
