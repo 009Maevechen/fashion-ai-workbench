@@ -37,6 +37,8 @@ test("换装严格隔离双图职责且只允许修改服装区域",()=>{
   assert.match(prompt,/任何一项不满足都视为失败，必须重新生成/);
   assert.match(prompt,/人物身份绝对锁定/);
   assert.match(prompt,/不得以产品图人物作为输出主体/);
+  assert.match(prompt,/建立模特原服装的排除遮罩并彻底移除/);
+  assert.match(prompt,/任何原服装残留、颜色渗入或结构混入都必须判定为失败并重试/);
 });
 
 test("复色提示词只提取颜色且禁止复制参考图款式",()=>{

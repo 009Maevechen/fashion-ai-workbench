@@ -1,7 +1,7 @@
 import {faceVisibilityPrompt} from "./face-visibility";
 import {PHOTOREAL_QUALITY_PROMPT,QUALITY_SELF_CHECK_PROMPT,NO_GARMENT_CROP_PROMPT} from "./image-quality";
 
-export const TRYON_PROMPT_VERSION="tryon-v10-identity-locked-garment-transfer";
+export const TRYON_PROMPT_VERSION="tryon-v11-original-garment-erased";
 export function tryonPrompt(productType:string,description:string,details:string,showFace=false){return `任务：真实服装商品换装。
 服装类型：${productType}。必须按照该类目的结构和穿着方式进行换装，不得改成其他服装类目。
 
@@ -19,7 +19,7 @@ export function tryonPrompt(productType:string,description:string,details:string
 
 来源优先级：服装外观 = 服装产品图 > 商品结构识别与重点细节 > 用户文字补充；服装以外的一切（人物/姿势/景别/场景/构图）= 模特参考图。当任何来源发生冲突时，服装外观无条件以服装产品图为准，人物/姿势/景别/场景/构图无条件以模特参考图为准。
 
-核心规则：把服装产品图中的真实商品一比一复刻，真实地穿到模特参考图里的模特身上。只替换模特身上的服装，模特原服装的任何设计（款式、颜色、图案、面料、细节）都不采用，也不允许根据模特原服装推断或修改产品服装。
+核心规则：把服装产品图中的真实商品一比一复刻，真实地穿到模特参考图里的模特身上。先建立模特原服装的排除遮罩并彻底移除，再进行产品服装替换；模特原服装的任何设计（款式、颜色、图案、面料、细节、结构和轮廓）都不采用，也不允许根据模特原服装推断或修改产品服装。任何原服装残留、颜色渗入或结构混入都必须判定为失败并重试。
 景别与姿态强制锁定：景别必须与模特参考图完全一致——模特参考图是全身就输出全身，是半身就输出半身，是特写就输出特写，画面裁切范围、人物在画面中的大小比例和留白位置都不得改变。模特的姿势、动作、肢体角度、头部朝向、身体朝向、手部与腿部摆放必须与模特参考图一致，不得为了展示服装而重新摆姿势或改变镜头远近，更不得改用产品图的展示方式。
 ${faceVisibilityPrompt(showFace)}
 尺寸与版型强制锁定（一比一复刻）：必须保持产品图中可见的服装整体尺寸比例、衣长/裤长/裙长、宽度、围度、松量、肩宽、袖长、腰线位置、下摆宽度、各结构之间的相对比例、贴身或宽松程度以及完整外轮廓。产品是短款就不得拉长，是长款就不得缩短，是宽松版就不得收紧，是修身版就不得放宽；不得为了贴合模特参考图原服装而改变产品大小、长度或覆盖范围。
