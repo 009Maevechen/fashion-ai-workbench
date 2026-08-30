@@ -12,6 +12,7 @@ const colorItem = z.object({
   hex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
   trimColorName: z.string().min(1).max(30),
   trimHex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  confidence: z.number().min(0).max(1).optional().default(0.5),
 });
 const schema = z.object({
   colors: z.array(colorItem).min(1).max(6),
@@ -69,7 +70,7 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
       await requestTextJson(
         textRuntime,
         "你是服装色卡资料整理助手。只能依据图片识别结果整理色卡，必须只返回合法 JSON。",
-        `图片识别结果：\n${observation}\n\n返回 {"colors": [...]}，最多6项；每项包含 name（主体色名称）、hex、trimColorName（边饰色名称）、trimHex。所有 HEX 必须为 #RRGGBB。`,
+        `图片识别结果：\n${observation}\n\n返回 {"colors": [...]}，最多6项；按图片中服装款式从左到右/从上到下给出顺序。每项包含 name（主体色名称）、hex、trimColorName（边饰色名称）、trimHex、confidence（0到1）。主色必须按服装主体面积判断，不能被小面积条纹/印花取代；只依据服装区域，背景、皮肤、头发、鞋子、道具、阴影和高光不得参与。所有 HEX 必须为 #RRGGBB。`,
       ),
     );
 
@@ -109,11 +110,13 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
     }));
 
     // 多色款：如果视觉模型识别到多个颜色，且本地聚类也确认了多种主色，合并为变体列表
-    const needsReview = structured.needsReview || parsed.colors.length > 4;
+    const needsReview = structured.needsReview || parsed.colors.some((item) => (item.confidence ?? 0.5) < 0.65) || parsed.colors.length > 4;
     const reviewReason = structured.needsReview
       ? structured.reviewReason
-      : parsed.colors.length > 4
-        ? "识别到多种颜色款式，建议人工确认"
+      : parsed.colors.some((item) => (item.confidence ?? 0.5) < 0.65)
+        ? "存在颜色置信度较低或相近色，建议人工确认"
+        : parsed.colors.length > 4
+          ? "识别到多种颜色款式，建议人工确认"
         : undefined;
 
     return {

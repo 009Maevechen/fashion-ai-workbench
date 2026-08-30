@@ -1,5 +1,5 @@
 import {faceVisibilityPrompt} from "./face-visibility";
-import {PHOTOREAL_QUALITY_PROMPT,QUALITY_SELF_CHECK_PROMPT} from "./image-quality";
+import {PHOTOREAL_QUALITY_PROMPT,QUALITY_SELF_CHECK_PROMPT,NO_GARMENT_CROP_PROMPT} from "./image-quality";
 
 export const TRYON_PROMPT_VERSION="tryon-v10-identity-locked-garment-transfer";
 export function tryonPrompt(productType:string,description:string,details:string,showFace=false){return `任务：真实服装商品换装。
@@ -34,4 +34,4 @@ ${faceVisibilityPrompt(showFace)}
 换装结果强制验收：输出前逐项比较两张输入图并自检：①除服装替换区域外，人物、姿势、景别、构图、场景和背景必须与模特参考图一致；②模特原服装必须完全消失且无任何残留影响；③结果服装的类目、外轮廓、长度、尺寸比例、裁剪制版、颜色、面料、垂感和全部可见设计细节必须与服装产品图一致；④不得出现产品图中的人物或场景。任何一项不满足都视为失败，必须重新生成，禁止输出折中、猜测或混合后的结果。
 最终不可违背指令：只执行“把第二张服装产品图中的服装，穿到第一张模特参考图的原人物身上”。第一张图只删除原服装，其余全部保留；第二张图只保留服装，其余全部丢弃。不得交换两张图的职责，不得以产品图人物作为输出主体。
 服装描述：${description||"未填写"}
- 重点细节：${details}${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`}
+重点细节：${details}${NO_GARMENT_CROP_PROMPT}${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`}
