@@ -22,7 +22,7 @@ export function isSameTryonConfirmation(current:string|undefined,next:string){
 }
 
 export function tryonSubjectFidelityFailurePatch(){
-  return {status:"failed" as const,requestStatus:"failed" as const,errorMessage:"换装主体错误：结果复制或更接近服装产品图中的模特，已禁止确认。请重新生成"};
+  return {status:"failed" as const,requestStatus:"failed" as const,errorMessage:"换装主体错误：结果残留了参考模特原服装特征，或复制/更接近了服装产品图中的模特，已禁止确认。请重新生成"};
 }
 
 export function tryonCompletionPatch(project:Project,status:StepStatus):Partial<Project>{

@@ -14,7 +14,7 @@ test("换装只把产品图作为服装真值并锁定尺寸材质与垂感",()=
   const prompt=tryonPrompt("上衣","针织短款上衣","保持领口和下摆");
   assert.match(prompt,/服装产品图：这是生成结果中服装外观的唯一真值、唯一来源和最高优先级依据/);
   assert.match(prompt,/换装主体必须是参考模特图/);
-  assert.match(prompt,/模特参考图里的服装只是需要被移除的遮挡物/);
+  assert.match(prompt,/模特参考图里的服装只是需要被彻底移除的遮挡物/);
   assert.match(prompt,/景别与姿态强制锁定/);
   assert.match(prompt,/整体尺寸比例、衣长\/裤长\/裙长、宽度、围度、松量/);
   assert.match(prompt,/不得为了贴合模特参考图原服装而改变产品大小、长度或覆盖范围/);
@@ -37,8 +37,11 @@ test("换装严格隔离双图职责且只允许修改服装区域",()=>{
   assert.match(prompt,/任何一项不满足都视为失败，必须重新生成/);
   assert.match(prompt,/人物身份绝对锁定/);
   assert.match(prompt,/不得以产品图人物作为输出主体/);
-  assert.match(prompt,/建立模特原服装的排除遮罩并彻底移除/);
+  assert.match(prompt,/彻底去除模特原服装/);
+  assert.match(prompt,/全部作废、全部删除、全部不得保留/);
   assert.match(prompt,/任何原服装残留、颜色渗入或结构混入都必须判定为失败并重试/);
+  assert.match(prompt,/产品图是结果的唯一服装来源/);
+  assert.match(prompt,/不得让模特原服装的任何特征出现在结果里/);
 });
 
 test("复色提示词只提取颜色且禁止复制参考图款式",()=>{

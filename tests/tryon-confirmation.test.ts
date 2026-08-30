@@ -21,11 +21,11 @@ const job=(status:Job["status"],overrides:Partial<Job>={}):Job=>({
   ...overrides,
 });
 
-test("复制产品图模特的换装结果直接失败且禁止确认",()=>{
+test("复制产品图模特或残留原服装特征的换装结果直接失败且禁止确认",()=>{
   assert.deepEqual(tryonSubjectFidelityFailurePatch(),{
     status:"failed",
     requestStatus:"failed",
-    errorMessage:"换装主体错误：结果复制或更接近服装产品图中的模特，已禁止确认。请重新生成",
+    errorMessage:"换装主体错误：结果残留了参考模特原服装特征，或复制/更接近了服装产品图中的模特，已禁止确认。请重新生成",
   });
 });
 const project=(confirmedTryonImage?:string):Project=>({
