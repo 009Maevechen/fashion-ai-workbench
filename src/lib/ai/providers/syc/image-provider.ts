@@ -6,6 +6,7 @@ import {readSycResponse,sycNetworkError} from "./errors";
 import {parseSycImageResponse} from "./response-parser";
 import {serializeSycRequest} from "./request-queue";
 import {normalizeSycImageUrl} from "./image-url";
+import {providerInputImageFilename} from "../../provider-contracts";
 
 function dataUrl(value:string){
   const match=value.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s);
@@ -28,7 +29,7 @@ export class SycImageProvider implements ImageProvider{
       form.set("response_format","b64_json");
       form.set("stream",String(options.stream));form.set("partial_images",String(options.partialImages));
       if(options.codexCliCompatible)form.set("codexCli","true");
-      input.images.forEach((image,index)=>{const part=dataUrl(image),ext=part.mime==="image/png"?"png":part.mime==="image/webp"?"webp":"jpg";form.append("image[]",new Blob([part.bytes],{type:part.mime}),`reference-${index+1}.${ext}`)});
+      input.images.forEach((image,index)=>{const part=dataUrl(image),ext=part.mime==="image/png"?"png":part.mime==="image/webp"?"webp":"jpg";form.append("image[]",new Blob([part.bytes],{type:part.mime}),providerInputImageFilename(input.workflow,index,ext))});
       body=form;
     }else{
       url=sycEndpoint(this.config.baseUrl,"generations");headers["Content-Type"]="application/json";

@@ -35,6 +35,8 @@ test("换装严格隔离双图职责且只允许修改服装区域",()=>{
   assert.match(prompt,/肩斜、袖窿、袖山、落肩位置、省道、分割线、拼接线/);
   assert.match(prompt,/裆深、前后裆线、内侧缝、外侧缝/);
   assert.match(prompt,/任何一项不满足都视为失败，必须重新生成/);
+  assert.match(prompt,/人物身份绝对锁定/);
+  assert.match(prompt,/不得以产品图人物作为输出主体/);
 });
 
 test("复色提示词只提取颜色且禁止复制参考图款式",()=>{

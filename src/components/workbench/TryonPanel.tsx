@@ -70,9 +70,8 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
     if(!visibleUrl||!visibleJob)throw new Error("请先生成并选择一张候选图");
     const now=new Date().toISOString(),messages=[...revisionMessages,{id:crypto.randomUUID(),role:"user" as const,content:request,createdAt:now},{id:crypto.randomUUID(),role:"assistant" as const,content:"已收到。我会只修改你指出的问题，同时锁定原产品的版型、材质、纹理、颜色、包边与其他细节。此修改为可选步骤，不影响你直接确认当前结果。",createdAt:now}];
     setRevisionMessages(messages);setRevisionRequest("");
-    const revisionDetails=composeTryonDetailRequirements(extra,`本次智能修改要求：${request}。除明确要求修改的内容外，其余人物、构图、服装版型、材质、纹理、颜色、包边和设计细节全部保持不变。`);
     await saveProject({settings:{...p.settings,tryon:{...draftSettings.settings.tryon,revisionRequest:"",revisionMessages:messages}}});
-    await post("/api/tryon",{projectId:p.id,productType,garmentImage:garment.url,modelImage:visibleUrl,garmentDescription:description,detailRequirements:composeTryonDetailRequirements(structurePrompt,`${protectedItems.join("；")}。`,revisionDetails),extraRequirements:revisionDetails,face,mode,candidateCount:1,slot:activeCandidate,modelPreference:"primary"});
+    await post(`/api/jobs/${visibleJob.id}/retry`,{correctionRequest:request,modelPreference:"primary"});
   }
 
   return <>

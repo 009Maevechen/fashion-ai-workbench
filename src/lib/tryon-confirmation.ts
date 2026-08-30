@@ -21,6 +21,10 @@ export function isSameTryonConfirmation(current:string|undefined,next:string){
   return Boolean(current&&current===next);
 }
 
+export function tryonSubjectFidelityFailurePatch(){
+  return {status:"failed" as const,requestStatus:"failed" as const,errorMessage:"换装主体错误：结果复制或更接近服装产品图中的模特，已禁止确认。请重新生成"};
+}
+
 export function tryonCompletionPatch(project:Project,status:StepStatus):Partial<Project>{
   if(project.confirmedTryonImage){
     return {stepStatuses:{...project.stepStatuses,"2":"confirmed"}};

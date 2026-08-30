@@ -7,6 +7,7 @@ import type {
   WorkflowRuntimeSummary,
 } from "@/lib/ai/provider-settings-types";
 import type { ModelWorkflowType } from "@/lib/ai/provider-settings-types";
+import {modelForWorkflow} from "@/lib/workflow-model-option";
 
 const LABEL: Record<ModelWorkflowType, string> = {
   product: "产品识别",
@@ -80,11 +81,7 @@ export default function WorkflowModelSelector({
           provider.enabled &&
           provider.hasApiKey &&
           Boolean(provider.baseUrl) &&
-          Boolean(
-            workflow === "product"
-              ? provider.visionModel
-              : provider.defaultModel,
-          ) &&
+          Boolean(modelForWorkflow(provider, workflow)) &&
           supportsWorkflow(provider, workflow),
       ),
     [providers, workflow],
@@ -104,8 +101,7 @@ export default function WorkflowModelSelector({
     setBusy(true);
     setError("");
     try {
-      const selectedModel =
-        workflow === "product" ? provider?.visionModel : provider?.defaultModel;
+      const selectedModel = provider ? modelForWorkflow(provider, workflow) : undefined;
       const next: WorkflowModelBindings = {
         ...bindings,
         [workflow]: {

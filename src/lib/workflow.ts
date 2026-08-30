@@ -11,7 +11,7 @@ import {tryonPrompt,TRYON_PROMPT_VERSION} from "./ai/prompts/tryon";
 import {posePrompt,POSE_PROMPT_VERSION} from "./ai/prompts/pose";
 import {recolorPrompt,RECOLOR_PROMPT_VERSION} from "./ai/prompts/recolor";
 import {POSE_PRESETS} from "./ai/pose-presets";
-import {tryonCompletionPatch} from "./tryon-confirmation";
+import {tryonCompletionPatch,tryonSubjectFidelityFailurePatch} from "./tryon-confirmation";
 import {buildProductProtectionPrompt} from "./product-structure";
 import {composeTryonDetailRequirements,normalizeTryonDetailRequirements} from "./tryon-detail-requirements";
 import {appendModelRunRecord} from "./model-runs";
@@ -65,7 +65,7 @@ async function autoCheckTryonSubjectFidelity(projectId:string,results:Array<{id?
     const job=await getJob(candidate.id!);if(!job||!job.outputImages.length)return;
     try{
       const fidelity=await checkTryonSubjectFidelity(project,job);
-      await patchJob(job.id,{subjectFidelity:fidelity,...(fidelity.status==="failed"?{status:"needs_review" as const,errorMessage:"换装结果更接近产品原图而非参考模特图，建议重试"}:{})});
+      await patchJob(job.id,{subjectFidelity:fidelity,...(fidelity.status==="failed"?tryonSubjectFidelityFailurePatch():{})});
     }catch{/* QC 视觉模型未配置或校验失败时不影响换装结果，静默跳过 */}
   }));
 }

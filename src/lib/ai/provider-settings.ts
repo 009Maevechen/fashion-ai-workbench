@@ -827,6 +827,12 @@ export async function resolveTextModel(workflow: "research" | "assistant", slot:
 export async function resolveCorrectionModel(slot: ModelSlot = "primary") {
   const selection = (await getWorkflowModelBindings()).correction[slot];
   if (selection) return getProviderRuntime(selection.providerId, selection.model);
+  if(slot==="primary"){
+    // 兼容旧设置：用户已在 Provider 中配置对话模型，但旧版没有保存独立的
+    // correction 绑定时，直接复用该文本模型，避免咒语功能看似已配置却不可用。
+    const provider=(await loadStore()).apiProviders.find(item=>item.enabled&&item.chatModel?.trim()&&item.baseUrl&&item.encryptedApiKey);
+    if(provider)return getProviderRuntime(provider.id,provider.chatModel);
+  }
   throw new Error(
     slot === "fallback"
       ? "咒语矫正尚未配置备用文本模型，请到“API与模型设置 → 工作流模型分配”中选择"

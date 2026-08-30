@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {canConfirmTryonSelection,isSameTryonConfirmation,tryonCompletionPatch} from "../src/lib/tryon-confirmation";
+import {canConfirmTryonSelection,isSameTryonConfirmation,tryonCompletionPatch,tryonSubjectFidelityFailurePatch} from "../src/lib/tryon-confirmation";
 import type {Job,Project} from "../src/lib/db";
 
 const image="/api/files/SKU-1/tryon/SKU-1_tryon_02.jpg";
@@ -19,6 +19,14 @@ const job=(status:Job["status"],overrides:Partial<Job>={}):Job=>({
   startedAt:"2026-01-01T00:00:00.000Z",
   slot:2,
   ...overrides,
+});
+
+test("复制产品图模特的换装结果直接失败且禁止确认",()=>{
+  assert.deepEqual(tryonSubjectFidelityFailurePatch(),{
+    status:"failed",
+    requestStatus:"failed",
+    errorMessage:"换装主体错误：结果复制或更接近服装产品图中的模特，已禁止确认。请重新生成",
+  });
 });
 const project=(confirmedTryonImage?:string):Project=>({
   id:"project-1",

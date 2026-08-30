@@ -1,5 +1,11 @@
 import type {GenerateInput} from "./types";
 
+export function providerInputImageFilename(workflow:GenerateInput["workflow"],index:number,extension:string){
+  if(workflow==="tryon")return index===0?`01-model-reference-keep-person-pose-scene.${extension}`:`02-garment-product-use-clothing-only.${extension}`;
+  if(workflow==="pose")return index===0?`01-source-model-keep-garment.${extension}`:`02-pose-reference-use-pose-only.${extension}`;
+  return index===0?`01-source-image-recolor-garment-only.${extension}`:`02-color-reference-use-color-only.${extension}`;
+}
+
 export type OpenAiCompatibleResponse={data?:Array<{url?:string;b64_json?:string;image_url?:string}>;output?:Array<{url?:string;b64_json?:string;image_url?:string}|string>;images?:Array<{url?:string;b64_json?:string}|string>;result?:{url?:string;b64_json?:string}|string;url?:string;image?:string;error?:{message?:string}|string;message?:string};
 
 export function buildOpenAiCompatibleRequest(input:GenerateInput,model:string){return {model,prompt:input.prompt,image:input.images.length===1?input.images[0]:input.images,images:input.images,n:1,response_format:"b64_json",size:"1024x1536",...(input.options.seed===undefined?{}:{seed:input.options.seed})}}
