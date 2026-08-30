@@ -56,7 +56,8 @@ export async function retryJob(id:string,modelPreference:ModelSlot="primary",cor
     if(job.workflow==="tryon"){
       payload.modelImage=job.outputImages[0];
       payload.detailRequirements=`${String(payload.detailRequirements||"")}${lock}`;
-      payload.extraRequirements=`${String(payload.extraRequirements||"")}${lock}`;
+      // extraRequirements 上限 800，只承载用户原始补充要求，绝不能追加矫正指令；
+      // 否则会污染项目设置，下次开始换装时因超长触发 zod 校验失败。
     }else if(job.workflow==="pose"){
       payload.sourceImage=job.outputImages[0];
       payload.detailRequirements=`${String(payload.detailRequirements||"")}${lock}`;

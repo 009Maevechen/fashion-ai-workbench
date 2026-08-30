@@ -26,7 +26,7 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
   const [model,setModel]=useState<LocalAsset>({url:p.assets.modelReferenceImage||p.assets.modelImage,name:"已保存模特图",status:(p.assets.modelReferenceImage||p.assets.modelImage)?"saved":"idle"});
   const [description,setDescription]=useState(saved?.garmentDescription||"");
   const [productType,setProductType]=useState<ProductType|"">(saved?.productType||p.productType||"");
-  const [extra,setExtra]=useState(saved?.extraRequirements||(saved?.detailRequirements&&saved.detailRequirements.length<=800?saved.detailRequirements:DETAILS));
+  const [extra,setExtra]=useState(()=>{const value=saved?.extraRequirements||(saved?.detailRequirements&&saved.detailRequirements.length<=800?saved.detailRequirements:DETAILS);return value.length>800?value.slice(0,800):value});
   const [mode,setMode]=useState<"fast"|"standard"|"quality">(saved?.mode||"standard");
   const [face,setFace]=useState(saved?.face??false);
   const [count,setCount]=useState(saved?.candidateCount||2);
