@@ -47,7 +47,8 @@ export default function PosePanel({p,jobs,historyJobs,health,modelRouting,busy,r
   const visibleGroups=useMemo(()=>groups.filter(group=>!group.archived&&(`${group.name} ${group.description||""} ${group.styleTags.join(" ")}`.toLowerCase().includes(libraryQuery.toLowerCase()))).sort((a,b)=>Number(b.productTypes.includes(p.productType))-Number(a.productTypes.includes(p.productType))||Number(b.favorite)-Number(a.favorite)||b.usageCount-a.usageCount),[groups,libraryQuery,p.productType]);
   const resultImages=[1,2,3].map(slot=>jobs.find(job=>job.slot===slot)?.outputImages[0]||"") as [string,string,string];
   const libraryAvailability=poseLibrarySourceAvailability(referenceUrls,resultImages,reviews);
-  const selectedJobs=historyJobs.filter(job=>job.outputImages.some(image=>selected.includes(image)));
+  // 使用当前任务优先，避免重新生成后结果已更新但历史任务列表尚未同步，导致确认按钮被误禁用。
+  const selectedJobs=selected.map(image=>jobs.find(job=>job.outputImages.includes(image))||historyJobs.find(job=>job.outputImages.includes(image))).filter((job):job is Job=>Boolean(job));
   const selectedSlots=[...new Set(selectedJobs.map(job=>job.slot).filter((slot):slot is number=>Boolean(slot)))];
   const selectedReviewed=selected.length>=2&&selected.length<=3&&selectedSlots.length===selected.length&&selectedSlots.every(slot=>reviews[String(slot)]==="approved");
   const selectedCurrent=selectedJobs.every(job=>job.status!=="stale"&&job.dependencyStatus!=="stale");

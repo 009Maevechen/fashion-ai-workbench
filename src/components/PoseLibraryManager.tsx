@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { PoseFaceMode, PoseShotType, PoseTemplateGroup, ProductType, Project } from "@/lib/db";
 import ImagePreviewDialog from "./workbench/ImagePreviewDialog";
@@ -64,6 +64,8 @@ export default function PoseLibraryManager({ initialGroups, projects }: { initia
       index: number;
     } | null>(null);
   const filtered = useMemo(() => groups.filter((group) => (showArchived || !group.archived) && (!favoriteOnly || group.favorite) && (!productType || group.productTypes.includes(productType as ProductType)) && (!shot || group.shotType === shot) && (!face || group.faceMode === face) && `${group.name} ${group.description || ""} ${group.styleTags.join(" ")} ${group.displayFocus.join(" ")}`.toLowerCase().includes(query.toLowerCase())), [groups, query, productType, shot, face, favoriteOnly, showArchived]);
+  const inputs = useRef<(HTMLInputElement | null)[]>([]);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
   async function refresh() {
     const data = await fetch("/api/pose-library", { cache: "no-store" }).then((response) => response.json());
     setGroups(data);
@@ -99,6 +101,10 @@ export default function PoseLibraryManager({ initialGroups, projects }: { initia
       ...current,
       images: current.images.map((value, itemIndex) => (itemIndex === index ? data.url : value)) as Draft["images"],
     }));
+  }
+  function handlePaste(index: number, event: ClipboardEvent<HTMLDivElement>) {
+    const file = Array.from(event.clipboardData.items).map((item) => item.kind === "file" && item.type.startsWith("image/") ? item.getAsFile() : null).find(Boolean) || undefined;
+    if (file) { event.preventDefault(); void action(() => upload(index, file)); }
   }
   async function create() {
     if (draft.images.some((image) => !image)) throw new Error("请上传完整的3张姿势参考图");
@@ -425,10 +431,11 @@ export default function PoseLibraryManager({ initialGroups, projects }: { initia
                     {draft.images[index] ? (
                       <img src={draft.images[index]} alt={`姿势${index + 1}`} />
                     ) : (
-                      <label className="pose-file-drop">
+                      <div className={`pose-file-drop ${dropIndex === index ? "drag" : ""}`} tabIndex={0} onClick={() => inputs.current[index]?.click()} onPaste={(event) => handlePaste(index, event)} onDragOver={(event) => { event.preventDefault(); setDropIndex(index); }} onDragLeave={() => setDropIndex(null)} onDrop={(event) => { event.preventDefault(); setDropIndex(null); void action(() => upload(index, event.dataTransfer.files[0])); }}>
                         ＋ 上传参考图
-                        <input type="file" accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.avif,.heic,.heif,.gif,.tif,.tiff,.bmp" onChange={(event) => action(() => upload(index, event.target.files?.[0]))} />
-                      </label>
+                        <small>支持点击、拖拽或 Ctrl/Command+V 粘贴</small>
+                        <input ref={(node) => { inputs.current[index] = node; }} type="file" accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.avif,.heic,.heif,.gif,.tif,.tiff,.bmp" onClick={(event) => event.stopPropagation()} onChange={(event) => action(() => upload(index, event.target.files?.[0]))} />
+                      </div>
                     )}
                     <label>
                       姿势名称

@@ -51,6 +51,9 @@ test("复色提示词只提取颜色且禁止复制参考图款式",()=>{
   assert.match(prompt,/没有真正改变目标服装主体颜色必须视为生成失败/);
   assert.match(prompt,/面料材质、织法\/针法/);
   assert.match(prompt,/渐变方向、层次和过渡边界/);
+  assert.match(prompt,/禁止裁剪服装 · 最高优先规则/);
+  assert.match(prompt,/只能扩展背景，绝对不能裁切人物或服装/);
+  assert.match(prompt,/服装所有可见边缘均未被新画面边界裁掉/);
 });
 
 test("复色区域由商品类型锁定，上衣不得改动下装",()=>{
