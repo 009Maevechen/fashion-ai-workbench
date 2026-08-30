@@ -35,9 +35,9 @@ export default function Workspace({initial,initialJobs,health,modelRouting,initi
   const common:Omit<PanelProps,"jobs">={p,health,modelRouting,busy,run,refreshProject:refresh,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,saveProject,post,confirmFlow};
   return <><ProjectHeader project={p} step={step} onStep={goStep}/>{error&&<div className="error">{error}</div>}{notice&&<div className="notice workspace-notice">{notice}</div>}
     {step===1&&<ProductDetailsPanel p={p} jobs={jobs} busy={busy} run={run} persistAsset={persistAsset} deleteAsset={deleteAsset} clearSourceAssets={clearSourceAssets} saveProject={saveProject} onNext={()=>goStep(2)}/>}
-    {step===2&&<TryonPanel {...common} jobs={latest("tryon")}/>}
-    {step===3&&<PosePanel {...common} jobs={latest("pose")}/>}
-    {step===4&&<RecolorPanel {...common} jobs={latest("recolor",true)}/>}
+    {step===2&&<TryonPanel {...common} jobs={latest("tryon")} historyJobs={jobs.filter(job=>job.workflow==="tryon")}/>}
+    {step===3&&<PosePanel {...common} jobs={latest("pose")} historyJobs={jobs.filter(job=>job.workflow==="pose")}/>}
+    {step===4&&<RecolorPanel {...common} jobs={latest("recolor",true)} historyJobs={jobs.filter(job=>job.workflow==="recolor")}/>}
     {step===5&&<FinalPanel p={p} jobs={jobs} onStep={goStep} onComplete={complete}/>}
     <RecentTaskList jobs={jobs}/>
   </>;

@@ -24,6 +24,19 @@ test("换装只把产品图作为服装真值并锁定尺寸材质与垂感",()=
   assert.match(prompt,/不得新增、删除、移动、替换或重新设计任何结构/);
 });
 
+test("换装严格隔离双图职责且只允许修改服装区域",()=>{
+  const prompt=tryonPrompt("裤装","垂感阔腿裤","保持腰头、侧缝和裤脚");
+  assert.match(prompt,/双图隔离硬规则/);
+  assert.match(prompt,/服装产品图中的人物、模特、人体、衣架、手、道具、文字、背景/);
+  assert.match(prompt,/模特参考图中除原服装以外的全部可见内容必须保持/);
+  assert.match(prompt,/唯一允许修改区域/);
+  assert.match(prompt,/不得重绘、重构、美化、移动或替换/);
+  assert.match(prompt,/不得残留其领口、袖口、下摆、颜色、花纹、材质、轮廓或任何设计痕迹/);
+  assert.match(prompt,/肩斜、袖窿、袖山、落肩位置、省道、分割线、拼接线/);
+  assert.match(prompt,/裆深、前后裆线、内侧缝、外侧缝/);
+  assert.match(prompt,/任何一项不满足都视为失败，必须重新生成/);
+});
+
 test("复色提示词只提取颜色且禁止复制参考图款式",()=>{
   const prompt=recolorPrompt("裙子","焦糖色","#C8A06A",["印花"],"保持背景",false,"白色","#FFFFFF");
   assert.match(prompt,/只提取颜色本身/);

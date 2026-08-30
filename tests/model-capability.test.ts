@@ -23,10 +23,18 @@ test("纯文本模型不应识别视觉能力", () => {
 test("图片生成模型不应误配到需要视觉理解的工作流", () => {
   const caps = inferCapabilities("openai-compatible", "gpt-image-2");
   assert.ok(caps.includes("image-generation"));
+  assert.ok(caps.includes("image-editing"));
+  assert.ok(caps.includes("multi-image"));
   assert.ok(!caps.includes("vision"), "纯生图模型不应有 vision");
   assert.ok(!capabilitiesMatch(caps, ["vision"]));
   const missing = missingCapabilities(caps, ["vision"]);
   assert.deepEqual(missing, ["vision"]);
+});
+
+test("gpt-image-2 可以保存到需要多图编辑的换装和姿势工作流",()=>{
+  const caps=inferCapabilities("syc-openai-compatible","gpt-image-2");
+  assert.equal(capabilitiesMatch(caps,["image-editing","multi-image"]),true);
+  assert.deepEqual(missingCapabilities(caps,["image-editing","multi-image"]),[]);
 });
 
 test("gpt-image 系列不应被当作视觉模型用于商品识别", () => {

@@ -16,10 +16,11 @@ import {TRYON_MODE_OPTIONS,TRYON_PRODUCT_TYPE_OPTIONS,TRYON_PROTECTION_LABELS,TR
 import {canConfirmTryonSelection} from "@/lib/tryon-confirmation";
 import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 import {composeTryonDetailRequirements} from "@/lib/tryon-detail-requirements";
+import type {Job} from "@/lib/db";
 
 const DETAILS="保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
 
-export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,saveProject,post,confirmFlow}:PanelProps){
+export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,run,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,saveProject,post,confirmFlow}:PanelProps&{historyJobs:Job[]}){
   const saved=p.settings.tryon;
   const [garment,setGarment]=useState<LocalAsset>({url:p.assets.garmentImage,name:"已保存服装图",status:p.assets.garmentImage?"saved":"idle"});
   const [model,setModel]=useState<LocalAsset>({url:p.assets.modelReferenceImage||p.assets.modelImage,name:"已保存模特图",status:(p.assets.modelReferenceImage||p.assets.modelImage)?"saved":"idle"});
@@ -35,14 +36,16 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   const [preview,setPreview]=useState<{images:string[];index:number}|null>(null);
   const [revisionRequest,setRevisionRequest]=useState(saved?.revisionRequest||"");
   const [revisionMessages,setRevisionMessages]=useState(saved?.revisionMessages||[]);
+  const [historyJobId,setHistoryJobId]=useState("");
   const route=modelRouting.tryon,routed=route.primary.source==="stored";
   const standardProvider=routed?route.primary.model:health.tryonProvider==="custom"?"自定义模型":health.tryonProvider==="volcengine"?"Seedream 5.0":"BFL VTO";
   const configured=routed?route.primary.configured:health.tryonProvider==="custom"?health.custom:mode==="quality"?health.fashn:health.tryonProvider==="volcengine"?health.volcengine:health.bfl;
   const modelName=routed?route.primary.model:health.tryonProvider==="custom"?"自定义图像 API":mode==="quality"?"FASHN Try-On Max":health.tryonProvider==="volcengine"?"Doubao Seedream 5.0":"BFL FLUX Virtual Try-On";
-  const allImages=[...new Set([garment.url,model.url,...jobs.flatMap(j=>j.outputImages)].filter(Boolean))] as string[];
+  const historyItems=historyJobs.filter(job=>job.outputImages[0]&&job.status!=="failed"&&job.status!=="interrupted");
+  const allImages=[...new Set([garment.url,model.url,...historyItems.flatMap(j=>j.outputImages)].filter(Boolean))] as string[];
   const structurePrompt=buildProductProtectionPrompt(productType||p.productType,p.profile),missing=[!garment.url&&"服装产品图",!model.url&&"模特参考图"].filter(Boolean) as string[];
-  const canConfirmSelected=canConfirmTryonSelection(selected,jobs);
-  const candidateTotal=Math.max(count,jobs.length,1),activeCandidate=Math.min(candidateSlot,candidateTotal),visibleJob=jobs.find(job=>job.slot===activeCandidate),visibleUrl=visibleJob?.outputImages[0];
+  const canConfirmSelected=canConfirmTryonSelection(selected,historyJobs);
+  const candidateTotal=Math.max(count,jobs.length,1),activeCandidate=Math.min(candidateSlot,candidateTotal),historyJob=historyItems.find(job=>job.id===historyJobId),visibleJob=historyJob||jobs.find(job=>job.slot===activeCandidate),visibleUrl=visibleJob?.outputImages[0];
   const draftSettings=useMemo(()=>({settings:{...p.settings,tryon:{mode,candidateCount:count,productType:productType||p.productType,garmentDescription:description,detailRequirements:extra,extraRequirements:extra,protectedItems,face,selectedCandidateImage:selected||undefined,activeCandidateSlot:candidateSlot,revisionRequest,revisionMessages}}}),[candidateSlot,count,description,extra,face,mode,p.productType,p.settings,productType,protectedItems,revisionMessages,revisionRequest,selected]);
   useProjectDraftAutosave(p.id,draftSettings);
 
@@ -53,7 +56,7 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
   }
   async function saveSettings(){if(!productType)throw new Error("请先选择服装类型");await saveProject({productType,...draftSettings})}
   async function clearAllAssets(){await clearSourceAssets();setGarment({status:"idle"});setModel({status:"idle"});setPreview(null)}
-  async function clearResults(){await clearWorkflowResults("tryon");setSelected("");setPreview(null)}
+  async function clearResults(){await clearWorkflowResults("tryon");setSelected("");setHistoryJobId("");setPreview(null)}
   async function start(slot?:number,modelPreference:"primary"|"fallback"="primary"){
     if(!productType)throw new Error("请先选择服装类型");
     if(!garment.url||!model.url)throw new Error("两张图片必须保存成功后才能生成");
@@ -86,10 +89,14 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
 <option key={option.id} value={option.value}>{option.label}</option>)}</select>
 <small>生成时将严格按照所选服装类目处理。</small>
 </label>
-<div className="upload-pair">
+    <div className="upload-pair">
       <AssetUploadCard label="服装产品图" description="上传真实服装产品图" value={garment} onChange={a=>run(()=>saveAsset(a,"garmentImage","garment",setGarment))} onDelete={()=>run(async()=>{await deleteAsset("garmentImage");setGarment({status:"idle"})})} onPreview={()=>garment.url&&setPreview({images:allImages,index:allImages.indexOf(garment.url)})}/>
       <AssetUploadCard label="模特参考图" description="只参考姿势、场景和背景，不参考模特服装" value={model} onChange={a=>run(()=>saveAsset(a,"modelReferenceImage","model-reference",setModel))} onDelete={()=>run(async()=>{await deleteAsset("modelReferenceImage");setModel({status:"idle"})})} onPreview={()=>model.url&&setPreview({images:allImages,index:allImages.indexOf(model.url)})}/>
     </div>
+<section className="tryon-generation-history" aria-labelledby="tryon-generation-history-title">
+<div className="tryon-history-head"><div><h3 id="tryon-generation-history-title">生成历史</h3><small>点击小图回到之前生成的照片</small></div><span>{historyItems.length} 张</span></div>
+{historyItems.length?<div className="tryon-history-grid">{historyItems.map((job,index)=>{const url=job.outputImages[0],active=job.id===historyJobId;return <button type="button" className={active?"active":""} key={job.id} onClick={()=>{setHistoryJobId(job.id);setCandidateSlot(job.slot||1)}} title={`查看 ${new Date(job.startedAt).toLocaleString("zh-CN")}`} aria-label={`查看历史生成图 ${index+1}`}><img src={url} alt={`历史生成图 ${index+1}`}/><span>{new Date(job.startedAt).toLocaleDateString("zh-CN",{month:"2-digit",day:"2-digit"})}</span></button>})}</div>:<div className="tryon-history-empty">生成过的换装照片会保存在这里</div>}
+</section>
 {missing.length>0&&<div className="notice">开始换装前还需要保存：{missing.join("、")}。</div>}
 <label className="field">服装描述<textarea maxLength={500} value={description} onChange={e=>setDescription(e.target.value)}/>
 <span className="field-count">{description.length}/500</span>
@@ -102,8 +109,8 @@ export default function TryonPanel({p,jobs,health,modelRouting,busy,run,persistA
     <section className="card workbench-panel tryon-results-panel">
 <div className="panel-head">
 <h2>换装结果（候选图）</h2>
-<div className="panel-actions"><div className="tryon-candidate-tabs">{Array.from({length:candidateTotal},(_,index)=>index+1).map(slot=><button type="button" className={activeCandidate===slot?"active":""} key={slot} onClick={()=>setCandidateSlot(slot)}>候选{String(slot).padStart(2,"0")}</button>)}</div><ClearResultsButton workflow="tryon" disabled={busy||!hasWorkflowResults(p,jobs,"tryon")} onConfirm={clearResults}/></div>
-</div><div className="tryon-result-layout">{jobs.length?<div className="result-grid tryon-single-result"><div><ResultCard key={`tryon-candidate-slot-${activeCandidate}`} job={visibleJob} label={`候选 ${String(activeCandidate).padStart(2,"0")}`} selected={selected===visibleUrl} onSelect={visibleUrl?()=>setSelected(visibleUrl):undefined} onPreview={visibleUrl?()=>setPreview({images:allImages,index:allImages.indexOf(visibleUrl)}):undefined} onRetry={()=>run(()=>start(activeCandidate))} onFallbackRetry={route.fallback.configured?()=>run(()=>start(activeCandidate,"fallback")):undefined} onCorrect={visibleJob?request=>run(()=>post(`/api/jobs/${visibleJob.id}/retry`,{correctionRequest:request})):undefined} correctionBusy={busy}/><ConsistencyCheck job={visibleJob} busy={busy} onCheck={()=>visibleJob&&run(()=>checkConsistency(visibleJob.id))}/></div></div>:<div className="empty-state">
+<div className="panel-actions"><div className="tryon-candidate-tabs">{Array.from({length:candidateTotal},(_,index)=>index+1).map(slot=><button type="button" className={!historyJob&&activeCandidate===slot?"active":""} key={slot} onClick={()=>{setHistoryJobId("");setCandidateSlot(slot)}}>候选{String(slot).padStart(2,"0")}</button>)}</div><ClearResultsButton workflow="tryon" disabled={busy||!hasWorkflowResults(p,jobs,"tryon")} onConfirm={clearResults}/></div>
+</div><div className="tryon-result-layout">{visibleJob?<div className="result-grid tryon-single-result"><div><ResultCard key={`tryon-result-${visibleJob.id}`} job={visibleJob} label={historyJob?`历史生成 · 候选 ${String(visibleJob.slot||1).padStart(2,"0")}`:`候选 ${String(activeCandidate).padStart(2,"0")}`} selected={selected===visibleUrl} onSelect={visibleUrl?()=>setSelected(visibleUrl):undefined} onPreview={visibleUrl?()=>setPreview({images:allImages,index:allImages.indexOf(visibleUrl)}):undefined} onRetry={()=>run(()=>start(visibleJob.slot||activeCandidate))} onFallbackRetry={route.fallback.configured?()=>run(()=>start(visibleJob.slot||activeCandidate,"fallback")):undefined} onCorrect={request=>run(()=>post(`/api/jobs/${visibleJob.id}/retry`,{correctionRequest:request}))} correctionBusy={busy}/><ConsistencyCheck job={visibleJob} busy={busy} onCheck={()=>run(()=>checkConsistency(visibleJob.id))}/></div></div>:<div className="empty-state">
 <div>
 <div className="empty-icon">◇</div>
 <b>还没有换装候选</b>

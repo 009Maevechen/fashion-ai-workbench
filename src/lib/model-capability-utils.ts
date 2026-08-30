@@ -24,6 +24,8 @@ export const CAPABILITY_LABELS: Record<ModelCapability, string> = {
 };
 
 const IMAGE_GEN_PATTERN = /(?:gpt[-_.]?image|seedream|flux|dall[-_.]?e|imagen|midjourney|stable[-_.]?diffusion|sdxl|doubao[-_.]?image)/i;
+// 已知支持多张参考图的图片编辑模型。DALL·E、Midjourney 等只生图模型不应被误标为多图编辑。
+const MULTI_IMAGE_EDIT_PATTERN=/(?:gpt[-_.]?image|seedream|flux|doubao[-_.]?image)/i;
 // 视觉理解：覆盖 GPT-5 / GPT-4.x（4o、4.1 等新版均为多模态）、4-vision、qwen-vl、gemini、claude、豆包/DeepSeek/月之暗面/GLM 的 VL 系列。
 const VISION_PATTERN = /(?:gpt[-_.]?5|gpt[-_.]?4|gpt[-_.]?4[-_.]?(?:vision|o)|gpt[-_.]?4[-_.]?1|vision|vl|qwen[-_.]?vl|gemini|claude|doubao[-_.]?(?:vision|vl)|deepseek[-_.]?vl|moonshot[-_.]?vl|glm[-_.]?4v|omni|multimodal)/i;
 const TEXT_PATTERN = /(?:gpt|deepseek|qwen|glm|ernie|moonshot|kimi|claude|gemini|doubao|llama|mistral|mixtral|minimax|abab)/i;
@@ -73,6 +75,7 @@ export function inferCapabilities(
     if (IMAGE_GEN_PATTERN.test(normalized)) {
       capabilities.add("image-generation");
       capabilities.add("image-editing");
+      if(MULTI_IMAGE_EDIT_PATTERN.test(normalized))capabilities.add("multi-image");
     }
     if (VISION_PATTERN.test(normalized)) capabilities.add("vision");
     if (REASONING_PATTERN.test(normalized)) capabilities.add("reasoning");
