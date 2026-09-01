@@ -107,6 +107,15 @@ a {
 .icon-button:hover {
   background: #f0f0f5;
 }
+.icon-button.refreshing span {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+  font-size: 18px;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .avatar {
   width: 30px;
   height: 30px;

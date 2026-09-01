@@ -1,6 +1,6 @@
 "use client";
 
-import {useState} from "react";
+import {useCallback,useEffect,useState} from "react";
 import {useRouter,useSearchParams} from "next/navigation";
 import type {Job,Project,ProjectAssets} from "@/lib/db";
 import ProjectHeader from "./workbench/ProjectHeader";
@@ -22,7 +22,9 @@ export default function Workspace({initial,initialJobs,health,modelRouting,initi
   const busy=pendingActions>0;
   const goStep=(next:number)=>{if(next===5&&p.currentStep<5)return;setStep(next);router.push(`/projects/${p.id}${STEP_PATH[next]}`,{scroll:false})};
   const latest=(workflow:string,byColor=false)=>{const map=new Map<string,Job>();for(const job of jobs.filter(x=>x.workflow===workflow)){const key=`${byColor?job.targetColorId||"":workflow}:${job.slot||0}`;if(!map.has(key))map.set(key,job)}return [...map.values()].sort((a,b)=>(a.slot||0)-(b.slot||0))};
-  async function refresh(){const [project,responseJobs]=await Promise.all([fetch(`/api/projects/${p.id}`,{cache:"no-store"}).then(r=>r.json()),fetch(`/api/jobs?projectId=${p.id}`,{cache:"no-store"}).then(r=>r.json())]);setP(project);setJobs(responseJobs)}
+  const refresh=useCallback(async()=>{const [project,responseJobs]=await Promise.all([fetch(`/api/projects/${p.id}`,{cache:"no-store"}).then(r=>r.json()),fetch(`/api/jobs?projectId=${p.id}`,{cache:"no-store"}).then(r=>r.json())]);setP(project);setJobs(responseJobs)},[p.id]);
+  // 响应顶部“刷新”按钮：只重新拉取最新项目与任务数据，绝不清空任何状态或重新提交 API。
+  useEffect(()=>{const handler=()=>{void refresh()};window.addEventListener("workbench:refresh",handler);return()=>window.removeEventListener("workbench:refresh",handler)},[refresh]);
   async function persistAsset(file:File|undefined,key:keyof ProjectAssets,name:string,index?:number){if(!file)throw new Error("请选择图片");const form=new FormData();form.set("file",file);form.set("sku",p.sku);form.set("name",name);form.set("projectId",p.id);form.set("assetKey",key);if(index!==undefined)form.set("index",String(index));const response=await fetch("/api/upload",{method:"POST",body:form}),data=await response.json();if(!response.ok)throw new Error(data.error);await refresh();return data.url as string}
   async function deleteAsset(key:keyof ProjectAssets,index?:number){const response=await fetch(`/api/projects/${p.id}/assets`,{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({assetKey:key,index})}),data=await response.json();if(!response.ok)throw new Error(data.error);setP(data)}
   async function clearSourceAssets(){setError("");setNotice("");const response=await fetch(`/api/projects/${p.id}/assets/clear`,{method:"DELETE"}),data=await response.json();if(!response.ok)throw new Error(data.error||"清空素材失败");setP(data.project);setNotice(data.message||"当前任务素材已清空，生成结果已保留");return data.project as Project}

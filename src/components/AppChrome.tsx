@@ -47,7 +47,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     [projectsLoaded, setProjectsLoaded] = useState(false),
     [projectQuery, setProjectQuery] = useState(""),
     [activeMenu, setActiveMenu] = useState<"tasks" | "files" | "model" | null>(null),
-    [runningCount, setRunningCount] = useState(0);
+    [runningCount, setRunningCount] = useState(0),
+    [refreshing, setRefreshing] = useState(false);
   const parts = pathname.split("/"),
     projectId = pathname.startsWith("/projects/") ? parts[2] : "",
     activeModule = parts[3] || "",
@@ -108,6 +109,40 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         `/projects/${project.id}${activeModule ? `/${activeModule}` : ""}`,
       );
   }
+  async function refreshCurrentPage() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      // 1. 重新获取当前页面的项目与任务数据，触发 Workspace 内部 refresh
+      window.dispatchEvent(new Event("workbench:refresh"));
+      // 2. 重新拉取头部相关状态（项目列表、API 状态、本月任务数）
+      const [projectData, settingsData, jobsData] = await Promise.all([
+        fetch("/api/projects", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+        fetch("/api/settings").then((r) => r.json()).catch(() => null),
+        fetch("/api/jobs").then((r) => r.json()).catch(() => []),
+      ]);
+      if (Array.isArray(projectData)) {
+        setProjects(projectData);
+        const found = projectData.find(
+          (item: Project) => item.id === projectId,
+        );
+        if (found) setProjectQuery(`${found.sku} ${found.productName}`);
+      }
+      if (settingsData?.overallStatus) setApiState(settingsData.overallStatus);
+      if (Array.isArray(jobsData)) {
+        const start = new Date();
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        setMonthly(
+          jobsData.filter(
+            (job: { startedAt: string }) => new Date(job.startedAt) >= start,
+          ).length,
+        );
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
   const moduleHref = (segment: string) =>
     projectModuleHref(
       segment,
@@ -166,6 +201,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         {activeModelWorkflow && (
           <WorkflowModelSelector workflow={activeModelWorkflow} />
         )}
+        <button className={`icon-button ${refreshing ? "refreshing" : ""}`} title="刷新当前页面数据" aria-label="刷新" disabled={refreshing} onClick={() => void refreshCurrentPage()}>
+          <span aria-hidden="true">{refreshing ? "…" : "↻"}</span>
+        </button>
         <button className={`icon-button ${activeMenu === "tasks" ? "active" : ""}`} title="任务中心" onClick={() => setActiveMenu(activeMenu === "tasks" ? null : "tasks")}>
           <IconClock />
           {runningCount > 0 && <span className="icon-badge">{runningCount}</span>}
