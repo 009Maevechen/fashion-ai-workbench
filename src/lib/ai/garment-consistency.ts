@@ -10,8 +10,8 @@ import { garmentConsistencyPrompt } from "./prompts/consistency";
 const checkSchema=z.object({
   consistent:z.boolean(),
   score:z.coerce.number().min(0).max(100),
-  summary:z.string().min(1).max(500),
-  issues:z.array(z.string().min(1).max(200)).max(12).default([]),
+  summary:z.string().min(1).max(2000).transform((value)=>value.trim().slice(0,500)),
+  issues:z.array(z.string().min(1).max(1000).transform((value)=>value.trim().slice(0,200))).max(12).default([]),
   checks:z.object({silhouette:z.boolean(),material:z.boolean(),texture:z.boolean(),construction:z.boolean(),details:z.boolean(),color:z.boolean()}),
 });
 

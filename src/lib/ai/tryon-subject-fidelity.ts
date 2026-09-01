@@ -13,8 +13,8 @@ const schema = z.object({
   closerToProduct: z.boolean(),
   originalGarmentLeak: z.boolean(),
   score: z.coerce.number().min(0).max(100),
-  summary: z.string().min(1).max(500),
-  issues: z.array(z.string().min(1).max(200)).max(12).default([]),
+  summary: z.string().min(1).max(2000).transform((value)=>value.trim().slice(0,500)),
+  issues: z.array(z.string().min(1).max(1000).transform((value)=>value.trim().slice(0,200))).max(12).default([]),
 });
 
 export type TryonSubjectFidelity = {

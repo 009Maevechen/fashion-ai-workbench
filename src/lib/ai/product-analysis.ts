@@ -51,7 +51,7 @@ const attributesSchema = z.object({
 const analysisSchema = z.object({
   productType: z.enum(productTypes),
   attributes: attributesSchema,
-  detailDescription: z.string().min(1).max(800),
+  detailDescription: z.string().min(1).max(4000).transform((value) => value.trim().slice(0, 800)),
   protectionItems: z.array(z.string().min(1)).max(20).default([]),
 });
 export type ProductImageAnalysis = {

@@ -14,15 +14,18 @@ const normalizedBox = z.object({
   height: z.number().positive().max(1),
 }).refine((box) => box.x + box.width <= 1.01 && box.y + box.height <= 1.01, "颜色款区域越界");
 
+const shortName = z.string().min(1).max(200).transform((value) => value.trim().slice(0, 30));
+const shortDesignDetail = z.string().min(1).max(400).transform((value) => value.trim().slice(0, 80));
+const shortMaterial = z.string().max(1200).transform((value) => value.trim().slice(0, 300));
 const colorItem = z.object({
-  name: z.string().min(1).max(30),
+  name: shortName,
   hex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
-  trimColorName: z.string().min(1).max(30),
+  trimColorName: shortName,
   trimHex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
   confidence: z.number().min(0).max(1).optional().default(0.5),
   boundingBox: normalizedBox.optional(),
-  designDetails: z.array(z.string().min(1).max(80)).max(16).optional().default([]),
-  materialFeatures: z.string().max(300).optional().default(""),
+  designDetails: z.array(shortDesignDetail).max(16).optional().default([]),
+  materialFeatures: shortMaterial.optional().default(""),
 });
 const schema = z.object({
   colors: z.array(colorItem).min(1).max(6),

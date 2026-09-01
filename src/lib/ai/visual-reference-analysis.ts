@@ -8,8 +8,9 @@ import { requestVisionJson } from "./vision-chat";
 
 const optionalText = z.preprocess(
   (value) => (value === null || value === undefined || value === "" ? undefined : String(value).trim()),
-  z.string().max(200).optional(),
+  z.string().max(1000).transform((value) => value.slice(0, 200)).optional(),
 );
+const shortTag = z.string().max(200).transform((value) => value.trim().slice(0, 40));
 
 const schema = z.object({
   productType: optionalText,
@@ -30,11 +31,11 @@ const schema = z.object({
   composition: optionalText,
   styleTags: z.preprocess(
     (value) => (Array.isArray(value) ? value : String(value ?? "").split(/[,，、]/).map((item) => item.trim()).filter(Boolean)),
-    z.array(z.string().max(40)).max(20).default([]),
+    z.array(shortTag).max(20).default([]),
   ),
   suitableProductTypes: z.preprocess(
     (value) => (Array.isArray(value) ? value : String(value ?? "").split(/[,，、]/).map((item) => item.trim()).filter(Boolean)),
-    z.array(z.string().max(40)).max(10).default([]),
+    z.array(shortTag).max(10).default([]),
   ),
   needsReview: z.boolean().default(false),
 });
