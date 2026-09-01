@@ -1,5 +1,3 @@
-import "server-only";
-
 type ConcurrencyState = {
   max: number;
   running: number;
