@@ -12,6 +12,7 @@ const schema = z.object({
   shotMatch: z.boolean(),
   closerToProduct: z.boolean(),
   originalGarmentLeak: z.boolean(),
+  skinQualityMatch: z.boolean(),
   score: z.coerce.number().min(0).max(100),
   summary: z.string().min(1).max(2000).transform((value)=>value.trim().slice(0,500)),
   issues: z.array(z.string().min(1).max(1000).transform((value)=>value.trim().slice(0,200))).max(12).default([]),
@@ -24,6 +25,7 @@ export type TryonSubjectFidelity = {
   shotMatch: boolean;
   closerToProduct: boolean;
   originalGarmentLeak: boolean;
+  skinQualityMatch: boolean;
   score: number;
   summary: string;
   issues: string[];
@@ -71,20 +73,21 @@ export async function checkTryonSubjectFidelity(
         compactImage(garmentImage),
         compactImage(output),
       ]),
-      "你是严格的电商服装换装质检员。必须基于可见证据判断，不得猜测。核心判断有三点：生成结果里的“人”是否就是参考模特图里的那个人（同一个人、同一个姿势、同一个景别）；结果服装是否只来自产品图；结果服装是否残留了参考模特原服装的特征。",
+      "你是严格的电商服装换装质检员。必须基于可见证据判断，不得猜测。核心判断有四点：生成结果里的“人”是否就是参考模特图里的那个人（同一个人、同一个姿势、同一个景别）；结果服装是否只来自产品图；结果服装是否残留了参考模特原服装的特征；结果的皮肤质感与画质是否明显低于参考模特图。",
       `图片顺序：第1张是参考模特图，第2张是服装产品图，第3张是生成结果图。\n` +
         `判断要点：\n` +
         `1. 第3张结果里的模特形象、姿势、身体姿态、站位、景别（全身/半身/特写）、镜头视角、构图，是否与第1张参考模特图一致或高度接近？\n` +
         `2. 第3张结果是否更像是“第2张产品图”的商品展示方式（人物、姿势、展示方式、构图沿用了产品图，而不是把服装穿到参考模特身上）？\n` +
         `3. 第3张结果里的服装，其款式、颜色、面料、版型、领型、袖型、下摆、细节，是否完全来自第2张产品图？\n` +
         `4. 关键：第3张结果里的服装，是否残留或混入了第1张参考模特原本穿着的服装特征（原服装的颜色、版型、面料、纹理、领口、袖口、下摆、轮廓等）？只要结果服装带有任何一点模特原服装特征，originalGarmentLeak 必须为 true。\n` +
-        `判定规则：如果结果更像产品图（人物/姿势/景别/构图来自产品图而非参考模特图），closerToProduct 必须为 true，basedOnModel 必须为 false；如果结果服装混入了模特原服装特征，originalGarmentLeak 必须为 true。这两种情况 score 都必须低于 60。看不清时在 issues 里说明并降低 score，不得臆断。\n` +
-        `返回 JSON：{"basedOnModel":boolean,"poseMatch":boolean,"shotMatch":boolean,"closerToProduct":boolean,"originalGarmentLeak":boolean,"score":0到100,"summary":"中文结论","issues":["具体问题"]}`,
+        `5. 皮肤与画质：第3张结果人物的肤色、皮肤质感、光泽感、细腻度和整体画质，是否明显低于第1张参考模特图（肤色偏差、皮肤发灰、假白、塑料感、磨皮过度、脏感、涂抹感、噪点、模糊、低清）？若明显低于参考图，skinQualityMatch 必须为 false。\n` +
+        `判定规则：如果结果更像产品图（人物/姿势/景别/构图来自产品图而非参考模特图），closerToProduct 必须为 true，basedOnModel 必须为 false；如果结果服装混入了模特原服装特征，originalGarmentLeak 必须为 true；如果皮肤质感或画质明显低于参考图，skinQualityMatch 必须为 false。这些情况 score 都必须低于 60。看不清时在 issues 里说明并降低 score，不得臆断。\n` +
+        `返回 JSON：{"basedOnModel":boolean,"poseMatch":boolean,"shotMatch":boolean,"closerToProduct":boolean,"originalGarmentLeak":boolean,"skinQualityMatch":boolean,"score":0到100,"summary":"中文结论","issues":["具体问题"]}`,
     ),
   );
 
   const status: TryonSubjectFidelity["status"] =
-    parsed.closerToProduct || !parsed.basedOnModel || parsed.originalGarmentLeak
+    parsed.closerToProduct || !parsed.basedOnModel || parsed.originalGarmentLeak || !parsed.skinQualityMatch
       ? "failed"
       : parsed.basedOnModel && parsed.score >= 80
         ? "passed"
@@ -97,6 +100,7 @@ export async function checkTryonSubjectFidelity(
     shotMatch: parsed.shotMatch,
     closerToProduct: parsed.closerToProduct,
     originalGarmentLeak: parsed.originalGarmentLeak,
+    skinQualityMatch: parsed.skinQualityMatch,
     score: Math.round(parsed.score),
     summary: parsed.summary,
     issues: parsed.issues,
