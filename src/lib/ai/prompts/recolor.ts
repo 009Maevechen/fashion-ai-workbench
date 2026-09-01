@@ -4,13 +4,14 @@ import { protectedClothingForArea, type RecolorGarmentArea } from "../../recolor
 export const RECOLOR_PROMPT_VERSION = "recolor-v9-per-variant-design-reference";
 export const RECOLOR_VARIANT_RULE = "颜色款一对一复刻规则：第二张图片是当前这一个颜色款的整件服装设计参考，不是普通色卡，也不是只用于取色的小色块。它同时提供目标颜色与该色款真实可见的独立设计。先以第一张输入图锁定人物、姿势、动作、景别、构图和画面样式，再逐项比对第二张参考图；参考图中明确可见且属于该颜色款的口袋、条纹、拼接、扣子、印花、包边、面料分区、车线和线条位置必须一对一还原到结果。每个颜色款必须分别读取自己的第二张参考图，禁止复用其他颜色款设计，禁止让所有颜色共用同一套基础款后只替换颜色，也不得臆造参考图看不到的细节。";
 
-export function recolorPrompt(area: string, color: string, hex: string, protectedAreas: string[], extra: string, _showFace?: boolean, trimColorName = "", trimHex = "", variantDesignDetails: string[] = [], variantMaterialFeatures = "") {
+export function recolorPrompt(area: string, color: string, hex: string, protectedAreas: string[], extra: string, _showFace?: boolean, trimColorName = "", trimHex = "", variantDesignDetails: string[] = [], variantMaterialFeatures = "", colorNameRule = "") {
   const lockedArea = area as RecolorGarmentArea;
   return `任务：服装商品精准复色与颜色款一对一设计复刻。
 第一张图片必须是上一流程已经确认的姿势/换装结果，并且必须与当前输出姿势一一对应：它是本张输出的人物、露脸状态、姿势、动作、身体比例、景别、构图、背景、光影和整体画面样式的唯一基准。第二张图片必须是当前目标颜色款独立裁出的整件服装设计参考：它只提供该颜色款的颜色、面料和设计结构，不提供人物、动作、景别或构图。只分析和修改第一张图的目标服装区域，背景、皮肤、头发、鞋子、道具、地面、阴影和高光不得被改色或重绘。
 目标服装区域：${area}
 目标颜色名称：${color}
 目标HEX色值：${hex || "未指定"}
+${colorNameRule ? `【颜色名称就是生成规则 · 最高优先】${colorNameRule}` : ""}
 ${RECOLOR_VARIANT_RULE}
 当前颜色款结构化设计识别：${variantDesignDetails.length ? variantDesignDetails.join("；") : "以第二张整件服装参考图中真实可见内容为准，不得猜测"}。
 当前颜色款面料识别：${variantMaterialFeatures || "以第二张整件服装参考图中真实可见的纹理、织法、光泽、厚薄和垂感为准"}。
@@ -22,5 +23,5 @@ ${RECOLOR_VARIANT_RULE}
 ${extra}
 【人物与构图最高优先级】无论补充要求如何填写，都必须以第一张上一流程已确认图片为唯一人物与画面基准：有脸保留同一张脸和可见程度，无脸不得补画或露出脸部；不得改变人物、姿势、景别、构图、背景或整体画面样式。
 【禁止裁剪服装 · 最高优先规则】原图中可见的全部服装范围必须完整保留；不得裁掉领口、肩部、袖口、腰头、口袋、下摆、裙摆、裤腿或裤脚。比例不一致时必须等比例缩放整张画面并扩展背景，只能扩展背景，绝对不能裁切人物或服装，不能拉伸或压扁人物和服装。必须检查服装所有可见边缘均未被新画面边界裁掉。
-禁止多宫格、文字和水印；不得直接返回原图。成图前检查：是否只改了服装区域、背景和人物是否未染色、目标颜色是否准确、颜色款设计差异是否一对一还原、面料纹理与结构是否完整；任何一项不满足都必须失败并重试。${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`;
+禁止多宫格、文字和水印；不得直接返回原图。成图前检查：是否只改了服装区域、背景和人物是否未染色、目标颜色是否准确、颜色款设计差异是否一对一还原、颜色名称中各部位配色是否逐项执行、面料纹理与结构是否完整；任何一项不满足都必须失败并重试。${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`;
 }
