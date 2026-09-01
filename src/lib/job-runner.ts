@@ -2,7 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import {addOperation,getJob,getOperation,listOperations,markInterruptedJobs,markInterruptedOperations,patchOperation,reconcileGeneratingProjects,type Operation} from "./db";
 import type {ModelSlot} from "./ai/provider-settings-types";
-import {executePose,executeRecolor,executeTryon} from "./workflow";
+import {executeInpaint,executePose,executeRecolor,executeTryon} from "./workflow";
 import {refineCorrectionRequest} from "./ai/correction-refine";
 import type {WorkflowType} from "./ai/types";
 
@@ -19,7 +19,7 @@ export async function initializeJobState(){
   }
   await jobRuntime.__workbenchJobStateInitialization;
 }
-async function execute(workflow:WorkflowType,payload:unknown){if(workflow==="tryon")return executeTryon(payload as Parameters<typeof executeTryon>[0]);if(workflow==="pose")return executePose(payload as Parameters<typeof executePose>[0]);return executeRecolor(payload as Parameters<typeof executeRecolor>[0])}
+async function execute(workflow:WorkflowType,payload:unknown){if(workflow==="tryon")return executeTryon(payload as Parameters<typeof executeTryon>[0]);if(workflow==="pose")return executePose(payload as Parameters<typeof executePose>[0]);if(workflow==="inpaint")return executeInpaint(payload as Parameters<typeof executeInpaint>[0]);return executeRecolor(payload as Parameters<typeof executeRecolor>[0])}
 async function run(operation:Operation){try{await patchOperation(operation.id,{status:"running"});const results=await execute(operation.workflow,operation.payload),jobIds=results.flatMap(result=>"id" in result&&typeof result.id==="string"?[result.id]:[]),errors=results.flatMap(result=>"error" in result&&result.error?[String(result.error)]:[]);await patchOperation(operation.id,{status:errors.length===results.length?"failed":"success",jobIds,error:errors.length?errors.join("；"):undefined})}catch(error){await patchOperation(operation.id,{status:"failed",error:error instanceof Error?error.message:"后台任务执行失败"})}}
 function drainOperationQueue(){
   const queue=jobRuntime.__workbenchOperationQueue??=[];

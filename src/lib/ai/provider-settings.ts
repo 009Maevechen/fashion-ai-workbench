@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getModel } from "./config";
-import type { GenerationMode, WorkflowType } from "./types";
+import type { GenerationMode, GenerationWorkflow } from "./types";
 import type {
   ApiProviderPublic,
   ApiProviderSecretRecord,
@@ -695,7 +695,7 @@ export async function getProviderRuntime(
 }
 
 function environmentRuntime(
-  workflow: WorkflowType,
+  workflow: GenerationWorkflow,
   mode: GenerationMode,
 ): ProviderRuntimeConfig {
   const choice = getModel(workflow, mode),
@@ -745,7 +745,7 @@ function environmentRuntime(
   };
 }
 export async function resolveWorkflowModel(
-  workflow: WorkflowType,
+  workflow: GenerationWorkflow,
   mode: GenerationMode,
   slot: ModelSlot = "primary",
 ) {

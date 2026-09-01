@@ -2,11 +2,11 @@
 
 import {useEffect,useState} from "react";
 import type {Project} from "@/lib/db";
-import type {WorkflowType} from "@/lib/ai/types";
+import type {GenerationWorkflow} from "@/lib/ai/types";
 
-const LABEL:Record<WorkflowType,string>={tryon:"换装",pose:"姿势",recolor:"复色"};
+const LABEL:Record<GenerationWorkflow,string>={tryon:"换装",pose:"姿势",recolor:"复色"};
 
-export default function WorkflowSkuExport({project,workflow,onSaved}:{project:Project;workflow:WorkflowType;onSaved:(project:Project)=>void}){
+export default function WorkflowSkuExport({project,workflow,onSaved}:{project:Project;workflow:GenerationWorkflow;onSaved:(project:Project)=>void}){
   const saved=project.settings.workflowSkus?.[workflow]||project.sku;
   const [sku,setSku]=useState(saved),[busy,setBusy]=useState(false),[notice,setNotice]=useState("");
   useEffect(()=>{setSku(project.settings.workflowSkus?.[workflow]||project.sku);setNotice("")},[project,workflow]);

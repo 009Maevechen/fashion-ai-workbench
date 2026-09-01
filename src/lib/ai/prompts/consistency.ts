@@ -1,6 +1,7 @@
 import type { Job, Project } from "@/lib/db";
+import type { GenerationWorkflow } from "../types";
 
-export function garmentConsistencyPrompt(workflow:"tryon"|"pose"|"recolor",project:Project,job:Job){
+export function garmentConsistencyPrompt(workflow:GenerationWorkflow,project:Project,job:Job){
   const profile=project.profile?.attributes||{};
   const known=[profile.fabric,profile.fabricTexture,profile.weaveStructure,profile.gradientDesign,profile.colorBlockLayout,profile.specialDesign,profile.neckline,profile.sleeveType,profile.trimColor].filter(Boolean).join("；");
   const color=project.targetColors?.find(item=>item.id===job.targetColorId);

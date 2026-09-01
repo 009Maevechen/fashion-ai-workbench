@@ -3,6 +3,7 @@
 import {useState} from "react";
 import type {Job,Project} from "@/lib/db";
 import ImagePreviewDialog from "./ImagePreviewDialog";
+import {useInpaint} from "./useInpaint";
 import {expectedColorResultCount,normalizedColorName} from "@/lib/color-sets";
 import {recolorColorsWithSavedJobs} from "@/lib/recolor-collection";
 
@@ -10,7 +11,7 @@ type GalleryImage={url?:string;label:string;status:"passed"|"review"|"failed";jo
 type GalleryGroup={title:string;swatch?:string;images:GalleryImage[]};
 const ACTIVE_STATUSES=["queued","generating","uploading","submitting","waiting_provider","downloading","validating","saving"];
 
-export default function FinalPanel({p,jobs,onStep,onComplete}:{p:Project;jobs:Job[];onStep:(step:number)=>void;onComplete:()=>Promise<void>}){
+export default function FinalPanel({p,jobs,onStep,onComplete,enqueue}:{p:Project;jobs:Job[];onStep:(step:number)=>void;onComplete:()=>Promise<void>;enqueue:(url:string,body:unknown)=>Promise<unknown>}){
   const [busy,setBusy]=useState(false),[error,setError]=useState(""),[folderOpen,setFolderOpen]=useState(false),[preview,setPreview]=useState<{images:string[];index:number}|null>(null);
   const colors=recolorColorsWithSavedJobs(p,jobs),recolorJobs=jobs.filter(job=>job.workflow==="recolor"),failedJobs=recolorJobs.filter(job=>job.status==="failed"||job.status==="interrupted");
   const jobFor=(url?:string,colorId?:string,slot?:number)=>recolorJobs.find(job=>(url&&job.outputImages.includes(url))||(colorId&&job.targetColorId===colorId&&job.slot===slot));
@@ -22,6 +23,7 @@ export default function FinalPanel({p,jobs,onStep,onComplete}:{p:Project;jobs:Jo
   const galleryImages=groups.flatMap(group=>group.images),available=galleryImages.filter(image=>image.url),passed=galleryImages.filter(image=>image.status==="passed"&&image.url).length,review=galleryImages.filter(image=>image.status==="review").length,failed=galleryImages.filter(image=>image.status==="failed").length,previewImages=available.flatMap(image=>image.url?[image.url]:[]);
   function downloadArchive(){const link=document.createElement("a");link.href=`/api/projects/${p.id}/download`;link.download=`${p.sku}_results.zip`;document.body.appendChild(link);link.click();link.remove()}
   async function completeProject(){setBusy(true);setError("");try{await onComplete()}catch(e){setError(e instanceof Error?e.message:"无法标记项目完成")}finally{setBusy(false)}}
+  const inpaint=useInpaint({project:p,sourceStep:"recolor",enqueue});
   return <div className="stack final-qc-page">
     <section className="card final-qc-toolbar">
       <div className="final-qc-title"><div><span className="eyebrow">图片交付画廊</span><h2>{p.sku} · {p.productName}</h2></div><span className={`badge ${p.status==="已完成"?"success":"wait"}`}>{p.status}</span></div>
@@ -31,8 +33,8 @@ export default function FinalPanel({p,jobs,onStep,onComplete}:{p:Project;jobs:Jo
       {error&&<div className="error">{error}</div>}
     </section>
     <section className="card final-delivery-gallery">
-      {groups.map(group=><section className="final-qc-group" key={group.title}><div className="final-qc-group-head"><div>{group.swatch&&<i style={{background:group.swatch}}/>}<h3>{group.title}</h3></div><span>{group.images.filter(image=>image.url).length}/{group.images.length}</span></div><div className="final-qc-grid">{group.images.map((image,index)=><article className={`final-qc-image ${image.status}`} key={`${group.title}-${index}`}><div className="final-qc-image-head"><b>{image.label}</b><span>{image.status==="passed"?"已通过":image.status==="review"?"待审核":"失败"}</span></div>{image.url?<button className="image-button" type="button" onClick={()=>setPreview({images:previewImages,index:previewImages.indexOf(image.url!)})}><img src={image.url} alt={`${group.title}${image.label}`}/></button>:<div className="final-qc-placeholder"><b>暂无图片</b><small>{image.job?.error||"返回复色页单张重试"}</small></div>}<div className="final-qc-image-actions">{image.url&&<><button type="button" onClick={()=>setPreview({images:previewImages,index:previewImages.indexOf(image.url!)})}>查看大图</button><a href={image.url} download>下载</a></>}{image.status==="failed"&&<button type="button" onClick={()=>onStep(4)}>单张重试</button>}</div></article>)}</div></section>)}
+      {groups.map(group=><section className="final-qc-group" key={group.title}><div className="final-qc-group-head"><div>{group.swatch&&<i style={{background:group.swatch}}/>}<h3>{group.title}</h3></div><span>{group.images.filter(image=>image.url).length}/{group.images.length}</span></div><div className="final-qc-grid">{group.images.map((image,index)=><article className={`final-qc-image ${image.status}`} key={`${group.title}-${index}`}><div className="final-qc-image-head"><b>{image.label}</b><span>{image.status==="passed"?"已通过":image.status==="review"?"待审核":"失败"}</span></div>{image.url?<button className="image-button" type="button" onClick={()=>setPreview({images:previewImages,index:previewImages.indexOf(image.url!)})}><img src={image.url} alt={`${group.title}${image.label}`}/></button>:<div className="final-qc-placeholder"><b>暂无图片</b><small>{image.job?.error||"返回复色页单张重试"}</small></div>}<div className="final-qc-image-actions">{image.url&&<><button type="button" onClick={()=>setPreview({images:previewImages,index:previewImages.indexOf(image.url!)})}>查看大图</button><a href={image.url} download>下载</a>{image.job&&<button type="button" onClick={()=>inpaint.openInpaint(image.job!)}>🖌 局部重绘</button>}</>}{image.status==="failed"&&<button type="button" onClick={()=>onStep(4)}>单张重试</button>}</div></article>)}</div></section>)}
     </section>
-    <div className="actions final-back-actions"><button className="secondary" onClick={()=>onStep(2)}>返回换装</button><button className="secondary" onClick={()=>onStep(3)}>返回姿势</button><button className="secondary" onClick={()=>onStep(4)}>返回复色</button></div>{preview&&<ImagePreviewDialog {...preview} onClose={()=>setPreview(null)}/>}
+    <div className="actions final-back-actions"><button className="secondary" onClick={()=>onStep(2)}>返回换装</button><button className="secondary" onClick={()=>onStep(3)}>返回姿势</button><button className="secondary" onClick={()=>onStep(4)}>返回复色</button></div>{preview&&<ImagePreviewDialog {...preview} onClose={()=>setPreview(null)}/>}{inpaint.dialog}
   </div>;
 }

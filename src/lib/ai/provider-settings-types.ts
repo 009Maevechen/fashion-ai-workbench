@@ -1,6 +1,6 @@
-import type { WorkflowType } from "./types";
+import type { GenerationWorkflow } from "./types";
 export type ModelWorkflowType =
-  | WorkflowType
+  | GenerationWorkflow
   | "product"
   | "qc"
   | "research"
@@ -56,7 +56,7 @@ export type ModelInventoryEntry = {
 /** 模型任务记录：为模型实验室 / 成本统计预留。 */
 export type ModelRunRecord = {
   id: string;
-  workflowType: ModelWorkflowType;
+  workflowType: ModelWorkflowType | "inpaint";
   providerId: string;
   providerName: string;
   modelId: string;

@@ -7,7 +7,7 @@ import type { Project } from "@/lib/db";
 import { projectModuleHref } from "@/lib/project-navigation";
 import WorkflowModelSelector from "@/components/workbench/WorkflowModelSelector";
 import WorkflowSkuExport from "@/components/workbench/WorkflowSkuExport";
-import type { WorkflowType } from "@/lib/ai/types";
+import type { GenerationWorkflow } from "@/lib/ai/types";
 import type { ModelWorkflowType } from "@/lib/ai/provider-settings-types";
 import {
   AppLogo,
@@ -52,9 +52,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     projectId = pathname.startsWith("/projects/") ? parts[2] : "",
     activeModule = parts[3] || "",
     activeWorkflow = (["tryon", "pose", "recolor"] as const).includes(
-      activeModule as WorkflowType,
+      activeModule as GenerationWorkflow,
     )
-      ? (activeModule as WorkflowType)
+      ? (activeModule as GenerationWorkflow)
       : undefined,
     activeModelWorkflow: ModelWorkflowType | undefined =
       activeModule === "details" ? "product" : activeWorkflow,

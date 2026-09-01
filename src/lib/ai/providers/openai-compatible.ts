@@ -16,7 +16,8 @@ export class OpenAiCompatibleProvider implements ImageProvider{
     if(useMultipart){
       if(!input.images.length)throw new Error("图片编辑接口至少需要一张输入图片");
       const form=new FormData();form.set("model",model);form.set("prompt",input.prompt);form.set("n","1");form.set("response_format","b64_json");
-      input.images.forEach((image,index)=>{const part=dataUrlParts(image),extension=part.mime.includes("png")?"png":part.mime.includes("webp")?"webp":"jpg";form.append("image",new Blob([part.bytes],{type:part.mime}),providerInputImageFilename(input.workflow,index,extension))});body=form;
+      input.images.forEach((image,index)=>{const part=dataUrlParts(image),extension=part.mime.includes("png")?"png":part.mime.includes("webp")?"webp":"jpg";form.append("image",new Blob([part.bytes],{type:part.mime}),providerInputImageFilename(input.workflow,index,extension))});
+      if(input.mask){const mask=dataUrlParts(input.mask);form.append("mask",new Blob([mask.bytes],{type:"image/png"}),`mask.png`)}body=form;
     }else{
       headers={...headers,"Content-Type":"application/json"};
       body=JSON.stringify(buildOpenAiCompatibleRequest(input,model));

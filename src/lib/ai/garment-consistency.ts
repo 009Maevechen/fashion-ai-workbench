@@ -34,6 +34,6 @@ export async function checkGarmentConsistency(project:Project,job:Job):Promise<G
   if(job.workflow==="recolor"&&!variantReference)throw new Error("找不到当前颜色款的整件服装设计参考，无法进行一对一复色质检");
   const runtime=await resolveQcModel();
   const inputs=job.workflow==="recolor"?[source,variantReference!,output]:[source,output];
-  const parsed=checkSchema.parse(await requestMultiVisionJson(runtime,await Promise.all(inputs.map(compactImage)),"你是严格的电商服装质检员。必须基于可见证据判断，不得因人物姿势或背景不同而误判。",garmentConsistencyPrompt(job.workflow,project,job)));
+  const parsed=checkSchema.parse(await requestMultiVisionJson(runtime,await Promise.all(inputs.map(compactImage)),"你是严格的电商服装质检员。必须基于可见证据判断，不得因人物姿势或背景不同而误判。",garmentConsistencyPrompt(job.workflow as "tryon"|"pose"|"recolor",project,job)));
   return {status:parsed.consistent&&parsed.score>=85?"passed":"needs_review",score:Math.round(parsed.score),summary:parsed.summary,issues:parsed.issues,checks:parsed.checks,checkedAt:new Date().toISOString(),model:runtime.model};
 }

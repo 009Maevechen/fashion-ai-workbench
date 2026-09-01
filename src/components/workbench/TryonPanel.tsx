@@ -6,6 +6,7 @@ import type {ProductType} from "@/lib/db";
 import AssetUploadCard,{type LocalAsset} from "./AssetUploadCard";
 import ImagePreviewDialog from "./ImagePreviewDialog";
 import ResultCard from "./ResultCard";
+import {useInpaint} from "./useInpaint";
 import ConsistencyCheck from "./ConsistencyCheck";
 import ClearAssetsButton from "./ClearAssetsButton";
 import ClearResultsButton from "./ClearResultsButton";
@@ -21,7 +22,7 @@ import ColorCropper,{type CropRegion} from "./ColorCropper";
 
 const DETAILS="保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
 
-export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,run,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,saveProject,post,confirmFlow}:PanelProps&{historyJobs:Job[]}){
+export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,run,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,saveProject,post,enqueue,confirmFlow}:PanelProps&{historyJobs:Job[]}){
   const saved=p.settings.tryon;
   const [garment,setGarment]=useState<LocalAsset>({url:p.assets.garmentImage,name:"已保存服装图",status:p.assets.garmentImage?"saved":"idle"});
   const [model,setModel]=useState<LocalAsset>({url:p.assets.modelReferenceImage||p.assets.modelImage,name:"已保存模特图",status:(p.assets.modelReferenceImage||p.assets.modelImage)?"saved":"idle"});
@@ -82,6 +83,7 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
     await saveProject({settings:{...p.settings,tryon:{...draftSettings.settings.tryon,revisionRequest:"",revisionMessages:messages}}});
     await post(`/api/jobs/${visibleJob.id}/retry`,{correctionRequest:request,modelPreference:"primary"});
   }
+  const inpaint=useInpaint({project:p,sourceStep:"tryon",enqueue});
 
   return <>
 <div className="workbench-grid">
@@ -123,7 +125,7 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
 <div className="panel-head">
 <h2>换装结果（候选图）</h2>
 <div className="panel-actions"><div className="tryon-candidate-tabs">{Array.from({length:candidateTotal},(_,index)=>index+1).map(slot=><button type="button" className={!historyJob&&activeCandidate===slot?"active":""} key={slot} onClick={()=>{setHistoryJobId("");setCandidateSlot(slot)}}>候选{String(slot).padStart(2,"0")}</button>)}</div><ClearResultsButton workflow="tryon" disabled={busy||!hasWorkflowResults(p,jobs,"tryon")} onConfirm={clearResults}/></div>
-</div><div className="tryon-result-layout">{visibleJob?<div className="result-grid tryon-single-result"><div><ResultCard key={`tryon-result-${visibleJob.id}`} job={visibleJob} label={historyJob?`历史生成 · 候选 ${String(visibleJob.slot||1).padStart(2,"0")}`:`候选 ${String(activeCandidate).padStart(2,"0")}`} selected={selected===visibleUrl} onSelect={visibleUrl?()=>setSelected(visibleUrl):undefined} onPreview={visibleUrl?()=>setPreview({images:allImages,index:allImages.indexOf(visibleUrl)}):undefined} onRetry={()=>run(()=>start(visibleJob.slot||activeCandidate))} onFallbackRetry={route.fallback.configured?()=>run(()=>start(visibleJob.slot||activeCandidate,"fallback")):undefined} onCorrect={request=>run(()=>post(`/api/jobs/${visibleJob.id}/retry`,{correctionRequest:request}))} correctionBusy={busy}/><ConsistencyCheck job={visibleJob} busy={busy} onCheck={()=>run(()=>checkConsistency(visibleJob.id))}/></div></div>:<div className="empty-state">
+</div><div className="tryon-result-layout">{visibleJob?<div className="result-grid tryon-single-result"><div><ResultCard key={`tryon-result-${visibleJob.id}`} job={visibleJob} label={historyJob?`历史生成 · 候选 ${String(visibleJob.slot||1).padStart(2,"0")}`:`候选 ${String(activeCandidate).padStart(2,"0")}`} selected={selected===visibleUrl} onSelect={visibleUrl?()=>setSelected(visibleUrl):undefined} onPreview={visibleUrl?()=>setPreview({images:allImages,index:allImages.indexOf(visibleUrl)}):undefined} onRetry={()=>run(()=>start(visibleJob.slot||activeCandidate))} onFallbackRetry={route.fallback.configured?()=>run(()=>start(visibleJob.slot||activeCandidate,"fallback")):undefined} onCorrect={request=>run(()=>post(`/api/jobs/${visibleJob.id}/retry`,{correctionRequest:request}))} onInpaint={()=>inpaint.openInpaint(visibleJob)} correctionBusy={busy}/><ConsistencyCheck job={visibleJob} busy={busy} onCheck={()=>run(()=>checkConsistency(visibleJob.id))}/></div></div>:<div className="empty-state">
 <div>
 <div className="empty-icon">◇</div>
 <b>还没有换装候选</b>
@@ -134,5 +136,5 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
 <p>确认后可进入三种姿势</p>
 </div>
     </section>
-  </div>{preview&&<ImagePreviewDialog {...preview} onClose={()=>setPreview(null)}/>}</>;
+  </div>{preview&&<ImagePreviewDialog {...preview} onClose={()=>setPreview(null)}/>}{inpaint.dialog}</>;
 }
