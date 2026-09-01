@@ -10,6 +10,7 @@ import { runtimeOutputsDir } from "./runtime-paths";
  * 读取→压缩→Base64→格式转换。
  */
 const cacheRoot = () => path.join(runtimeOutputsDir(), ".cache", "preprocess");
+const inflight = new Map<string, Promise<{ buffer: Buffer; mime: string }>>();
 
 function contentHash(buffer: Buffer): string {
   return crypto.createHash("sha256").update(buffer).digest("hex");
@@ -27,7 +28,15 @@ export async function cachedPrepare(
   } catch {
     // 未命中，执行真实预处理并写入缓存
   }
-  const prepared = await prepare(buffer);
+  // 同一批并行姿势/复色任务可能同时命中同一输入图；共享进行中的预处理，避免重复压缩。
+  const pending = inflight.get(hash) || prepare(buffer);
+  inflight.set(hash, pending);
+  let prepared: { buffer: Buffer; mime: string };
+  try {
+    prepared = await pending;
+  } finally {
+    if (inflight.get(hash) === pending) inflight.delete(hash);
+  }
   try {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, prepared.buffer);

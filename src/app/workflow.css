@@ -204,6 +204,9 @@
 .reference-crop-dialog .cropper img{width:auto;max-width:100%;height:auto;max-height:65vh;object-fit:contain}
 .reference-crop-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}
 .reference-crop-actions button{min-width:140px}
+.tryon-garment-crop-control{margin-top:14px;padding:12px;border:1px solid #ddd5fb;border-radius:12px;background:#faf9ff}
+.tryon-garment-crop-control .panel-head{margin-bottom:0}
+.recolor-face-lock-notice{margin:8px 0 0;color:#8a6d1f;background:#fff8e6;border:1px solid #f0dcab;border-radius:8px;padding:9px 11px;font-size:11px}
 @media(max-width:1050px){.recolor-source-reference-grid{grid-template-columns:1fr}.recolor-reference-column .recolor-reference-upload{max-width:460px}.recolor-reference-column .recolor-reference-upload .upload-card{height:320px;min-height:320px}.recolor-reference-column .recolor-reference-upload .upload-card img,.recolor-reference-column .recolor-reference-upload .upload-empty{height:260px;min-height:260px}}
 @media(max-width:720px){.recolor-source-column .recolor-source-gallery,.recolor-source-column .recolor-upload-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}.recolor-source-reference-grid .recolor-section-title{min-height:0}.recolor-source-reference-grid .segment.compact{flex-basis:auto;width:100%;max-width:none}}
 

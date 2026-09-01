@@ -35,7 +35,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   const [colors,setColors]=useState<TargetColor[]>(p.targetColors||[]);
   const [activeId,setActiveId]=useState(saved?.activeColorId||p.targetColors?.[0]?.id||"");
   const [mode,setMode]=useState<"fast"|"standard"|"quality">(saved?.mode||"standard");
-  const [face,setFace]=useState(saved?.face??false);
+  const [face]=useState(saved?.face??false);
   const [area,setArea]=useState<string>(lockedArea);
   const [protectedAreas,setProtected]=useState(saved?.protectedAreas?.length?saved.protectedAreas:PROTECTED);
   const [extra,setExtra]=useState(saved?.extraRequirements||EXTRA);
@@ -59,7 +59,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   const active=colors.find(c=>c.id===activeId);
   const duplicateNames=duplicateColorNames(colors),activeName=active?normalizedColorName(active):"",activeNameDuplicate=Boolean(activeName&&duplicateNames.has(activeName.toLocaleLowerCase()));
   const generatedColors=colors.filter(color=>color.poseResults?.some(Boolean)).length;
-  const hasTargetColor=(color?:TargetColor)=>Boolean(reference.url||color?.cropImage||VALID_HEX.test(color?.hex||""));
+  const hasTargetColor=(color?:TargetColor)=>Boolean(color?.cropImage);
   const sources=sourceMode==="confirmed"?(p.confirmedPoseImages||[]):manual.map(x=>x.url).filter(Boolean) as string[];
   const expectedCount=active?.sourceCount&&active.sourceCount>=2&&active.sourceCount<=4?active.sourceCount:sources.length>=2&&sources.length<=4?sources.length:3;
   const colorJobs=jobs.filter(j=>j.targetColorId===activeId&&(!active?.generationStartedAt||j.startedAt>=active.generationStartedAt));
@@ -86,12 +86,12 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   async function analyzeReference(){
     setAnalyzing(true);
     try{
-      const response=await fetch(`/api/projects/${p.id}/colors/analyze`,{method:"POST"}),data=await response.json() as {colors?:Array<{name:string;hex:string;trimColorName?:string;trimHex?:string}>;needsReview?:boolean;reviewReason?:string;confidence?:number;error?:string};
+      const response=await fetch(`/api/projects/${p.id}/colors/analyze`,{method:"POST"}),data=await response.json() as {colors?:Array<{name:string;hex:string;trimColorName?:string;trimHex?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;cropImage?:string;cropRegion?:CropRegion}>;needsReview?:boolean;reviewReason?:string;confidence?:number;error?:string};
       if(!response.ok||!data.colors)throw new Error(data.error||"颜色分析失败");
       // 人工修改优先：已有色卡时只补充 AI 新识别到的颜色，不覆盖用户已填/已修改的颜色。
       const hasExisting=colors.length>0;
       const merged=hasExisting?mergeAnalyzedColorDetails(colors,data.colors):{colors:[],unmatched:data.colors};
-      const additions=merged.unmatched.map(color=>({id:crypto.randomUUID(),name:analyzedColorName(color),baseHex:color.hex,hex:color.hex,trimColorName:color.trimColorName,trimHex:color.trimHex,status:"ready" as const}));
+      const additions=merged.unmatched.map(color=>({id:crypto.randomUUID(),name:analyzedColorName(color),baseHex:color.hex,hex:color.hex,trimColorName:color.trimColorName,trimHex:color.trimHex,designDetails:color.designDetails,materialFeatures:color.materialFeatures,designConfidence:color.confidence,designNeedsReview:(color.confidence??1)<0.65||!color.cropImage,cropImage:color.cropImage,cropRegion:color.cropRegion,status:color.cropImage?"ready" as const:"draft" as const}));
       const next=hasExisting?[...merged.colors,...additions].slice(0,6):additions;
       if(!next.length)throw new Error("参考图中的颜色已经全部存在");
       const nextActive=activeId&&next.some(color=>color.id===activeId)?activeId:next[0].id;
@@ -126,7 +126,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
     if(!colorName)throw new Error("请先为每一款颜色命名，例如黑色、米白色或卡其色");
     if(duplicateNames.has(colorName.toLocaleLowerCase()))throw new Error("颜色名称不能重复，请为每一款颜色填写不同名称");
     if(sources.length<2||sources.length>4)throw new Error("必须有两张至四张有效姿势输入图（建议三至四张）");
-    if(!hasTargetColor(target))throw new Error(`“${colorName}”缺少参考图或有效HEX色值`);
+    if(!hasTargetColor(target))throw new Error(`“${colorName}”缺少该颜色款的整件服装设计参考，请先完整框选该色款`);
     await post("/api/recolor",{projectId:p.id,...(reference.url?{colorReferenceImage:reference.url}:{}),...(target.cropImage?{colorReferenceCrop:target.cropImage}:{}),targetColorId:target.id,colorName,hexColor:target.hex||"",...trim,garmentArea:area,protectedAreas,extraRequirements:extra,face,mode,sourceMode,poseImages:sources,modelPreference,...(slot?{slot}:{})});
   }
   async function enqueueColor(target:TargetColor){
@@ -135,7 +135,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
     if(!colorName)throw new Error("请先为每一款颜色命名，例如黑色、米白色或卡其色");
     if(duplicateNames.has(colorName.toLocaleLowerCase()))throw new Error("颜色名称不能重复，请为每一款颜色填写不同名称");
     if(sources.length<2||sources.length>4)throw new Error("必须有两张至四张有效姿势输入图（建议三至四张）");
-    if(!hasTargetColor(target))throw new Error(`“${colorName}”缺少参考图或有效HEX色值`);
+    if(!hasTargetColor(target))throw new Error(`“${colorName}”缺少该颜色款的整件服装设计参考，请先完整框选该色款`);
     const response=await fetch("/api/recolor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:p.id,...(reference.url?{colorReferenceImage:reference.url}:{}),...(target.cropImage?{colorReferenceCrop:target.cropImage}:{}),targetColorId:target.id,colorName,hexColor:target.hex||"",...trim,garmentArea:area,protectedAreas,extraRequirements:extra,face,mode,sourceMode,poseImages:sources,modelPreference:"primary"})});
     const data=await response.json() as {jobId?:string;error?:string};
     if(!response.ok||!data.jobId)throw new Error(data.error||"复色任务提交失败");
@@ -156,7 +156,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   async function startBatch(){
     const targets=colors.filter(color=>batchColorIds.includes(color.id));
     if(!targets.length)throw new Error("请至少勾选一款需要复色的颜色");
-    if(!colorsLocked)throw new Error("请先点击“锁定颜色”，确认颜色名称和色值后再开始复色");
+    if(!colorsLocked)throw new Error("请先点击“锁定颜色”，确认每款颜色名称和整件服装设计参考后再开始复色");
     if(!configured)throw new Error("当前复色模型尚未配置");
     const first=targets[0],generationStartedAt=new Date().toISOString(),targetIds=new Set(targets.map(color=>color.id));
     const nextColors=colors.map(color=>targetIds.has(color.id)?{...color,status:"generating" as const,generationStartedAt,sourceCount:sources.length}:color);
@@ -172,7 +172,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
     if(!colorsLocked){
       if(!colors.length)throw new Error("请先识别或手动添加颜色");
       if(duplicateNames.size)throw new Error("存在重复颜色名称，请修改后再锁定");
-      if(colors.some(color=>!normalizedColorName(color)||!hasTargetColor(color)))throw new Error("请先完成每一款颜色的名称和色值");
+      if(colors.some(color=>!normalizedColorName(color)||!hasTargetColor(color)))throw new Error("请先完成每一款颜色的名称，并确认或框选该色款整件服装设计参考");
     }
     const next=!colorsLocked;setColorsLocked(next);
     await saveProject({settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:activeId,sourceMode,face,colorsLocked:next}},targetColors:colors});
@@ -197,15 +197,16 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   const collectionImages=collectionItems.map(item=>item.url);
   const colorControlPanel=<section className={`card recolor-control-card ${paletteVisible?"palette-open":""}`}>
     <div className="panel-head"><div><h2>当前颜色调整</h2><small>{activeName||"点击色块开始调整"}</small></div><button className="settings-dialog-close compact-close" type="button" aria-label="收起色板" onClick={()=>setPaletteVisible(false)}>×</button></div>
-    {active&&paletteVisible?<><ColorAdjustmentPanel key={active.id} baseHex={active.baseHex||active.hex} adjustment={active.colorAdjustment} disabled={busy} onApply={applyColorAdjustment}/>{reference.url&&<details className="recolor-crop-details"><summary>从参考图精确框选当前颜色</summary><ColorCropper src={reference.url} region={active.cropRegion} onChange={region=>run(()=>crop(region))}/></details>}</>:<div className="notice">点击识别出的色块或“调整颜色”，这里才会显示色板。</div>}
-    <details className="recolor-advanced-details"><summary>高级生成设置</summary><label className="field">复色区域<select value={area} onChange={event=>setArea(event.target.value)}><option>上衣</option><option>裤子</option><option>裙子</option><option>整套服装</option></select></label><label className="check-item face-visibility-toggle"><input type="checkbox" checked={face} onChange={event=>setFace(event.target.checked)}/>露出脸部</label><h3 className="section-label">保护区域</h3><div className="protection-grid">{PROTECTED.map(item=><label className="check-item" key={item}><input type="checkbox" checked={protectedAreas.includes(item)} onChange={()=>setProtected(value=>value.includes(item)?value.filter(current=>current!==item):[...value,item])}/>{item}</label>)}</div><label className="field">补充要求<textarea value={extra} onChange={event=>setExtra(event.target.value)}/></label></details>
+    {active&&paletteVisible?<><ColorAdjustmentPanel key={active.id} baseHex={active.baseHex||active.hex} adjustment={active.colorAdjustment} disabled={busy} onApply={applyColorAdjustment}/>{reference.url&&<details className="recolor-crop-details"><summary>{active.cropImage?"重新框选该颜色款整件服装":"框选该颜色款整件服装（必需）"}</summary><div className="notice">请完整包含该色款可见的领口、袖口、口袋、拼接、下摆或裤脚；不能只框一个颜色小块。</div><ColorCropper src={referenceSourceUrl||reference.url} region={active.cropRegion} onChange={region=>run(()=>crop(region))}/></details>}</>:<div className="notice">点击识别出的色块或“调整颜色”，这里才会显示色板。</div>}
+    <details className="recolor-advanced-details"><summary>高级生成设置</summary><label className="field">复色区域<select value={area} onChange={event=>setArea(event.target.value)}><option>上衣</option><option>裤子</option><option>裙子</option><option>整套服装</option></select></label><div className="notice recolor-face-lock-notice">人物露脸状态跟随上一流程已确认图片（有脸保留脸部，无脸不补脸），此设置不可覆盖输入图。</div><h3 className="section-label">保护区域</h3><div className="protection-grid">{PROTECTED.map(item=><label className="check-item" key={item}><input type="checkbox" checked={protectedAreas.includes(item)} onChange={()=>setProtected(value=>value.includes(item)?value.filter(current=>current!==item):[...value,item])}/>{item}</label>)}</div><label className="field">补充要求<textarea value={extra} onChange={event=>setExtra(event.target.value)}/></label></details>
     <div className="model-card"><div className="model-row"><span>{routed?route.primary.model:health.recolorProvider==="volcengine"?"Doubao Seedream 5.0":mode==="quality"?"FLUX.2 Pro":"Seedream 5.0"}</span><span className={`badge ${configured?"success":"failed"}`}>{configured?"可用":"未配置"}</span></div><small>提供商：{route.primary.providerName}</small><small>备用模型：{route.fallback.configured?`${route.fallback.providerName} / ${route.fallback.model}`:"未配置"}</small></div>
     <div className="generate-footer"><button className="primary" disabled={busy||!active||!activeName||activeNameDuplicate||sources.length<2||sources.length>4||!hasTargetColor(active)||!configured} onClick={()=>run(()=>start())}>单独重试{activeName||"当前颜色"}（{sources.length>=2?sources.length:"3–4"}张）</button></div>
   </section>;
   return <>
+    <div className="notice" role="status">复色会保持前一步图片的原始露脸状态：有脸保留脸部，无脸不补脸，也不改变原图人物样式。</div>
     <section className="card recolor-flow-card">
       <div className="recolor-flow-title">
-        <div><span className="recolor-step-pill">步骤 4 · 色卡复色</span><h2>上传色卡并批量生成复色图</h2><p>模特原图保持人物与构图不变；颜色参考图用于提取商品色卡，每个颜色分别生成一套结果。</p></div>
+        <div><span className="recolor-step-pill">步骤 4 · 色卡复色</span><h2>上传色卡并批量生成复色图</h2><p>三姿势已确认图片锁定人物与构图；每个颜色款使用自己独立的整件服装参考，分别复刻颜色和对应设计。</p></div>
         <div className="panel-actions"><span className={`badge ${generatedColors>0?"success":"wait"}`}>{generatedColors}/{colors.length} 款已有结果</span><ClearAssetsButton disabled={busy||!hasClearableSourceAssets(p)} onConfirm={clearAllAssets}/></div>
       </div>
       <label className="field recolor-sku-field">商品货号（作为输出文件夹名称）<input value={p.sku} readOnly/><small>货号来自当前商品项目，输出将保存到 outputs/{p.sku}/recolor/颜色名称/。</small></label>
@@ -215,7 +216,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
           <div className="recolor-section-title"><div><h3>颜色参考图</h3><small>{p.assets.colorReferenceCropImage?"只显示已框选的服装部位":p.assets.colorReferenceImage?"上传的多颜色参考图":"已自动使用产品主图，可重新上传多颜色参考图"}</small></div></div>
           <div className="recolor-reference-upload"><AssetUploadCard label="颜色参考图" description={p.assets.colorReferenceImage?"上传后可框选服装区域":"未单独上传时自动使用产品主图识别颜色" } value={reference} onChange={asset=>run(()=>persist(asset,"colorReferenceImage","color-reference"))} onDelete={()=>run(async()=>{await fetch(`/api/projects/${p.id}/colors/reference-crop`,{method:"DELETE"});await deleteAsset("colorReferenceImage");const fallback=p.assets.garmentImage;setReference(fallback?{url:fallback,name:"产品主图（自动作为颜色参考）",status:"saved"}:{status:"idle"});setReferenceSourceUrl(fallback||"");setReferenceCropOpen(false)})} onPreview={()=>reference.url&&setPreview({images:[reference.url],index:0})}/></div>
           {referenceSourceUrl&&<button type="button" className="reference-crop-trigger" onClick={()=>setReferenceCropOpen(true)}>▣ {p.assets.colorReferenceCropImage?"重新框选识别部位":"框选识别部位"}</button>}
-          <div className="recolor-reference-note"><b>识别原则</b><span>只分析框选区域内的服装，同时识别主体色及领口、袖口、下摆、包边等局部配色；名称按“主体色＋边色”输出，不识别模特、背景和文字。</span></div>
+          <div className="recolor-reference-note"><b>识别原则</b><span>自动识别每个颜色款，并尝试为每款裁出整件服装设计参考；裁图必须包含口袋、条纹、拼接、扣子、印花、包边和面料分区。未可靠定位的色款会要求人工重新框选。</span></div>
         </div>
         <div className="recolor-source-column">
           <div className="recolor-section-title"><div><h3>复色图片（建议3–4张）</h3><small>这里只显示缩略图；点击可查看大图。</small></div><div className="segment compact"><button className={sourceMode==="confirmed"?"active":""} disabled={(p.confirmedPoseImages?.length||0)<2} onClick={()=>setSourceMode("confirmed")}>已确认姿势</button><button className={sourceMode==="standalone"?"active":""} onClick={()=>setSourceMode("standalone")}>独立上传</button></div></div>
@@ -235,12 +236,12 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
               <label className="recolor-batch-check"><input type="checkbox" checked={checked} onChange={()=>setBatchColorIds(ids=>checked?ids.filter(id=>id!==color.id):[...ids,color.id])}/></label>
               <button className="recolor-swatch-input" type="button" style={{background:VALID_HEX.test(color.hex||"")?color.hex:"#C8A06A"}} aria-label={`调整${color.name||`颜色${index+1}`}`} onClick={()=>{setActiveId(color.id);setPaletteVisible(true)}}/>
               <div className="recolor-color-fields"><label>主体颜色<input disabled={colorsLocked} defaultValue={color.name} placeholder={`颜色 ${index+1}`} onBlur={event=>run(()=>updateColorById(color.id,{name:event.target.value}))}/></label><label>主色HEX<input disabled={colorsLocked} defaultValue={color.hex||""} placeholder="#C8A06A" onBlur={event=>run(()=>updateColorById(color.id,{baseHex:event.target.value.toUpperCase(),hex:event.target.value.toUpperCase()}))}/></label><label>边饰/局部颜色<input disabled={colorsLocked} defaultValue={color.trimColorName||""} placeholder="例如：白色 / 黑色" onBlur={event=>run(()=>updateColorById(color.id,{trimColorName:event.target.value,outputName:undefined}))}/></label><label>边饰HEX<input disabled={colorsLocked} defaultValue={color.trimHex||""} placeholder="可选" onBlur={event=>run(()=>updateColorById(color.id,{trimHex:event.target.value.toUpperCase()}))}/></label><label className="recolor-output-name">输出名称<input key={`${color.id}-${recolorColorName(color)}`} disabled={colorsLocked} defaultValue={recolorColorName(color)} placeholder="手动填写最终输出名称" onBlur={event=>run(()=>{const outputName=event.target.value.trim(),trim=recolorGenerationTrim({...color,outputName});return updateColorById(color.id,{outputName,...trim})})}/></label></div>
-              <div className="recolor-color-status"><b>{colorResultCount(color)}/{required} 张</b><small>{issue}</small></div>
-              <button type="button" className="secondary" disabled={colorsLocked} onClick={()=>{setActiveId(color.id);setPaletteVisible(true)}}>调整颜色</button>
+              <div className="recolor-color-status"><b>{colorResultCount(color)}/{required} 张</b><small>{issue}</small><small title={color.designDetails?.join("、")}>{color.designDetails?.length?`设计：${color.designDetails.slice(0,3).join("、")}`:"设计：等待识别或人工框选"}</small>{color.materialFeatures&&<small title={color.materialFeatures}>面料：{color.materialFeatures}</small>}</div>
+              <button type="button" className="secondary" disabled={colorsLocked} onClick={()=>{setActiveId(color.id);setPaletteVisible(true)}}>颜色与设计参考</button>
               <button type="button" className="danger" disabled={colorsLocked} onClick={()=>run(()=>removeColor(color))}>删除</button>
             </div>})}</div>:<div className="empty-state compact-empty">上传颜色参考图后会自动建立色卡；也可以手动添加颜色。</div>}
             {duplicateNames.size>0&&<div className="error">存在重复颜色名称，请分别命名后再批量复色。</div>}
-            <div className="notice">复色硬规则：目标服装主体必须完整变为锁定的颜色与 HEX；未改色、只轻微调色或只改局部均视为失败。同时保持原商品的材质、织法、纹理、渐变方向、色块与特殊设计布局。</div>
+            <div className="notice">复色硬规则：每个色款必须拥有自己的整件服装设计参考；同一组三姿势只替换为该色款真实可见的颜色、口袋、条纹、拼接、扣子、印花、包边、线条位置和面料分区。人物、动作、景别、构图与画面样式不得改变。</div>
             <div className="recolor-batch-bar"><div><b>已选择 {selectedBatchColors.length} 款颜色</b><span>{colorsLocked?"颜色已锁定":"请手动修改后锁定颜色"} · 预计生成 {selectedBatchColors.length*(sources.length>=2?sources.length:0)} 张图片</span></div><div className="recolor-resolution"><span>输出尺寸</span>{[["fast","1K"],["standard","2K"],["quality","4K"]].map(([key,label])=><button type="button" className={mode===key?"active":""} key={key} onClick={()=>setMode(key as typeof mode)}>{label}</button>)}</div><button type="button" className={`recolor-lock-button ${colorsLocked?"locked":""}`} disabled={busy||analyzing} onClick={()=>run(toggleColorLock)}>{colorsLocked?"解除锁定":"锁定颜色"}</button><button className="primary" disabled={busy||!colorsLocked||!configured||sources.length<2||sources.length>4||selectedBatchColors.length===0||duplicateNames.size>0||selectedBatchColors.some(color=>!normalizedColorName(color)||!hasTargetColor(color))} onClick={()=>run(startBatch)}>开始批量复色</button></div>
           </section>
         </div>

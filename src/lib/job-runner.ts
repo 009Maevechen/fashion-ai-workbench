@@ -65,6 +65,9 @@ export async function retryJob(id:string,modelPreference:ModelSlot="primary",cor
       const sources=Array.isArray(payload.poseImages)?[...payload.poseImages as string[]]:[];
       if(job.slot&&job.outputImages[0])sources[job.slot-1]=job.outputImages[0];
       if(sources.length)payload.poseImages=sources;
+      // 纠正单张复色结果时，允许使用该次结果作为对应姿势的临时输入；
+      // 普通复色仍由 executeRecolor 强制读取项目中已确认的姿势图。
+      payload.sourceOverride="correction";
       payload.extraRequirements=`${String(payload.extraRequirements||"")}${lock}`;
     }
   }

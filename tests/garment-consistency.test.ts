@@ -20,10 +20,12 @@ test("换装一致性以原产品服装为基准并忽略模特差异",()=>{
   assert.match(prompt,/模特、姿势、构图和背景差异不算服装不一致/);
 });
 
-test("复色一致性要求目标主色和边饰并保护非目标服饰",()=>{
+test("复色一致性要求目标主色和边饰并按颜色款一对一复刻",()=>{
   const prompt=garmentConsistencyPrompt("recolor",project,job);
   assert.match(prompt,/深卡其色/);
   assert.match(prompt,/#8B7355/);
   assert.match(prompt,/黑边/);
-  assert.match(prompt,/其他非目标服装不得变色/);
+  assert.match(prompt,/第3张的人物、动作、景别、构图和背景是否与第1张一致/);
+  assert.match(prompt,/口袋、条纹、拼接、扣子、印花、包边、车线、线条位置、面料分区是否与第2张一对一一致/);
+  assert.match(prompt,/任何其他颜色款设计混入、只改颜色而遗漏该款设计、人物动作或构图改变，consistent 必须为 false/);
 });

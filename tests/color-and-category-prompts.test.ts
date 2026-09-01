@@ -44,21 +44,27 @@ test("换装严格隔离双图职责且只允许修改服装区域",()=>{
   assert.match(prompt,/不得让模特原服装的任何特征出现在结果里/);
 });
 
-test("复色提示词只提取颜色且禁止复制参考图款式",()=>{
+test("复色提示词按颜色款一对一复刻设计且保持人物原样",()=>{
   const prompt=recolorPrompt("裙子","焦糖色","#C8A06A",["印花"],"保持背景",false,"白色","#FFFFFF");
-  assert.match(prompt,/只提取颜色本身/);
-  assert.match(prompt,/严禁从参考图复制服装款式/);
+  assert.match(prompt,/颜色款一对一复刻规则/);
+  assert.match(prompt,/第二张图片是当前这一个颜色款的整件服装设计参考/);
+  assert.match(prompt,/每个颜色款必须分别读取自己的第二张参考图/);
+  assert.match(prompt,/口袋、条纹、拼接、扣子、印花、包边/);
   assert.match(prompt,/#C8A06A/);
   assert.match(prompt,/边饰颜色：白色（#FFFFFF）/);
-  assert.match(prompt,/色块布局/);
-  assert.match(prompt,/不得新增、删除或移动色块/);
+  assert.match(prompt,/线条位置或面料分区时必须同步还原/);
+  assert.match(prompt,/第二张图没有的设计不得沿用其他色款/);
   assert.match(prompt,/不得保留原主体颜色/);
   assert.match(prompt,/没有真正改变目标服装主体颜色必须视为生成失败/);
-  assert.match(prompt,/面料材质、织法\/针法/);
+  assert.match(prompt,/面料类别、织法\/针法/);
+  assert.match(prompt,/厚薄、光泽、垂感和褶皱响应必须前后一致/);
   assert.match(prompt,/渐变方向、层次和过渡边界/);
   assert.match(prompt,/禁止裁剪服装 · 最高优先规则/);
   assert.match(prompt,/只能扩展背景，绝对不能裁切人物或服装/);
   assert.match(prompt,/服装所有可见边缘均未被新画面边界裁掉/);
+  assert.match(prompt,/露脸与原图样式锁定/);
+  assert.match(prompt,/有脸就保留同一张脸/);
+  assert.match(prompt,/没有脸就不得补画/);
 });
 
 test("复色区域由商品类型锁定，上衣不得改动下装",()=>{
@@ -67,5 +73,5 @@ test("复色区域由商品类型锁定，上衣不得改动下装",()=>{
   assert.equal(recolorAreaForProductType("半身裙"),"裙子");
   const prompt=recolorPrompt("上衣","深咖啡色","#432E28",[],"");
   assert.match(prompt,/绝对不得改色的其他服饰：裤子、裙子/);
-  assert.match(prompt,/颜色、材质、纹理、阴影和亮度/);
+  assert.match(prompt,/背景、皮肤、头发、鞋子、道具/);
 });

@@ -17,6 +17,7 @@ import {canConfirmTryonSelection} from "@/lib/tryon-confirmation";
 import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 import {composeTryonDetailRequirements} from "@/lib/tryon-detail-requirements";
 import type {Job} from "@/lib/db";
+import ColorCropper,{type CropRegion} from "./ColorCropper";
 
 const DETAILS="保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
 
@@ -37,6 +38,9 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
   const [revisionRequest,setRevisionRequest]=useState(saved?.revisionRequest||"");
   const [revisionMessages,setRevisionMessages]=useState(saved?.revisionMessages||[]);
   const [historyJobId,setHistoryJobId]=useState("");
+  const [garmentCropUrl,setGarmentCropUrl]=useState(p.assets.garmentCropImage||"");
+  const [garmentCropRegion,setGarmentCropRegion]=useState<CropRegion|undefined>(p.assets.garmentCropRegion);
+  const [garmentCropOpen,setGarmentCropOpen]=useState(false),[garmentCropDraft,setGarmentCropDraft]=useState<CropRegion|undefined>(p.assets.garmentCropRegion);
   const route=modelRouting.tryon,routed=route.primary.source==="stored";
   const standardProvider=routed?route.primary.model:health.tryonProvider==="custom"?"自定义模型":health.tryonProvider==="volcengine"?"Seedream 5.0":"BFL VTO";
   const configured=routed?route.primary.configured:health.tryonProvider==="custom"?health.custom:mode==="quality"?health.fashn:health.tryonProvider==="volcengine"?health.volcengine:health.bfl;
@@ -51,17 +55,22 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
 
   async function saveAsset(asset:LocalAsset,key:"garmentImage"|"modelReferenceImage",name:string,setter:(asset:LocalAsset)=>void){
     setter({...asset,status:"uploading"});
-    try{const url=await persistAsset(asset.file,key,name);setter({...asset,url,file:undefined,status:"saved"})}
+    try{const url=await persistAsset(asset.file,key,name);setter({...asset,url,file:undefined,status:"saved"});if(key==="garmentImage"){setGarmentCropUrl("");setGarmentCropRegion(undefined);setGarmentCropDraft(undefined);await fetch(`/api/projects/${p.id}/tryon-garment-crop`,{method:"DELETE"})}}
     catch(error){setter({...asset,status:"failed",error:error instanceof Error?error.message:"上传失败"});throw error}
   }
   async function saveSettings(){if(!productType)throw new Error("请先选择服装类型");await saveProject({productType,...draftSettings})}
   async function clearAllAssets(){await clearSourceAssets();setGarment({status:"idle"});setModel({status:"idle"});setPreview(null)}
+  async function saveGarmentCrop(){
+    if(!garment.url||!garmentCropDraft)throw new Error("请先框选完整的整套服装区域");
+    const result=await post(`/api/projects/${p.id}/tryon-garment-crop`,{region:garmentCropDraft}) as {url:string;region:CropRegion};
+    setGarmentCropUrl(result.url);setGarmentCropRegion(result.region);setGarmentCropOpen(false);
+  }
   async function clearResults(){await clearWorkflowResults("tryon");setSelected("");setHistoryJobId("");setPreview(null)}
   async function start(slot?:number,modelPreference:"primary"|"fallback"="primary"){
     if(!productType)throw new Error("请先选择服装类型");
     if(!garment.url||!model.url)throw new Error("两张图片必须保存成功后才能生成");
     await saveSettings();
-    await post("/api/tryon",{projectId:p.id,productType,garmentImage:garment.url,modelImage:model.url,garmentDescription:description,detailRequirements:composeTryonDetailRequirements(structurePrompt,`${protectedItems.join("；")}。`,extra),extraRequirements:extra,face,mode,candidateCount:slot?1:count,modelPreference,...(slot?{slot}:{})});
+    await post("/api/tryon",{projectId:p.id,productType,garmentImage:garmentCropUrl||garment.url,modelImage:model.url,garmentDescription:description,detailRequirements:composeTryonDetailRequirements(structurePrompt,`${protectedItems.join("；")}。${garmentCropUrl?"只使用用户框选的整套服装区域":""}`,extra),extraRequirements:extra,face,mode,candidateCount:slot?1:count,modelPreference,...(slot?{slot}:{})});
   }
   async function checkConsistency(jobId:string){await post(`/api/projects/${p.id}/consistency-check`,{jobId})}
   async function reviseCandidate(){
@@ -92,6 +101,11 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
       <AssetUploadCard label="服装产品图" description="上传真实服装产品图" value={garment} onChange={a=>run(()=>saveAsset(a,"garmentImage","garment",setGarment))} onDelete={()=>run(async()=>{await deleteAsset("garmentImage");setGarment({status:"idle"})})} onPreview={()=>garment.url&&setPreview({images:allImages,index:allImages.indexOf(garment.url)})}/>
       <AssetUploadCard label="模特参考图" description="只参考姿势、场景和背景，不参考模特服装" value={model} onChange={a=>run(()=>saveAsset(a,"modelReferenceImage","model-reference",setModel))} onDelete={()=>run(async()=>{await deleteAsset("modelReferenceImage");setModel({status:"idle"})})} onPreview={()=>model.url&&setPreview({images:allImages,index:allImages.indexOf(model.url)})}/>
     </div>
+    <div className="tryon-garment-crop-control">
+      <div className="panel-head"><div><h3>手动框选整套服装区域</h3><small>换装只使用框选区域内的服装；框外人物、背景、文字和其他内容全部忽略。</small></div><button type="button" className="secondary" disabled={!garment.url||busy} onClick={()=>{setGarmentCropDraft(garmentCropRegion);setGarmentCropOpen(true)}}>{garmentCropUrl?"重新框选服装":"开始框选服装"}</button></div>
+      {garmentCropUrl&&<div className="notice">已保存用户框选服装区域，换装将只使用该区域。</div>}
+    </div>
+    {garmentCropOpen&&garment.url&&<div className="reference-crop-dialog-backdrop"><section className="reference-crop-dialog" role="dialog" aria-modal="true" aria-label="框选整套服装区域"><div className="panel-head"><div><h2>框选要用于换装的整套服装</h2><small>请完整框住整套服装，不要框入其他服装或无关内容。</small></div><button type="button" className="settings-dialog-close compact-close" onClick={()=>setGarmentCropOpen(false)}>×</button></div><ColorCropper src={garment.url} region={garmentCropDraft} onChange={setGarmentCropDraft}/><div className="reference-crop-actions"><button type="button" className="secondary" onClick={()=>setGarmentCropOpen(false)}>取消</button><button type="button" className="primary" disabled={!garmentCropDraft||busy} onClick={()=>run(saveGarmentCrop)}>保存框选区域</button></div></section></div>}
 <section className="tryon-generation-history" aria-labelledby="tryon-generation-history-title">
 <div className="tryon-history-head"><div><h3 id="tryon-generation-history-title">生成历史</h3><small>点击小图回到之前生成的照片</small></div><span>{historyItems.length} 张</span></div>
 {historyItems.length?<div className="tryon-history-grid">{historyItems.map((job,index)=>{const url=job.outputImages[0],active=job.id===historyJobId;return <button type="button" className={active?"active":""} key={job.id} onClick={()=>{setHistoryJobId(job.id);setCandidateSlot(job.slot||1)}} title={`查看 ${new Date(job.startedAt).toLocaleString("zh-CN")}`} aria-label={`查看历史生成图 ${index+1}`}><img src={url} alt={`历史生成图 ${index+1}`}/><span>{new Date(job.startedAt).toLocaleDateString("zh-CN",{month:"2-digit",day:"2-digit"})}</span></button>})}</div>:<div className="tryon-history-empty">生成过的换装照片会保存在这里</div>}

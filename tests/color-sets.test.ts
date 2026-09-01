@@ -72,3 +72,18 @@ test("重新识别会把黑边白边写回已有色卡并保留生成结果",()=
   assert.deepEqual(result.colors[0].poseResults,existing[0].poseResults);
   assert.equal(result.unmatched.length,0);
 });
+
+test("自动识别会写入每个颜色款的整件设计参考，人工框选优先保留",()=>{
+  const automatic=mergeAnalyzedColorDetails(
+    [{id:"khaki",name:"卡其色",hex:"#A68D68",status:"draft"}],
+    [{name:"卡其色",hex:"#A88F69",cropImage:"/api/files/SKU/source/colors/auto.jpg",cropRegion:{x:0.1,y:0.1,width:0.3,height:0.7}}],
+  );
+  assert.equal(automatic.colors[0].cropImage,"/api/files/SKU/source/colors/auto.jpg");
+  assert.equal(colorSetIssue(automatic.colors[0]),"复色结果 0/3");
+
+  const manual=mergeAnalyzedColorDetails(
+    [{id:"khaki",name:"卡其色",hex:"#A68D68",cropImage:"/api/files/SKU/source/colors/manual.jpg",cropRegion:{x:0.2,y:0.1,width:0.25,height:0.75},status:"ready"}],
+    [{name:"卡其色",hex:"#A88F69",cropImage:"/api/files/SKU/source/colors/auto-new.jpg",cropRegion:{x:0,y:0,width:0.4,height:0.8}}],
+  );
+  assert.equal(manual.colors[0].cropImage,"/api/files/SKU/source/colors/manual.jpg");
+});

@@ -1,7 +1,7 @@
 import type {TargetColor} from "./db";
 import {colorDistance} from "./color-palette";
 
-export type AnalyzedGarmentColor={name:string;hex:string;trimColorName?:string;trimHex?:string};
+export type AnalyzedGarmentColor={name:string;hex:string;trimColorName?:string;trimHex?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;cropImage?:string;cropRegion?:{x:number;y:number;width:number;height:number}};
 
 const trimEdgeLabel=(trim?:string)=>{
   const value=trim?.trim();
@@ -27,7 +27,7 @@ export function mergeAnalyzedColorDetails(existing:TargetColor[],analyzed:Analyz
     if(match<0||best>maximumDistance)return color;
     claimed.add(match);
     const candidate=analyzed[match];
-    return {...color,name:analyzedColorName(candidate),trimColorName:candidate.trimColorName||color.trimColorName,trimHex:candidate.trimHex||color.trimHex};
+    return {...color,name:analyzedColorName(candidate),trimColorName:candidate.trimColorName||color.trimColorName,trimHex:candidate.trimHex||color.trimHex,designDetails:candidate.designDetails?.length?candidate.designDetails:color.designDetails,materialFeatures:candidate.materialFeatures||color.materialFeatures,designConfidence:candidate.confidence??color.designConfidence,designNeedsReview:(candidate.confidence??1)<0.65||!(color.cropImage||candidate.cropImage),cropImage:color.cropImage||candidate.cropImage,cropRegion:color.cropRegion||candidate.cropRegion};
   });
   return {colors,unmatched:analyzed.filter((_,index)=>!claimed.has(index))};
 }
@@ -64,6 +64,7 @@ export function colorSetIssue(color:TargetColor,duplicates=duplicateColorNames([
   if(duplicates.has(name.toLocaleLowerCase()))return "名称重复";
   const count=colorResultCount(color);
   if(!color.hex&&!color.baseHex&&!color.cropImage&&count===0)return "需要设置颜色";
+  if(!color.cropImage&&count===0)return "需要框选整件色款参考";
   const expected=expectedColorResultCount(color);
   if(count<expected)return `复色结果 ${count}/${expected}`;
   if(color.status!=="confirmed")return color.status==="stale"?"需要重新生成":"等待确认";

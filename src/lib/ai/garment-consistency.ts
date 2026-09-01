@@ -30,7 +30,10 @@ export async function checkGarmentConsistency(project:Project,job:Job):Promise<G
       ?(project.assets.garmentImage||job.inputImages[1])
       :(project.assets.garmentImage||job.sourceModelImage||job.inputImages[0]||project.confirmedTryonImage);
   if(!source)throw new Error("找不到原产品服装基准图，请先保留产品图或输入图");
+  const variantReference=job.workflow==="recolor"?project.targetColors?.find(color=>color.id===job.targetColorId)?.cropImage:undefined;
+  if(job.workflow==="recolor"&&!variantReference)throw new Error("找不到当前颜色款的整件服装设计参考，无法进行一对一复色质检");
   const runtime=await resolveQcModel();
-  const parsed=checkSchema.parse(await requestMultiVisionJson(runtime,await Promise.all([compactImage(source),compactImage(output)]),"你是严格的电商服装质检员。必须基于可见证据判断，不得因人物姿势或背景不同而误判。",garmentConsistencyPrompt(job.workflow,project,job)));
+  const inputs=job.workflow==="recolor"?[source,variantReference!,output]:[source,output];
+  const parsed=checkSchema.parse(await requestMultiVisionJson(runtime,await Promise.all(inputs.map(compactImage)),"你是严格的电商服装质检员。必须基于可见证据判断，不得因人物姿势或背景不同而误判。",garmentConsistencyPrompt(job.workflow,project,job)));
   return {status:parsed.consistent&&parsed.score>=85?"passed":"needs_review",score:Math.round(parsed.score),summary:parsed.summary,issues:parsed.issues,checks:parsed.checks,checkedAt:new Date().toISOString(),model:runtime.model};
 }
