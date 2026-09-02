@@ -42,6 +42,10 @@ test("换装严格隔离双图职责且只允许修改服装区域",()=>{
   assert.match(prompt,/任何原服装残留、颜色渗入或结构混入都必须判定为失败并重试/);
   assert.match(prompt,/产品图是结果的唯一服装来源/);
   assert.match(prompt,/不得让模特原服装的任何特征出现在结果里/);
+  assert.match(prompt,/扣子与小五金重点强化/);
+  assert.match(prompt,/扣子数量——产品图有几颗就生成几颗/);
+  assert.match(prompt,/单排扣、双排扣、明门襟、暗门襟/);
+  assert.match(prompt,/扣子不得出现漂浮、歪斜、糊掉、消失、变形、错位/);
 });
 
 test("复色提示词按颜色款一对一复刻设计且保持人物原样",()=>{
