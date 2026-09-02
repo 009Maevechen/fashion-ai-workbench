@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import {MAX_INPUT_PIXELS} from "./image-limits";
 
 export const FINAL_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 export const TARGET_FINAL_BYTES = 2.7 * 1024 * 1024;
@@ -29,7 +30,7 @@ export type OptimizeResult = {
  */
 export async function optimizeFinalImage(input: Buffer): Promise<OptimizeResult> {
   const originalSize = input.length;
-  const meta = await sharp(input).metadata();
+  const meta = await sharp(input,{limitInputPixels:MAX_INPUT_PIXELS}).metadata();
   const originalWidth = meta.width || 0;
   const originalHeight = meta.height || 0;
 
@@ -47,7 +48,7 @@ export async function optimizeFinalImage(input: Buffer): Promise<OptimizeResult>
 
   // 第一步：分级降低 JPEG 质量
   for (const quality of QUALITY_STEPS) {
-    const candidate = await sharp(input)
+    const candidate = await sharp(input,{limitInputPixels:MAX_INPUT_PIXELS})
       .rotate()
       .jpeg({ quality, mozjpeg: true })
       .toBuffer();
@@ -68,7 +69,7 @@ export async function optimizeFinalImage(input: Buffer): Promise<OptimizeResult>
   // 第二步：质量已到最低仍超限，逐步降低分辨率（保持 3:4）
   for (const size of SIZE_STEPS) {
     if (originalWidth < size.width) continue;
-    const candidate = await sharp(input)
+    const candidate = await sharp(input,{limitInputPixels:MAX_INPUT_PIXELS})
       .rotate()
       .resize({ width: size.width, height: size.height, fit: "fill" })
       .jpeg({ quality: MINIMUM_QUALITY, mozjpeg: true })
@@ -88,7 +89,7 @@ export async function optimizeFinalImage(input: Buffer): Promise<OptimizeResult>
   }
 
   // 第三步：达到最低质量保护仍无法压缩到 3MB，返回最接近的结果并给出真实警告
-  const fallback = await sharp(input)
+  const fallback = await sharp(input,{limitInputPixels:MAX_INPUT_PIXELS})
     .rotate()
     .resize({ width: SIZE_STEPS.at(-1)!.width, height: SIZE_STEPS.at(-1)!.height, fit: "fill" })
     .jpeg({ quality: MINIMUM_QUALITY, mozjpeg: true })
@@ -116,7 +117,7 @@ export async function verifyFinalImage(buffer: Buffer): Promise<{
   if (buffer.length === 0) return { ok: false, reason: "文件为空（0KB）", size: 0 };
   if (buffer.length > FINAL_IMAGE_MAX_BYTES) return { ok: false, reason: "文件超过3MB", size: buffer.length };
   try {
-    const meta = await sharp(buffer).metadata();
+    const meta = await sharp(buffer,{limitInputPixels:MAX_INPUT_PIXELS}).metadata();
     if (!meta.width || !meta.height) return { ok: false, reason: "无法解码或缺少尺寸", size: buffer.length };
     const ratio = meta.width / meta.height;
     if (Math.abs(ratio - 0.75) > 0.02) return { ok: false, reason: `比例 ${ratio.toFixed(2)} 偏离 3:4`, size: buffer.length, width: meta.width, height: meta.height };

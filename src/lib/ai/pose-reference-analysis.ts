@@ -1,10 +1,10 @@
 import "server-only";
-import sharp from "sharp";
 import { z } from "zod";
 import type { PoseReferenceAnalysis } from "@/lib/db";
 import { resolveProductAnalysisModel } from "./provider-settings";
 import { localImage, toDataUrl } from "./storage";
 import { requestVisionJson } from "./vision-chat";
+import { resizeToJpeg } from "../image-limits";
 
 const shortText = (maximum: number) =>
   z
@@ -28,16 +28,7 @@ export async function analyzePoseReferences(
     return await Promise.all(
       images.map(async (referenceImage, index) => {
         const input = await localImage(referenceImage),
-          normalized = await sharp(input)
-            .rotate()
-            .resize({
-              width: 1024,
-              height: 1024,
-              fit: "inside",
-              withoutEnlargement: true,
-            })
-            .jpeg({ quality: 82, mozjpeg: true })
-            .toBuffer();
+          normalized = await resizeToJpeg(input, 1024, 82);
         const result = schema.parse(
           await requestVisionJson(
             runtime,

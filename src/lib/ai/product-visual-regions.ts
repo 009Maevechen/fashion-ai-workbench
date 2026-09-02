@@ -13,6 +13,7 @@ import { resolveProductAnalysisModel } from "./provider-settings";
 import { localImage, saveOutput, toDataUrl } from "./storage";
 import { requestVisionJson } from "./vision-chat";
 import { safeSegment } from "./validators";
+import { MAX_INPUT_PIXELS, resizeToJpeg } from "../image-limits";
 
 const REGION_ASSET_KEY: Record<ProductDetailRegionType, ProductDetailAssetKey> = {
   frontView: "productFrontImage",
@@ -85,11 +86,7 @@ export async function detectProductVisualRegions(
 ): Promise<ProductVisualDetection> {
   const runtime = await resolveProductAnalysisModel();
   const input = await localImage(imageUrl);
-  const normalized = await sharp(input)
-    .rotate()
-    .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
-    .jpeg({ quality: 82, mozjpeg: true })
-    .toBuffer();
+  const normalized = await resizeToJpeg(input, 1024, 82);
   const parsed = detectionSchema.parse(
     await requestVisionJson(
       runtime,
@@ -129,11 +126,15 @@ export async function cropAndUpscaleRegion(
   box: NormalizedCropRegion,
 ): Promise<{ cropPath: string; upscalePath: string; scale: 2 | 4 }> {
   const input = await localImage(sourceUrl);
-  const normalized = await sharp(input).rotate().toBuffer();
-  const meta = await sharp(normalized).metadata();
+  const meta = await sharp(input, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS }).metadata();
   if (!meta.width || !meta.height) throw new Error("产品主图尺寸无效");
-  const { left, top, cropWidth, cropHeight } = clampBox(box, meta.width, meta.height);
-  const cropped = await sharp(normalized)
+  // EXIF orientation 5~8 表示 90°/270° 旋转，宽高需要互换。
+  const swap = (meta.orientation || 1) >= 5;
+  const rotatedWidth = swap ? meta.height : meta.width;
+  const rotatedHeight = swap ? meta.width : meta.height;
+  const { left, top, cropWidth, cropHeight } = clampBox(box, rotatedWidth, rotatedHeight);
+  const cropped = await sharp(input, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS })
+    .rotate()
     .extract({ left, top, width: cropWidth, height: cropHeight })
     .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();

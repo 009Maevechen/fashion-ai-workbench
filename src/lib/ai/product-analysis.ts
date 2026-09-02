@@ -1,11 +1,11 @@
 import "server-only";
-import sharp from "sharp";
 import { z } from "zod";
 import type { ProductAttributes, ProductType } from "@/lib/db";
 import { resolveProductAnalysisModel } from "./provider-settings";
 import { localImage, toDataUrl } from "./storage";
 import { requestTextJson, requestVisionText } from "./vision-chat";
 import { getCachedProductAnalysis, hashBuffer, putCachedProductAnalysis } from "../product-analysis-cache";
+import { resizeToJpeg } from "../image-limits";
 
 const productTypes = ["上衣", "裤装", "连衣裙", "半身裙", "套装"] as const;
 const attributeKeys = [
@@ -85,19 +85,7 @@ export async function analyzeProductImage(
     resolveProductAnalysisModel(),
     resolveProductAnalysisModel("fallback"),
   ]);
-  const normalized = await sharp(input)
-    .rotate()
-    .resize({
-      // Vision gateways are more reliable with a compact request body. This
-      // derivative is used only for recognition; the persisted source image
-      // remains untouched.
-      width: 1024,
-      height: 1024,
-      fit: "inside",
-      withoutEnlargement: true,
-    })
-    .jpeg({ quality: 82, mozjpeg: true })
-    .toBuffer();
+  const normalized = await resizeToJpeg(input, 1024, 82);
   try {
     const observation = await requestVisionText(
         visionRuntime,

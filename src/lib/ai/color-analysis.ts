@@ -1,11 +1,11 @@
 import "server-only";
-import sharp from "sharp";
 import { z } from "zod";
 import { resolveProductAnalysisModel } from "./provider-settings";
 import { localImage, toDataUrl } from "./storage";
 import { requestTextJson, requestVisionText } from "./vision-chat";
 import { readableColorName } from "../color-palette";
 import { extractStructuredColors } from "../structured-color";
+import { resizeToJpeg } from "../image-limits";
 
 const normalizedBox = z.object({
   x: z.number().min(0).max(1),
@@ -61,11 +61,7 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
     resolveProductAnalysisModel("fallback"),
     localImage(imageUrl),
   ]);
-  const normalized = await sharp(input)
-    .rotate()
-    .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
-    .jpeg({ quality: 90 })
-    .toBuffer();
+  const normalized = await resizeToJpeg(input, 1600, 90);
 
   // 本地结构化聚类：白平衡 + 排除肤色/阴影/高光，得到主/辅/点缀色的真实 HEX 与占比
   const structured = await extractStructuredColors(normalized);

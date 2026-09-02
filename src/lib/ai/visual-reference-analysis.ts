@@ -1,10 +1,10 @@
 import "server-only";
 import fs from "node:fs/promises";
-import sharp from "sharp";
 import { z } from "zod";
 import { resolveProductAnalysisModel } from "./provider-settings";
 import { toDataUrl } from "./storage";
 import { requestVisionJson } from "./vision-chat";
+import { resizeToJpeg } from "../image-limits";
 
 const optionalText = z.preprocess(
   (value) => (value === null || value === undefined || value === "" ? undefined : String(value).trim()),
@@ -59,11 +59,7 @@ export async function recognizeVisualReferenceImage(
   }
   let normalized: Buffer;
   try {
-    normalized = await sharp(buffer)
-      .rotate()
-      .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 82, mozjpeg: true })
-      .toBuffer();
+    normalized = await resizeToJpeg(buffer, 1024, 82);
   } catch {
     throw new Error("参考图无法解码");
   }

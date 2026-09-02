@@ -1,11 +1,11 @@
 import "server-only";
-import sharp from "sharp";
 import { z } from "zod";
 import type { GarmentConsistencyCheck, Job, Project } from "@/lib/db";
 import { localImage, toDataUrl } from "./storage";
 import { resolveQcModel } from "./provider-settings";
 import { requestMultiVisionJson } from "./vision-chat";
 import { garmentConsistencyPrompt } from "./prompts/consistency";
+import { resizeToJpeg } from "../image-limits";
 
 const checkSchema=z.object({
   consistent:z.boolean(),
@@ -17,7 +17,7 @@ const checkSchema=z.object({
 
 async function compactImage(url:string){
   const input=await localImage(url);
-  return toDataUrl(await sharp(input).rotate().resize({width:1024,height:1024,fit:"inside",withoutEnlargement:true}).jpeg({quality:82,mozjpeg:true}).toBuffer(),"image/jpeg");
+  return toDataUrl(await resizeToJpeg(input,1024,82),"image/jpeg");
 }
 
 export async function checkGarmentConsistency(project:Project,job:Job):Promise<GarmentConsistencyCheck>{

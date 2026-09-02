@@ -649,6 +649,9 @@ button:disabled {
   font-size: 11px;
   margin: 8px 0 0;
 }
+.confirm-block p.confirm-hint {
+  color: var(--amber, #b45309);
+}
 .mode-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

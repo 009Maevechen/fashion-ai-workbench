@@ -1,7 +1,7 @@
 import {NextResponse} from "next/server";
-import sharp from "sharp";
 import {getProject,updateProject} from "@/lib/db";
 import {localImage,saveOutput} from "@/lib/ai/storage";
+import {rotatedDimensions,rotateAndExtract} from "@/lib/image-limits";
 
 type Region={x:number;y:number;width:number;height:number};
 
@@ -13,14 +13,12 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     if(!project?.assets.colorReferenceImage)throw new Error("请先上传颜色参考图");
     if(!region||region.width<.01||region.height<.01)throw new Error("请框选需要识别的服装区域");
     const input=await localImage(project.assets.colorReferenceImage);
-    const normalized=await sharp(input).rotate().toBuffer();
-    const metadata=await sharp(normalized).metadata();
-    if(!metadata.width||!metadata.height)throw new Error("颜色参考图尺寸无效");
-    const left=Math.max(0,Math.min(metadata.width-1,Math.round(region.x*metadata.width)));
-    const top=Math.max(0,Math.min(metadata.height-1,Math.round(region.y*metadata.height)));
-    const width=Math.min(metadata.width-left,Math.max(10,Math.round(region.width*metadata.width)));
-    const height=Math.min(metadata.height-top,Math.max(10,Math.round(region.height*metadata.height)));
-    const output=await sharp(normalized).extract({left,top,width,height}).jpeg({quality:95}).toBuffer();
+    const {width,height}=await rotatedDimensions(input);
+    const left=Math.max(0,Math.min(width-1,Math.round(region.x*width)));
+    const top=Math.max(0,Math.min(height-1,Math.round(region.y*height)));
+    const cropWidth=Math.min(width-left,Math.max(10,Math.round(region.width*width)));
+    const cropHeight=Math.min(height-top,Math.max(10,Math.round(region.height*height)));
+    const output=await rotateAndExtract(input,{left,top,width:cropWidth,height:cropHeight},95);
     const url=await saveOutput(project.sku,"source",`color-reference-crop-${crypto.randomUUID()}.jpg`,output);
     await updateProject(id,{assets:{...project.assets,colorReferenceCropImage:url,colorReferenceCropRegion:region}});
     return NextResponse.json({url,region});

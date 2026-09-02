@@ -1,10 +1,10 @@
 import "server-only";
-import sharp from "sharp";
 import { z } from "zod";
 import type { Job, Project } from "@/lib/db";
 import { localImage, toDataUrl } from "./storage";
 import { resolveQcModel } from "./provider-settings";
 import { requestMultiVisionJson } from "./vision-chat";
+import { resizeToJpeg } from "../image-limits";
 
 const schema = z.object({
   basedOnModel: z.boolean(),
@@ -35,14 +35,7 @@ export type TryonSubjectFidelity = {
 
 async function compactImage(url: string) {
   const input = await localImage(url);
-  return toDataUrl(
-    await sharp(input)
-      .rotate()
-      .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 82, mozjpeg: true })
-      .toBuffer(),
-    "image/jpeg",
-  );
+  return toDataUrl(await resizeToJpeg(input, 1024, 82), "image/jpeg");
 }
 
 /**
@@ -86,12 +79,14 @@ export async function checkTryonSubjectFidelity(
     ),
   );
 
-  const status: TryonSubjectFidelity["status"] =
-    parsed.closerToProduct || !parsed.basedOnModel || parsed.originalGarmentLeak || !parsed.skinQualityMatch
-      ? "failed"
-      : parsed.basedOnModel && parsed.score >= 80
-        ? "passed"
-        : "needs_review";
+  // 只有“结果根本不是把产品服装穿到参考模特身上”这一类核心错误才硬性禁止确认；
+  // 皮肤画质、轻微原服装残留等主观质量项只作“需复核”提示，仍允许人工确认。
+  const coreFailed = parsed.closerToProduct || !parsed.basedOnModel;
+  const status: TryonSubjectFidelity["status"] = coreFailed
+    ? "failed"
+    : parsed.originalGarmentLeak || !parsed.skinQualityMatch || parsed.score < 80
+      ? "needs_review"
+      : "passed";
 
   return {
     status,

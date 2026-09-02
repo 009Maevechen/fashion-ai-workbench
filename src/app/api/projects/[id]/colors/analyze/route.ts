@@ -4,7 +4,7 @@ import { analyzeGarmentColors } from "@/lib/ai/color-analysis";
 import { localImage, saveOutput } from "@/lib/ai/storage";
 import { safeSegment } from "@/lib/ai/validators";
 import { colorDistance } from "@/lib/color-palette";
-import sharp from "sharp";
+import { rotatedDimensions, rotateAndExtract } from "@/lib/image-limits";
 
 type Region = { x: number; y: number; width: number; height: number };
 
@@ -27,9 +27,8 @@ export async function POST(
     const result = await analyzeGarmentColors(reference);
     if (!result.colors.length)
       throw new Error("没有从参考图中识别到有效颜色，请更换清晰的产品平铺图");
-    const source = await sharp(await localImage(reference)).rotate().toBuffer();
-    const metadata = await sharp(source).metadata();
-    if (!metadata.width || !metadata.height) throw new Error("颜色参考图尺寸无效");
+    const source = await localImage(reference);
+    const metadata = await rotatedDimensions(source);
     const baseRegion = reference === project.assets.colorReferenceCropImage ? project.assets.colorReferenceCropRegion : undefined;
     const colors = await Promise.all(result.colors.map(async (color, index) => {
       const manualReference = (project.targetColors || []).find(existing => existing.cropImage && existing.hex && colorDistance(existing.hex, color.hex) < 12);
@@ -42,11 +41,11 @@ export async function POST(
       const right = Math.min(1, region!.x + region!.width + padding);
       const bottom = Math.min(1, region!.y + region!.height + padding);
       const cropRegion = { x, y, width: right - x, height: bottom - y };
-      const left = Math.max(0, Math.floor(cropRegion.x * metadata.width!));
-      const top = Math.max(0, Math.floor(cropRegion.y * metadata.height!));
-      const width = Math.min(metadata.width! - left, Math.max(10, Math.ceil(cropRegion.width * metadata.width!)));
-      const height = Math.min(metadata.height! - top, Math.max(10, Math.ceil(cropRegion.height * metadata.height!)));
-      const buffer = await sharp(source).extract({ left, top, width, height }).jpeg({ quality: 95 }).toBuffer();
+      const left = Math.max(0, Math.floor(cropRegion.x * metadata.width));
+      const top = Math.max(0, Math.floor(cropRegion.y * metadata.height));
+      const width = Math.min(metadata.width - left, Math.max(10, Math.ceil(cropRegion.width * metadata.width)));
+      const height = Math.min(metadata.height - top, Math.max(10, Math.ceil(cropRegion.height * metadata.height)));
+      const buffer = await rotateAndExtract(source, { left, top, width, height }, 95);
       const cropImage = await saveOutput(project.sku, "source/colors", `${safeSegment(color.name || `variant-${index + 1}`)}-design-${crypto.randomUUID()}.jpg`, buffer);
       const sourceRegion = baseRegion ? {
         x: baseRegion.x + cropRegion.x * baseRegion.width,
