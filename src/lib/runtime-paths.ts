@@ -1,11 +1,14 @@
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import {durableWriteJson} from "./durable-json";
 
 function resolveRuntimeDirectory(value: string | undefined, fallback: string) {
   const selected = value?.trim();
-  return selected ? path.resolve(selected) : path.resolve(fallback);
+  return selected&&path.isAbsolute(selected) ? path.resolve(selected) : path.resolve(fallback);
 }
+
+function legacyRelativeOutputsDir(){const selected=(process.env.AI_STUDIO_OUTPUTS_DIR||process.env.OUTPUTS_DIR)?.trim();return selected&&!path.isAbsolute(selected)?path.resolve(process.cwd(),selected):undefined}
 
 /**
  * 系统用户数据目录：运行时数据（商品信息、产品图片、临时文件）一律存放在
@@ -70,7 +73,8 @@ export const runtimeProjectProcessSearchDirs = () => {
     ...(settings.previousProjectProcessDirs||[]).map(item=>path.resolve(item)),
     ...(settings.previousOutputDirs||[]).map(item=>path.resolve(item)),
     defaultRuntimeOutputsDir(),
-  ])].filter(Boolean);
+    legacyRelativeOutputsDir(),
+  ])].filter((item):item is string=>Boolean(item));
 };
 
 export const defaultRuntimeOutputsDir = () =>
@@ -122,10 +126,7 @@ export const runtimeVisualReferenceSearchDirs = () => {
 };
 
 async function persistSettings(next: StorageSettings) {
-  await fs.promises.mkdir(runtimeDataDir(), { recursive: true });
-  const temporary = `${storageSettingsFile()}.tmp`;
-  await fs.promises.writeFile(temporary, JSON.stringify(next, null, 2));
-  await fs.promises.rename(temporary, storageSettingsFile());
+  await durableWriteJson(storageSettingsFile(),next);
 }
 
 async function assertWritableDir(selected: string) {

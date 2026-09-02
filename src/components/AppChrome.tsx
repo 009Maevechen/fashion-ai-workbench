@@ -48,7 +48,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     [projectQuery, setProjectQuery] = useState(""),
     [activeMenu, setActiveMenu] = useState<"tasks" | "files" | "model" | null>(null),
     [runningCount, setRunningCount] = useState(0),
-    [refreshing, setRefreshing] = useState(false);
+    [refreshing, setRefreshing] = useState(false),
+    [recoveryNotice,setRecoveryNotice]=useState("");
   const parts = pathname.split("/"),
     projectId = pathname.startsWith("/projects/") ? parts[2] : "",
     activeModule = parts[3] || "",
@@ -97,7 +98,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         );
       })
       .catch(() => setApiState("API异常"));
+    fetch("/api/health",{cache:"no-store"}).then(response=>response.json()).then(data=>{if(data.persistence?.recovered)setRecoveryNotice("检测到上次工作台异常关闭，已恢复未完成项目；未完成任务已标记为中断，不会自动重复调用 API。")}).catch(()=>{});
   }, [projectId]);
+  useEffect(()=>{const prepare=(root:ParentNode)=>root.querySelectorAll("img").forEach(image=>{image.loading="lazy";image.decoding="async"});prepare(document);const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node instanceof Element){if(node.tagName==="IMG"){(node as HTMLImageElement).loading="lazy";(node as HTMLImageElement).decoding="async"}prepare(node)}})));observer.observe(document.body,{childList:true,subtree:true});return()=>observer.disconnect()},[]);
   function choose(value: string) {
     setProjectQuery(value);
     const project = projects.find(
@@ -328,7 +331,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           <IconChevron style={{ transform: collapsed ? "rotate(180deg)" : "none" }} />
         </button>
       </aside>
-      <main className="app-main">{children}</main>
+      <main className="app-main">{recoveryNotice&&<div className="notice workspace-notice" role="status">{recoveryNotice}<button type="button" className="text-button" onClick={()=>setRecoveryNotice("")}>知道了</button></div>}{children}</main>
       <TaskCenter open={activeMenu === "tasks"} onClose={() => setActiveMenu(null)} onRunningCount={setRunningCount} />
       <LocalFilesMenu open={activeMenu === "files"} onClose={() => setActiveMenu(null)} sku={current?.sku} />
       <ModelStatusMenu open={activeMenu === "model"} onClose={() => setActiveMenu(null)} />

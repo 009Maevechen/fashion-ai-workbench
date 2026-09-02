@@ -17,6 +17,7 @@ import {TRYON_MODE_OPTIONS,TRYON_PRODUCT_TYPE_OPTIONS,TRYON_PROTECTION_LABELS,TR
 import {canConfirmTryonSelection} from "@/lib/tryon-confirmation";
 import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 import {composeTryonDetailRequirements} from "@/lib/tryon-detail-requirements";
+import {thumbnailUrl} from "@/lib/image-url";
 import type {Job} from "@/lib/db";
 import ColorCropper,{type CropRegion} from "./ColorCropper";
 
@@ -110,7 +111,7 @@ export default function TryonPanel({p,jobs,historyJobs,health,modelRouting,busy,
     {garmentCropOpen&&garment.url&&<div className="reference-crop-dialog-backdrop"><section className="reference-crop-dialog" role="dialog" aria-modal="true" aria-label="框选整套服装区域"><div className="panel-head"><div><h2>框选要用于换装的整套服装</h2><small>请完整框住整套服装，不要框入其他服装或无关内容。</small></div><button type="button" className="settings-dialog-close compact-close" onClick={()=>setGarmentCropOpen(false)}>×</button></div><ColorCropper src={garment.url} region={garmentCropDraft} onChange={setGarmentCropDraft}/><div className="reference-crop-actions"><button type="button" className="secondary" onClick={()=>setGarmentCropOpen(false)}>取消</button><button type="button" className="primary" disabled={!garmentCropDraft||busy} onClick={()=>run(saveGarmentCrop)}>保存框选区域</button></div></section></div>}
 <section className="tryon-generation-history" aria-labelledby="tryon-generation-history-title">
 <div className="tryon-history-head"><div><h3 id="tryon-generation-history-title">生成历史</h3><small>点击小图回到之前生成的照片</small></div><span>{historyItems.length} 张</span></div>
-{historyItems.length?<div className="tryon-history-grid">{historyItems.map((job,index)=>{const url=job.outputImages[0],active=job.id===historyJobId;return <button type="button" className={active?"active":""} key={job.id} onClick={()=>{setHistoryJobId(job.id);setCandidateSlot(job.slot||1)}} title={`查看 ${new Date(job.startedAt).toLocaleString("zh-CN")}`} aria-label={`查看历史生成图 ${index+1}`}><img src={url} alt={`历史生成图 ${index+1}`}/><span>{new Date(job.startedAt).toLocaleDateString("zh-CN",{month:"2-digit",day:"2-digit"})}</span></button>})}</div>:<div className="tryon-history-empty">生成过的换装照片会保存在这里</div>}
+{historyItems.length?<div className="tryon-history-grid">{historyItems.map((job,index)=>{const url=job.outputImages[0],active=job.id===historyJobId;return <button type="button" className={active?"active":""} key={job.id} onClick={()=>{setHistoryJobId(job.id);setCandidateSlot(job.slot||1)}} title={`查看 ${new Date(job.startedAt).toLocaleString("zh-CN")}`} aria-label={`查看历史生成图 ${index+1}`}><img src={thumbnailUrl(url)} alt={`历史生成图 ${index+1}`}/><span>{new Date(job.startedAt).toLocaleDateString("zh-CN",{month:"2-digit",day:"2-digit"})}</span></button>})}</div>:<div className="tryon-history-empty">生成过的换装照片会保存在这里</div>}
 </section>
 {missing.length>0&&<div className="notice">开始换装前还需要保存：{missing.join("、")}。</div>}
 <label className="field">服装描述<textarea maxLength={500} value={description} onChange={e=>setDescription(e.target.value)}/>

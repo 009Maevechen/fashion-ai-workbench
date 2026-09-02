@@ -17,6 +17,12 @@ import {
 import { readManifest } from "@/lib/manifest";
 import fs from "node:fs/promises";
 import path from "node:path";
+import {listJobs,listProjects} from "@/lib/db";
+
+async function assertCacheUnreferenced(){
+  const [projects,jobs]=await Promise.all([listProjects(),listJobs()]);
+  if(JSON.stringify({projects,jobs}).includes("/api/files/.cache/"))throw new Error("临时缓存仍被当前项目或任务引用，已停止清理；请先完成或删除对应项目");
+}
 
 async function dirSize(dir: string): Promise<number> {
   try {
@@ -73,7 +79,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { action?: string; path?: string };
     const action = body.action;
-    if (action === "clear-cache") await emptyOutputCache();
+    if (action === "clear-cache") {await assertCacheUnreferenced();await emptyOutputCache();}
     else if (action === "set-process-path") updateOutputRoot(await saveRuntimeProjectProcessDir(String(body.path || "")));
     else if (action === "set-output-path") updateOutputRoot(await saveRuntimeOutputsDir(String(body.path || "")));
     else if (action === "set-final-path") await saveRuntimeFinalDir(String(body.path || ""));

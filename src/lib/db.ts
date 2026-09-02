@@ -8,6 +8,8 @@ import type {ColorAdjustment} from "./color-adjustment";
 import {runtimeDataDir,runtimeProjectProcessDir} from "./runtime-paths";
 import {findProjectByRouteKey} from "./project-lookup";
 import {safeSegment} from "./ai/validators";
+import {durableWriteJson,readJsonWithBackups,readValidJson} from "./durable-json";
+import {interruptJobs,interruptOperations,reconcileProjects} from "./recovery";
 
 export type ProductType="上衣"|"裤装"|"连衣裙"|"半身裙"|"套装";
 export type PoseShotType="full_body"|"half_body"|"upper_body"|"lower_body";
@@ -36,18 +38,21 @@ export type Project={id:string;sku:string;productName:string;productType:Product
 export type JobPhase="queued"|"uploading"|"submitting"|"waiting_provider"|"downloading"|"validating"|"optimizing"|"saving"|"success"|"failed"|"interrupted";
 export type GarmentConsistencyCheck={status:"passed"|"needs_review"|"failed";score?:number;summary:string;issues:string[];checkedAt:string;model?:string;checks?:{silhouette?:boolean;material?:boolean;texture?:boolean;construction?:boolean;details?:boolean;color?:boolean}};
 export type TryonSubjectFidelityCheck={status:"passed"|"needs_review"|"failed";basedOnModel:boolean;poseMatch:boolean;shotMatch:boolean;closerToProduct:boolean;originalGarmentLeak:boolean;skinQualityMatch:boolean;score:number;summary:string;issues:string[];checkedAt:string;model?:string};
-export type Job={id:string;projectId:string;sku:string;workflow:WorkflowType;provider:string;providerId?:string;providerType?:ApiProviderType|string;model:string;modelSlot?:ModelSlot;mode:GenerationMode;inputImages:string[];outputImages:string[];promptVersion:string;status:GenerationStatus;requestStatus?:GenerationStatus;phase?:JobPhase;dependencyStatus?:DependencyStatus;startedAt:string;requestStartedAt?:string;finishedAt?:string;requestFinishedAt?:string;error?:string;errorMessage?:string;slot?:number;poseIndex?:number;poseInstruction?:string;poseReferenceImage?:string;sourceModelImage?:string;durationMs?:number;targetColorId?:string;colorName?:string;consistencyCheck?:GarmentConsistencyCheck;subjectFidelity?:TryonSubjectFidelityCheck;qualityIssues?:string[];sharpnessScore?:number;inpaint?:InpaintMeta;timing?:JobTiming};
+export type Job={id:string;projectId:string;sku:string;workflow:WorkflowType;provider:string;providerId?:string;providerType?:ApiProviderType|string;model:string;modelSlot?:ModelSlot;mode:GenerationMode;inputImages:string[];outputImages:string[];promptVersion:string;status:GenerationStatus;requestStatus?:GenerationStatus;phase?:JobPhase;dependencyStatus?:DependencyStatus;startedAt:string;requestStartedAt?:string;finishedAt?:string;requestFinishedAt?:string;error?:string;errorMessage?:string;slot?:number;poseIndex?:number;poseInstruction?:string;poseReferenceImage?:string;sourceModelImage?:string;durationMs?:number;targetColorId?:string;colorName?:string;batchId?:string;consistencyCheck?:GarmentConsistencyCheck;subjectFidelity?:TryonSubjectFidelityCheck;qualityIssues?:string[];sharpnessScore?:number;inpaint?:InpaintMeta;timing?:JobTiming};
 export type JobTiming={queuedMs?:number;preprocessMs?:number;apiMs?:number;downloadMs?:number;localMs?:number;totalMs?:number};
 export type InpaintMeta={sourceImageId:string;sourceStep:WorkflowType;sourceUrl:string;maskUrl:string;editPrompt:string};
 export type OperationStatus="queued"|"running"|"success"|"failed"|"interrupted";
 export type Operation={id:string;projectId:string;workflow:WorkflowType;status:OperationStatus;payload:unknown;jobIds:string[];createdAt:string;updatedAt:string;error?:string};
 export type Store={schemaVersion:number;projects:Project[];jobs:Job[];operations:Operation[];poseTemplateGroups:PoseTemplateGroup[]};
 
-const dataDir=runtimeDataDir(),file=path.join(dataDir,"store.json"),backup=path.join(dataDir,"store.backup.json");let queue=Promise.resolve();
+const dataDir=runtimeDataDir(),file=path.join(dataDir,"store.json"),legacyBackup=path.join(dataDir,"store.backup.json"),backups=[1,2,3].map(index=>path.join(dataDir,`store.backup-${index}.json`));let queue=Promise.resolve();
 const SCHEMA_VERSION=2;
 const normalizeStore=(parsed:Partial<Store>):Store=>({schemaVersion:SCHEMA_VERSION,projects:parsed.projects||[],jobs:parsed.jobs||[],operations:parsed.operations||[],poseTemplateGroups:parsed.poseTemplateGroups||[]});
 const defaults=():Store=>({schemaVersion:SCHEMA_VERSION,projects:[],jobs:[],operations:[],poseTemplateGroups:[]});
-async function load():Promise<Store>{try{return normalizeStore(JSON.parse(await fs.readFile(file,"utf8")) as Partial<Store>)}catch(error){try{console.warn("主项目数据无法读取，已尝试从备份恢复");return normalizeStore(JSON.parse(await fs.readFile(backup,"utf8")) as Partial<Store>)}catch{if((error as NodeJS.ErrnoException).code!=="ENOENT")console.error("项目数据损坏，且备份不可用");return defaults()}}}
+const isStore=(value:unknown):value is Store=>{const item=value as Partial<Store>|null;return Boolean(item&&Array.isArray(item.projects)&&Array.isArray(item.jobs)&&Array.isArray(item.operations)&&Array.isArray(item.poseTemplateGroups))};
+type PersistenceRuntime=typeof globalThis&{__workbenchRecoveredBackup?:string;__workbenchPersistenceError?:string};
+const persistenceRuntime=globalThis as PersistenceRuntime;
+async function load():Promise<Store>{try{const loaded=await readJsonWithBackups(file,[...backups,legacyBackup],isStore);if(!loaded)return defaults();if(loaded.source!==file){persistenceRuntime.__workbenchRecoveredBackup=path.basename(loaded.source);await durableWriteJson(file,loaded.value)}return normalizeStore(loaded.value)}catch(error){const message=error instanceof Error?error.message:"未知数据错误";persistenceRuntime.__workbenchPersistenceError=message;throw new Error(`项目数据损坏且所有备份均不可用：${message}`)}}
 const wait=(milliseconds:number)=>new Promise<void>(resolve=>setTimeout(resolve,milliseconds));
 function isTransientWindowsFileLock(error:unknown){const code=(error as NodeJS.ErrnoException).code;return code==="EPERM"||code==="EACCES"||code==="EBUSY"}
 async function replaceStoreFile(tmp:string,target:string){
@@ -70,10 +75,12 @@ async function persistProjectProcessFiles(store:Store){
     await fs.mkdir(directory,{recursive:true});
     const target=path.join(directory,"project-process.json"),temporary=`${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
     const snapshot={schemaVersion:SCHEMA_VERSION,savedAt:new Date().toISOString(),project,jobs:store.jobs.filter(job=>job.projectId===project.id),operations:store.operations.filter(operation=>operation.projectId===project.id)};
-    try{await fs.writeFile(temporary,JSON.stringify(snapshot,null,2));await replaceStoreFile(temporary,target)}finally{await fs.unlink(temporary).catch(()=>{})}
+    try{await durableWriteJson(temporary,snapshot);await replaceStoreFile(temporary,target)}finally{await fs.unlink(temporary).catch(()=>{})}
   }));
 }
-async function mutate<T>(fn:(s:Store)=>T|Promise<T>){let result!:T;queue=queue.then(async()=>{const s=await load();result=await fn(s);await fs.mkdir(dataDir,{recursive:true});try{await fs.copyFile(file,backup)}catch{}const tmp=path.join(dataDir,`store.${process.pid}.${crypto.randomUUID()}.tmp`);try{await fs.writeFile(tmp,JSON.stringify(s,null,2));await replaceStoreFile(tmp,file);await persistProjectProcessFiles(s)}finally{await fs.unlink(tmp).catch(()=>{})}});await queue;return result}
+async function rotateBackups(){await fs.copyFile(backups[1],backups[2]).catch(()=>{});await fs.copyFile(backups[0],backups[1]).catch(()=>{});try{const current=await readValidJson(file,isStore);await durableWriteJson(backups[0],current)}catch{}}
+async function mutate<T>(fn:(s:Store)=>T|Promise<T>){let result!:T;queue=queue.then(async()=>{const s=await load();result=await fn(s);await fs.mkdir(dataDir,{recursive:true});await rotateBackups();await durableWriteJson(file,s);await persistProjectProcessFiles(s)});await queue;return result}
+export function persistenceStatus(){return {recovered:Boolean(persistenceRuntime.__workbenchRecoveredBackup||process.env.AI_STUDIO_RECOVERED==="1"),backup:persistenceRuntime.__workbenchRecoveredBackup,error:persistenceRuntime.__workbenchPersistenceError}}
 const normalize=(p:Project):Project=>({...p,assets:p.assets||{},profile:p.profile||{reviewStatus:"draft",tags:[],attributes:{}},settings:p.settings||{},stepStatuses:p.stepStatuses||{"1":"ready","2":"not_started","3":"not_started","4":"not_started","5":"not_started"},dependencyStatus:p.dependencyStatus||"current",targetColors:p.targetColors||[],poseReferenceInputs:p.poseReferenceInputs||[],poseReviewStates:p.poseReviewStates||{}});
 export const listProjects=async()=>{const s=await load();return s.projects.map(normalize).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))};
 // 项目页面地址既接受内部 ID，也接受用户可见的 SKU；这样复制地址或刷新 SKU 路径不会 404。
@@ -87,13 +94,13 @@ export const addJob=(job:Job)=>mutate(s=>{s.jobs.push(job);return job});
 export const patchJob=(id:string,patch:Partial<Job>)=>mutate(s=>{const j=s.jobs.find(x=>x.id===id);if(!j)throw new Error("任务不存在");Object.assign(j,patch,{id:j.id});return j});
 export const getJob=async(id:string)=>(await load()).jobs.find(x=>x.id===id);
 export const deleteWorkflowRecords=(projectId:string,workflow:WorkflowType)=>mutate(s=>{const jobIds=new Set(s.jobs.filter(job=>job.projectId===projectId&&job.workflow===workflow).map(job=>job.id));s.jobs=s.jobs.filter(job=>!jobIds.has(job.id));s.operations=s.operations.filter(operation=>!(operation.projectId===projectId&&operation.workflow===workflow));return jobIds.size});
-export const markInterruptedJobs=()=>mutate(s=>{for(const j of s.jobs)if(j.phase&&!["success","failed","interrupted"].includes(j.phase)){j.phase="interrupted";j.status="failed";j.error="服务重启导致任务中断，请重新生成";j.finishedAt=new Date().toISOString()}return true});
+export const markInterruptedJobs=()=>mutate(s=>{const count=interruptJobs(s.jobs);if(count)persistenceRuntime.__workbenchRecoveredBackup=persistenceRuntime.__workbenchRecoveredBackup||"unfinished-tasks";return count});
 export const addOperation=(operation:Operation)=>mutate(s=>{s.operations.push(operation);return operation});
 export const getOperation=async(id:string)=>(await load()).operations.find(x=>x.id===id);
 export const patchOperation=(id:string,patch:Partial<Operation>)=>mutate(s=>{const operation=s.operations.find(x=>x.id===id);if(!operation)throw new Error("本地任务不存在");Object.assign(operation,patch,{id:operation.id,updatedAt:new Date().toISOString()});return operation});
 export const listOperations=async(projectId?:string)=>{const operations=(await load()).operations;return (projectId?operations.filter(x=>x.projectId===projectId):operations).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))};
-export const markInterruptedOperations=()=>mutate(s=>{for(const operation of s.operations)if(operation.status==="queued"||operation.status==="running"){operation.status="interrupted";operation.error="服务重启导致任务中断，请重新生成";operation.updatedAt=new Date().toISOString()}return true});
-export const reconcileGeneratingProjects=()=>mutate(s=>{const now=new Date().toISOString();for(const project of s.projects){const active=s.operations.some(operation=>operation.projectId===project.id&&(operation.status==="queued"||operation.status==="running"));if(active)continue;const statuses=project.stepStatuses||{};if(project.status==="生成中"||Object.values(statuses).includes("generating")){project.status="生成失败";project.stepStatuses=Object.fromEntries(Object.entries(statuses).map(([step,status])=>[step,status==="generating"?"failed":status]));project.targetColors=(project.targetColors||[]).map(color=>color.status==="generating"?{...color,status:"failed"}:color);project.updatedAt=now}}return true});
+export const markInterruptedOperations=()=>mutate(s=>{const count=interruptOperations(s.operations);if(count)persistenceRuntime.__workbenchRecoveredBackup=persistenceRuntime.__workbenchRecoveredBackup||"unfinished-tasks";return count});
+export const reconcileGeneratingProjects=()=>mutate(s=>reconcileProjects(s.projects,s.operations));
 export const listPoseTemplateGroups=async()=>[...(await load()).poseTemplateGroups].sort((a,b)=>(b.lastUsedAt||b.updatedAt).localeCompare(a.lastUsedAt||a.updatedAt));
 export const getPoseTemplateGroup=async(id:string)=>(await load()).poseTemplateGroups.find(group=>group.id===id);
 export const addPoseTemplateGroup=(group:PoseTemplateGroup)=>mutate(s=>{if(s.poseTemplateGroups.some(item=>item.id===group.id))throw new Error("姿势模板组已存在");s.poseTemplateGroups.push(group);return group});

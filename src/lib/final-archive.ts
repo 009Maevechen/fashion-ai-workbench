@@ -8,6 +8,7 @@ import { runtimeFinalDir } from "./runtime-paths";
 import { imageSha256, upsertManifestImage, type ManifestImage } from "./manifest";
 import { recolorColorsWithSavedJobs } from "./recolor-collection";
 import { normalizedColorName } from "./color-sets";
+import {durableWriteFile} from "./durable-json";
 
 /** 清理 Windows 非法字符，保留中文、字母、数字、下划线、连字符、点。 */
 export function readableSegment(value: string): string {
@@ -88,7 +89,7 @@ export async function archiveFinalDeliverables(
     }
     const base = `${sku}_${productName}_${entry.color}_姿势${String(entry.poseIndex).padStart(2, "0")}`;
     const target = uniquePath(dir, base, ".jpg", used);
-    await fs.writeFile(target, buffer);
+    await durableWriteFile(target,buffer);
     const relativePath = path.relative(root, target).split(path.sep).join("/");
     archived.push({
       imageId: crypto.randomUUID(),

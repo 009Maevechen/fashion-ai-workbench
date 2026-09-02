@@ -15,6 +15,7 @@ import ClearAssetsButton from "./ClearAssetsButton";
 import type { Runner } from "./types";
 import { hasClearableSourceAssets } from "@/lib/asset-cleanup";
 import { DEFAULT_PROTECTION_ITEMS } from "@/lib/product-structure";
+import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 
 const TYPES: ProductType[] = ["上衣", "裤装", "连衣裙", "半身裙", "套装"];
 const ATTRIBUTE_OPTIONS: Record<keyof ProductAttributes, string[]> = {
@@ -304,6 +305,7 @@ export default function ProductDetailsPanel({
       ],
     ]),
   );
+  useProjectDraftAutosave(p.id,{sku:sku.trim()||p.sku,productName:name.trim(),productType:type,profile},500);
   const changeProfile = (patch: Partial<ProductProfile>) => {
     setProfile((value) => ({ ...value, ...patch }));
     setSaved(false);

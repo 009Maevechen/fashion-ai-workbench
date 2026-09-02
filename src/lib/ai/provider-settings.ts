@@ -24,6 +24,7 @@ import { EMPTY_WORKFLOW_BINDINGS } from "./provider-settings-types";
 import { normalizeSycBaseUrl } from "./providers/syc/config";
 import { runtimeDataDir } from "../runtime-paths";
 import { WORKFLOW_REQUIRED_CAPABILITIES, capabilitiesMatch, inferCapabilities, missingCapabilities, CAPABILITY_LABELS } from "./model-capabilities";
+import {durableWriteJson} from "../durable-json";
 
 type SettingsStore = {
   version: 1;
@@ -89,11 +90,7 @@ async function mutate<T>(fn: (store: SettingsStore) => T | Promise<T>) {
     const store = await loadStore();
     result = await fn(store);
     await fs.mkdir(dataDir, { recursive: true });
-    const temporary = `${settingsFile}.tmp`;
-    await fs.writeFile(temporary, JSON.stringify(store, null, 2), {
-      mode: 0o600,
-    });
-    await fs.rename(temporary, settingsFile);
+    await durableWriteJson(settingsFile,store);
   });
   await mutationQueue;
   return result;

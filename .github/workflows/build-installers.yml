@@ -51,7 +51,7 @@ jobs:
           $exe = Get-ChildItem -Recurse out/make/squirrel.windows/x64/*Setup.exe | Select-Object -First 1
           if (-not $exe) { throw "未找到 Windows Setup.exe" }
           $version = (Get-Content package.json | ConvertFrom-Json).version
-          $name = "AI服装工作台-Windows-x64-v$version-Setup.exe"
+          $name = "AI-Workbench-Windows-x64-v$version-Setup.exe"
           Copy-Item $exe.FullName $name
           Write-Host "Publishing: $name"
           gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包，由 GitHub Actions 自动构建。" 2>$null

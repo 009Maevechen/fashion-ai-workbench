@@ -15,6 +15,7 @@ import ColorAdjustmentPanel from "./ColorAdjustmentPanel";
 import ReferenceColorSampler from "./ReferenceColorSampler";
 import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 import {hasClearableSourceAssets} from "@/lib/asset-cleanup";
+import {thumbnailUrl} from "@/lib/image-url";
 import {hasWorkflowResults} from "@/lib/result-cleanup";
 import {analyzedColorName,colorResultCount,colorSetIssue,duplicateColorNames,expectedColorResultCount,mergeAnalyzedColorDetails,normalizedColorName,recolorColorName,recolorGenerationTrim} from "@/lib/color-sets";
 import {colorDistance} from "@/lib/color-palette";
@@ -55,7 +56,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   const generatingKey=colors.filter(color=>color.status==="generating").map(color=>color.id).join(":");
   useEffect(()=>{
     if(!generatingKey)return;
-    const timer=window.setInterval(()=>{void refreshProject()},1000);
+    const timer=window.setInterval(()=>{if(document.visibilityState==="visible")void refreshProject()},2500);
     return ()=>window.clearInterval(timer);
   },[generatingKey,refreshProject]);
   const active=colors.find(c=>c.id===activeId);
@@ -263,7 +264,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
       </section>
       <aside className="card recolor-collection-card"><div className="panel-head"><div><h2>已生成复色集合</h2><small>当前货号 {p.sku}</small></div><span className={`badge ${collectionItems.length?"success":"wait"}`}>{collectionItems.length} 张</span></div>{collectionItems.length?<div className="recolor-collection-grid">{collectionItems.map(({color,url,index},collectionIndex)=><article className="recolor-collection-item" key={`${color.id}:${url}`}><button className="image-button" type="button" onClick={()=>setPreview({images:collectionImages,index:collectionIndex})}><img src={url} alt={`${normalizedColorName(color)||"未命名颜色"}姿势${index+1}`}/></button><div className="recolor-collection-meta"><i style={{background:VALID_HEX.test(color.hex||"")?color.hex:"#E8E8EE"}}/><div><b>{normalizedColorName(color)||"未命名颜色"}</b><small>姿势 {index+1}</small></div></div><div className="recolor-collection-actions"><a href={url} download>下载</a><button type="button" onClick={()=>run(()=>removeCollectionImage(color,url))}>删除</button></div></article>)}</div>:<div className="empty-state compact-empty">生成成功的复色图会自动出现在这里。</div>}</aside>
     </div>
-    <section className="card process-history recolor-process-history" aria-labelledby="recolor-process-history-title"><div className="process-history-head"><div><h2 id="recolor-process-history-title">历史生成记录</h2><small>点击小图回到该颜色与姿势的复色制作过程</small></div><div>{historyJob&&<button type="button" className="text-button" onClick={()=>setHistoryJobId("")}>返回当前结果</button>}<span>{historyItems.length} 张</span></div></div>{historyItems.length?<div className="process-history-grid recolor-history-grid">{historyItems.map((job,index)=><button type="button" className={job.id===historyJobId?"active":""} key={job.id} onClick={()=>{if(job.targetColorId)setActiveId(job.targetColorId);setHistoryJobId(job.id)}} title={`${job.colorName||"复色"} · 姿势 ${job.slot||1} · ${new Date(job.startedAt).toLocaleString("zh-CN")}`}><img src={job.outputImages[0]} alt={`复色历史生成图 ${index+1}`}/><span>{job.colorName||"复色"} · 姿势{job.slot||1}</span></button>)}</div>:<div className="process-history-empty">生成过的复色照片会保存在这里</div>}</section>
+    <section className="card process-history recolor-process-history" aria-labelledby="recolor-process-history-title"><div className="process-history-head"><div><h2 id="recolor-process-history-title">历史生成记录</h2><small>点击小图回到该颜色与姿势的复色制作过程</small></div><div>{historyJob&&<button type="button" className="text-button" onClick={()=>setHistoryJobId("")}>返回当前结果</button>}<span>{historyItems.length} 张</span></div></div>{historyItems.length?<div className="process-history-grid recolor-history-grid">{historyItems.map((job,index)=><button type="button" className={job.id===historyJobId?"active":""} key={job.id} onClick={()=>{if(job.targetColorId)setActiveId(job.targetColorId);setHistoryJobId(job.id)}} title={`${job.colorName||"复色"} · 姿势 ${job.slot||1} · ${new Date(job.startedAt).toLocaleString("zh-CN")}`}><img src={thumbnailUrl(job.outputImages[0])} alt={`复色历史生成图 ${index+1}`}/><span>{job.colorName||"复色"} · 姿势{job.slot||1}</span></button>)}</div>:<div className="process-history-empty">生成过的复色照片会保存在这里</div>}</section>
     {preview&&<ImagePreviewDialog {...preview} onClose={()=>setPreview(null)}/>}
     {inpaint.dialog}
   </>;

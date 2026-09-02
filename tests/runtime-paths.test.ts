@@ -14,3 +14,10 @@ test("桌面版可以把数据和图片切换到Windows用户可写目录",()=>{
   if(oldData===undefined)delete process.env.AI_STUDIO_DATA_DIR;else process.env.AI_STUDIO_DATA_DIR=oldData;
   if(oldOutputs===undefined)delete process.env.AI_STUDIO_OUTPUTS_DIR;else process.env.AI_STUDIO_OUTPUTS_DIR=oldOutputs;
 });
+
+test("相对OUTPUTS_DIR只作为旧数据只读搜索源，不再成为业务写入目录",()=>{
+  const old=process.env.OUTPUTS_DIR;delete process.env.AI_STUDIO_OUTPUTS_DIR;process.env.OUTPUTS_DIR="outputs";
+  assert.notEqual(runtimeProjectProcessDir(),path.resolve("outputs"));
+  assert.equal(runtimeProjectProcessSearchDirs().includes(path.resolve("outputs")),true);
+  if(old===undefined)delete process.env.OUTPUTS_DIR;else process.env.OUTPUTS_DIR=old;
+});
