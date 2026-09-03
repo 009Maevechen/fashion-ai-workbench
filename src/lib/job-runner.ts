@@ -1,10 +1,12 @@
 import "server-only";
 import crypto from "node:crypto";
-import {addOperation,getJob,getOperation,listOperations,markInterruptedJobs,markInterruptedOperations,patchOperation,reconcileGeneratingProjects,type Operation} from "./db";
+import {addOperation,cancelWorkflowGeneration,getJob,getOperation,listOperations,markInterruptedJobs,markInterruptedOperations,patchOperation,reconcileGeneratingProjects,type Operation} from "./db";
 import type {ModelSlot} from "./ai/provider-settings-types";
 import {executeInpaint,executePose,executeRecolor,executeTryon} from "./workflow";
 import {refineCorrectionRequest} from "./ai/correction-refine";
 import type {WorkflowType} from "./ai/types";
+import {clearGenerationCancellation,isGenerationCancelled,markGenerationCancelled} from "./generation-cancel";
+import {correctionCommandText} from "./correction-command";
 
 type JobRuntimeGlobal=typeof globalThis&{
   __workbenchJobStateInitialization?:Promise<void>;
@@ -20,7 +22,7 @@ export async function initializeJobState(){
   await jobRuntime.__workbenchJobStateInitialization;
 }
 async function execute(workflow:WorkflowType,payload:unknown){if(workflow==="tryon")return executeTryon(payload as Parameters<typeof executeTryon>[0]);if(workflow==="pose")return executePose(payload as Parameters<typeof executePose>[0]);if(workflow==="inpaint")return executeInpaint(payload as Parameters<typeof executeInpaint>[0]);return executeRecolor(payload as Parameters<typeof executeRecolor>[0])}
-async function run(operation:Operation){try{await patchOperation(operation.id,{status:"running"});const results=await execute(operation.workflow,operation.payload),jobIds=results.flatMap(result=>"id" in result&&typeof result.id==="string"?[result.id]:[]),errors=results.flatMap(result=>"error" in result&&result.error?[String(result.error)]:[]);await patchOperation(operation.id,{status:errors.length===results.length?"failed":"success",jobIds,error:errors.length?errors.join("；"):undefined})}catch(error){await patchOperation(operation.id,{status:"failed",error:error instanceof Error?error.message:"后台任务执行失败"})}}
+async function run(operation:Operation){try{await patchOperation(operation.id,{status:"running"});const results=await execute(operation.workflow,operation.payload);if(isGenerationCancelled(operation.projectId,operation.workflow)){await patchOperation(operation.id,{status:"interrupted",error:"任务已被用户取消"});return}const jobIds=results.flatMap(result=>"id" in result&&typeof result.id==="string"?[result.id]:[]),errors=results.flatMap(result=>"error" in result&&result.error?[String(result.error)]:[]);await patchOperation(operation.id,{status:errors.length===results.length?"failed":"success",jobIds,error:errors.length?errors.join("；"):undefined})}catch(error){if(isGenerationCancelled(operation.projectId,operation.workflow)){await patchOperation(operation.id,{status:"interrupted",error:"任务已被用户取消"});return}await patchOperation(operation.id,{status:"failed",error:error instanceof Error?error.message:"后台任务执行失败"})}}
 function drainOperationQueue(){
   const queue=jobRuntime.__workbenchOperationQueue??=[];
   jobRuntime.__workbenchOperationQueue=queue;
@@ -37,10 +39,12 @@ function schedule(operation:Operation){
   queue.push(operation);
   drainOperationQueue();
 }
-export async function enqueueWorkflow(workflow:WorkflowType,payload:{projectId:string},idempotencyKey?:string){await initializeJobState();const now=new Date().toISOString();
+export async function enqueueWorkflow(workflow:WorkflowType,payload:{projectId:string},idempotencyKey?:string){await initializeJobState();clearGenerationCancellation(payload.projectId,workflow);const now=new Date().toISOString();
   // 幂等保护：相同幂等键或相同工作流+slot 且仍在进行中时，直接返回已有任务，禁止重复调用 API。
   if(idempotencyKey){const existing=await listOperations(payload.projectId);const dup=existing.find(item=>item.workflow===workflow&&item.payload&&(item.payload as Record<string,unknown>).idempotencyKey===idempotencyKey&&["queued","running","success"].includes(item.status));if(dup)return dup}
   const operation:Operation={id:crypto.randomUUID(),projectId:payload.projectId,workflow,status:"queued",payload:{...payload,idempotencyKey:idempotencyKey||crypto.randomUUID()},jobIds:[],createdAt:now,updatedAt:now};await addOperation(operation);schedule(operation);return operation}
+// 暂停某个项目工作流的生图：标记取消、中断未完成任务、从内存队列移除排队操作并对账项目状态。
+export async function cancelGeneration(projectId:string,workflow:WorkflowType){await initializeJobState();markGenerationCancelled(projectId,workflow);await cancelWorkflowGeneration(projectId,workflow);const queue=jobRuntime.__workbenchOperationQueue;if(queue){jobRuntime.__workbenchOperationQueue=queue.filter(operation=>!(operation.projectId===projectId&&operation.workflow===workflow))}return {cancelled:true}}
 export async function retryOperation(id:string){const operation=await getOperation(id);if(!operation)throw new Error("本地任务不存在");if(operation.status==="queued"||operation.status==="running")throw new Error("任务仍在执行中");return enqueueWorkflow(operation.workflow,operation.payload as {projectId:string})}
 export async function retryJob(id:string,modelPreference:ModelSlot="primary",correctionRequest?:string){
   const job=await getJob(id);if(!job)throw new Error("生成任务不存在");
@@ -51,8 +55,9 @@ export async function retryJob(id:string,modelPreference:ModelSlot="primary",cor
   const correction=correctionRequest?.trim();
   if(correction){
     payload.correctionRequest=correction;
-    const refined=await refineCorrectionRequest(correction);
-    const lock=`\n本次咒语矫正：${refined}\n只修正上述明确问题；其余人物、姿势、构图、背景、服装类型、版型、长度、颜色、材质、面料、纹理、垂感和全部设计细节必须保持不变。`;
+    const plan=await refineCorrectionRequest(correction);
+    payload.correctionPlan=plan;
+    const lock=`\n${correctionCommandText(plan)}\n输出分辨率、清晰度、细节量和真实感不得低于修正前图片；禁止模糊、降采样、噪点、杂质、涂抹感和压缩痕迹。人物身份与五官必须保持一致，所有可见皮肤必须自然、细腻、干净、真实；服装面料纹理、织法、车线、边缘和材质光泽必须继续清晰。`;
     if(job.workflow==="tryon"){
       payload.modelImage=job.outputImages[0];
       payload.detailRequirements=`${String(payload.detailRequirements||"")}${lock}`;

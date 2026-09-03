@@ -79,3 +79,18 @@ test("复色区域由商品类型锁定，上衣不得改动下装",()=>{
   assert.match(prompt,/绝对不得改色的其他服饰：裤子、裙子/);
   assert.match(prompt,/背景、皮肤、头发、鞋子、道具/);
 });
+
+test("统一复色只换颜色，单件复色按颜色款一对一复刻设计",()=>{
+  const uniform=recolorPrompt("上衣","黑色","#000000",["背景"],"保持结构",false,"","",[],"","","uniform");
+  assert.match(uniform,/统一复色/);
+  assert.match(uniform,/统一复色规则/);
+  assert.match(uniform,/只替换目标服装区域的颜色/);
+  assert.doesNotMatch(uniform,/颜色款一对一复刻规则/);
+  const perVariant=recolorPrompt("上衣","黑色","#000000",["背景"],"保持结构",false,"","",[],"","","perVariant");
+  assert.match(perVariant,/颜色款一对一复刻规则/);
+  assert.doesNotMatch(perVariant,/统一复色规则/);
+  // 两种模式都必须保证同一颜色款内多张图设计一致，不允许某张多一块少一块。
+  assert.match(uniform,/同款颜色设计一致性/);
+  assert.match(perVariant,/同款颜色设计一致性/);
+  assert.match(uniform,/不允许多一块少一块/);
+});

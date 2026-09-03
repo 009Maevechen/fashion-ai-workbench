@@ -36,8 +36,8 @@ async function nameColors(hexes: string[], runtime: Awaited<ReturnType<typeof re
   if (!hexes.length) return {};
   const named = await requestTextJson(
     runtime,
-    "你是服装颜色命名助手。依据每个 HEX 精确判断最贴切的服装颜色名，必须重点区分相近颜色：黑色/深灰/炭灰、白色/米白/奶白/象牙白、棕色/深棕/咖色/巧克力棕、卡其/驼色/杏色/米色、蓝色/深蓝/藏蓝/牛仔蓝、绿色/军绿/墨绿/橄榄绿。只返回合法 JSON。",
-    `颜色列表：${hexes.join(", ")}\n\n返回 {"names": {"#HEX": "颜色名"}}，为每个 HEX 输出最准确的颜色名，不要笼统地都用“棕色”或“蓝色”。`,
+    "你是服装颜色命名助手。依据每个 HEX 独立判断最贴切、可用于商品资料的标准中文颜色名。每个色款都必须单独命名，禁止使用“颜色1”“其他色”“同色系”“深色”等占位或含糊名称；必须重点区分相近颜色：黑色/深灰/炭灰、白色/米白/奶白/象牙白、棕色/深棕/咖色/巧克力棕、卡其/驼色/杏色/米色、蓝色/深蓝/藏蓝/牛仔蓝、绿色/军绿/墨绿/橄榄绿。只返回合法 JSON。",
+    `颜色列表：${hexes.join(", ")}\n\n返回 {"names": {"#HEX": "颜色名"}}，必须覆盖列表里的每个 HEX，并逐个输出最准确的具体颜色名；不得为了让名称不同而虚构差异，也不要笼统地都用“棕色”或“蓝色”。`,
   );
   const parsed = (named as { names?: Record<string, string> }) || {};
   return parsed.names || {};
@@ -83,8 +83,13 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
       ),
     );
 
-    // 用视觉模型的色卡名称覆盖本地聚类的颜色名，保证名称准确
-    const visionNames = await nameColors(allHexes, textRuntime);
+    // 将视觉语义、真实 HEX 和相近色命名表交叉校准；每个色款都必须得到独立、具体的名称。
+    const variantHexes = parsed.colors.map((item) => item.hex.toUpperCase());
+    const visionNames = await nameColors([...new Set([...allHexes, ...variantHexes])], textRuntime);
+    const resolvedColors = parsed.colors.map((item) => {
+      const upper = item.hex.toUpperCase();
+      return {...item,hex:upper,name:visionNames[upper]?.trim()||item.name.trim()};
+    });
     const nameOf = (hex: string) => {
       const upper = hex.toUpperCase();
       if (visionNames[upper]) return visionNames[upper];
@@ -92,7 +97,7 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
     };
 
     const primaryHex = structured.primaryColor?.hex.toUpperCase();
-    const visionPrimary = parsed.colors[0];
+    const visionPrimary = resolvedColors[0];
     const primaryColor = primaryHex
       ? {
           name: visionNames[primaryHex] || visionPrimary?.name || readableColorName(primaryHex, []),
@@ -119,15 +124,15 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
     }));
 
     // 多色款：如果视觉模型识别到多个颜色，且本地聚类也确认了多种主色，合并为变体列表
-    const missingVariantBox = parsed.colors.some((item) => !item.boundingBox);
-    const needsReview = structured.needsReview || parsed.colors.some((item) => (item.confidence ?? 0.5) < 0.65) || parsed.colors.length > 4 || missingVariantBox;
+    const missingVariantBox = resolvedColors.some((item) => !item.boundingBox);
+    const needsReview = structured.needsReview || resolvedColors.some((item) => (item.confidence ?? 0.5) < 0.65) || resolvedColors.length > 4 || missingVariantBox;
     const reviewReason = structured.needsReview
       ? structured.reviewReason
       : missingVariantBox
         ? "部分颜色款未可靠定位，需要人工框选该颜色款的整件服装"
-      : parsed.colors.some((item) => (item.confidence ?? 0.5) < 0.65)
+      : resolvedColors.some((item) => (item.confidence ?? 0.5) < 0.65)
         ? "存在颜色置信度较低或相近色，建议人工确认"
-        : parsed.colors.length > 4
+        : resolvedColors.length > 4
           ? "识别到多种颜色款式，建议人工确认"
         : undefined;
 
@@ -139,7 +144,7 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
       confidence: primaryColor ? Math.round(primaryColor.confidence * 100) : structured.confidence,
       needsReview,
       reviewReason,
-      colors: parsed.colors,
+      colors: resolvedColors,
     };
   } catch (error) {
     throw new Error(`颜色识别失败：${error instanceof Error ? error.message : "未知错误"}`);

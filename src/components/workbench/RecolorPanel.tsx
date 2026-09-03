@@ -16,8 +16,9 @@ import ReferenceColorSampler from "./ReferenceColorSampler";
 import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 import {hasClearableSourceAssets} from "@/lib/asset-cleanup";
 import {thumbnailUrl} from "@/lib/image-url";
+import GenerationControls from "./GenerationControls";
 import {hasWorkflowResults} from "@/lib/result-cleanup";
-import {analyzedColorName,colorResultCount,colorSetIssue,duplicateColorNames,expectedColorResultCount,mergeAnalyzedColorDetails,normalizedColorName,recolorColorName,recolorGenerationTrim} from "@/lib/color-sets";
+import {analyzedColorName,colorResultCount,colorSetIssue,duplicateColorNames,expectedColorResultCount,normalizedColorName,recolorColorName,recolorGenerationTrim} from "@/lib/color-sets";
 import {colorDistance} from "@/lib/color-palette";
 import {recolorAreaForProductType} from "@/lib/recolor-scope";
 import {parseColorName} from "@/lib/color-name-semantics";
@@ -26,7 +27,7 @@ const PROTECTED=["白色包边","黑色包边","印花","图案","纽扣","拉�
 const EXTRA="只修改服装主体面料颜色，保护区域、模特和背景不得改变。";
 const VALID_HEX=/^#[0-9A-Fa-f]{6}$/;
 
-export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,busy,run,refreshProject,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,saveProject,post,enqueue}:PanelProps&{historyJobs:Job[]}){
+export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,busy,run,refreshProject,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,cancelGeneration,clearWorkflowErrors,saveProject,post,enqueue}:PanelProps&{historyJobs:Job[]}){
   const saved=p.settings.recolor;
   const lockedArea=recolorAreaForProductType(p.productType);
   const [sourceMode,setSourceMode]=useState<"confirmed"|"standalone">(saved?.sourceMode||((p.confirmedPoseImages?.length||0)>=2?"confirmed":"standalone"));
@@ -39,6 +40,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   const [colors,setColors]=useState<TargetColor[]>(p.targetColors||[]);
   const [activeId,setActiveId]=useState(saved?.activeColorId||p.targetColors?.[0]?.id||"");
   const [mode,setMode]=useState<"fast"|"standard"|"quality">(saved?.mode||"standard");
+  const [recolorMode,setRecolorMode]=useState<"uniform"|"perVariant">(saved?.recolorMode||"perVariant");
   const [face]=useState(saved?.face??false);
   const [area,setArea]=useState<string>(lockedArea);
   const [protectedAreas,setProtected]=useState(saved?.protectedAreas?.length?saved.protectedAreas:PROTECTED);
@@ -71,7 +73,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   const historyItems=historyJobs.filter(job=>job.outputImages[0]&&job.status!=="failed"&&job.status!=="interrupted"),historyJob=historyItems.find(job=>job.id===historyJobId);
   const route=modelRouting.recolor,routed=route.primary.source==="stored";
   const configured=routed?route.primary.configured:health.recolorProvider==="custom"?health.custom:health.recolorProvider==="volcengine"?health.volcengine:mode==="quality"?health.fluxPro:health.volcengine;
-  const draftSettings=useMemo(()=>({settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:activeId,sourceMode,face,colorsLocked,withModelImage,selectedBatchColorIds:batchColorIds}}}),[activeId,area,batchColorIds,colorsLocked,extra,face,mode,p.settings,protectedAreas,sourceMode,withModelImage]);
+  const draftSettings=useMemo(()=>({settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:activeId,sourceMode,face,colorsLocked,withModelImage,recolorMode,selectedBatchColorIds:batchColorIds}}}),[activeId,area,batchColorIds,colorsLocked,extra,face,mode,p.settings,protectedAreas,recolorMode,sourceMode,withModelImage]);
   useProjectDraftAutosave(p.id,draftSettings);
 
   async function persist(asset:LocalAsset,key:"colorReferenceImage"|"standaloneRecolorPoseImages",name:string,index?:number){
@@ -82,7 +84,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
       setReference({...asset,url,file:undefined,status:"saved"});setReferenceSourceUrl(url);setReferenceCropDraft(undefined);setReferenceCropOpen(true);
     }else setManual(v=>{const next=[...v];next[index!]={...asset,url,file:undefined,status:"saved"};return next});
   }
-  async function persistColors(next:TargetColor[],nextActive=activeId,nextLocked=colorsLocked){setColors(next);await saveProject({targetColors:next,settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:nextActive,sourceMode,face,colorsLocked,withModelImage:nextLocked}}})}
+  async function persistColors(next:TargetColor[],nextActive=activeId,nextLocked=colorsLocked){setColors(next);await saveProject({targetColors:next,settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:nextActive,sourceMode,face,colorsLocked:nextLocked,withModelImage,recolorMode}}})}
   async function clearAllAssets(){const project=await clearSourceAssets();setReference({status:"idle"});setManual([]);setColors(project.targetColors||[]);setPreview(null)}
   async function clearResults(){const project=await clearWorkflowResults("recolor");setColors(project.targetColors||[]);setHistoryJobId("");setPreview(null)}
   async function addColor(){const color:TargetColor={id:crypto.randomUUID(),name:"",status:"draft"},next=[...colors,color];setActiveId(color.id);setBatchColorIds(ids=>[...ids,color.id]);await persistColors(next,color.id)}
@@ -93,13 +95,10 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
     try{
       const response=await fetch(`/api/projects/${p.id}/colors/analyze`,{method:"POST"}),data=await response.json() as {colors?:Array<{name:string;hex:string;trimColorName?:string;trimHex?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;cropImage?:string;cropRegion?:CropRegion}>;needsReview?:boolean;reviewReason?:string;confidence?:number;error?:string};
       if(!response.ok||!data.colors)throw new Error(data.error||"颜色分析失败");
-      // 人工修改优先：已有色卡时只补充 AI 新识别到的颜色，不覆盖用户已填/已修改的颜色。
-      const hasExisting=colors.length>0;
-      const merged=hasExisting?mergeAnalyzedColorDetails(colors,data.colors):{colors:[],unmatched:data.colors};
-      const additions=merged.unmatched.map(color=>({id:crypto.randomUUID(),name:analyzedColorName(color),baseHex:color.hex,hex:color.hex,trimColorName:color.trimColorName,trimHex:color.trimHex,designDetails:color.designDetails,materialFeatures:color.materialFeatures,designConfidence:color.confidence,designNeedsReview:(color.confidence??1)<0.65||!color.cropImage,cropImage:color.cropImage,cropRegion:color.cropRegion,status:color.cropImage?"ready" as const:"draft" as const}));
-      const next=hasExisting?[...merged.colors,...additions].slice(0,6):additions;
-      if(!next.length)throw new Error("参考图中的颜色已经全部存在");
-      const nextActive=activeId&&next.some(color=>color.id===activeId)?activeId:next[0].id;
+      // 重新识别颜色时清空旧的颜色任务队列，从零重新计算，不再与旧色卡合并。
+      const next=data.colors.map(color=>({id:crypto.randomUUID(),name:analyzedColorName(color),baseHex:color.hex,hex:color.hex,trimColorName:color.trimColorName,trimHex:color.trimHex,designDetails:color.designDetails,materialFeatures:color.materialFeatures,designConfidence:color.confidence,designNeedsReview:(color.confidence??1)<0.65||!color.cropImage,cropImage:color.cropImage,cropRegion:color.cropRegion,status:color.cropImage?"ready" as const:"draft" as const}));
+      if(!next.length)throw new Error("没有从参考图中识别到有效颜色，请更换清晰的产品平铺图");
+      const nextActive=next[0].id;
       setColorsLocked(false);setBatchColorIds(next.map(color=>color.id));setActiveId(nextActive);await persistColors(next,nextActive,false);
       if(data.needsReview)setAnalysisNotice(`颜色识别置信度 ${data.confidence??"?"}%：${data.reviewReason||"部分颜色需要人工确认"}，请检查并修改后再锁定。`);
       else if(data.confidence!==undefined)setAnalysisNotice(`颜色识别完成（置信度 ${data.confidence}%），请检查后锁定。`);
@@ -122,7 +121,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
     const changed=active.hex!==patch.hex,hasOldResults=Boolean(active.poseResults?.length),stale=changed&&hasOldResults;
     const next=colors.map(color=>color.id===active.id?{...color,...patch,status:stale?"stale" as const:hasOldResults?color.status:"ready" as const}:color);
     setColors(next);
-    await saveProject({targetColors:next,settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:active.id,sourceMode,face,colorsLocked,withModelImage}},...(stale?{status:"需要重新审核",dependencyStatus:"needs_review",stepStatuses:{...p.stepStatuses,"4":"stale","5":"stale"}}:{})});
+    await saveProject({targetColors:next,settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:active.id,sourceMode,face,colorsLocked,withModelImage,recolorMode}},...(stale?{status:"需要重新审核",dependencyStatus:"needs_review",stepStatuses:{...p.stepStatuses,"4":"stale","5":"stale"}}:{})});
   }
   async function crop(region:CropRegion){if(!active)return;const result=await post(`/api/projects/${p.id}/colors/crop`,{colorId:active.id,region}) as {url:string};await updateColor({cropRegion:region,cropImage:result.url,status:"ready"})}
   async function submitColor(target:TargetColor,slot?:number,modelPreference:"primary"|"fallback"="primary"){
@@ -132,7 +131,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
     if(duplicateNames.has(colorName.toLocaleLowerCase()))throw new Error("颜色名称不能重复，请为每一款颜色填写不同名称");
     if(sources.length<2||sources.length>4)throw new Error("必须有两张至四张有效姿势输入图（建议三至四张）");
     if(!hasTargetColor(target))throw new Error(`“${colorName}”缺少该颜色款的整件服装设计参考，请先完整框选该色款`);
-    await post("/api/recolor",{projectId:p.id,...(reference.url?{colorReferenceImage:reference.url}:{}),...(target.cropImage?{colorReferenceCrop:target.cropImage}:{}),targetColorId:target.id,colorName,hexColor:target.hex||"",...trim,garmentArea:area,protectedAreas,extraRequirements:extra,face,mode,sourceMode,poseImages:sources,withModelImage:withModelImage&&sourceMode==="confirmed",modelPreference,...(slot?{slot}:{})});
+    await post("/api/recolor",{projectId:p.id,...(reference.url?{colorReferenceImage:reference.url}:{}),...(target.cropImage?{colorReferenceCrop:target.cropImage}:{}),targetColorId:target.id,colorName,hexColor:target.hex||"",...trim,garmentArea:area,protectedAreas,extraRequirements:extra,face,mode,sourceMode,poseImages:sources,withModelImage:withModelImage&&sourceMode==="confirmed",recolorMode,modelPreference,...(slot?{slot}:{})});
   }
   async function enqueueColor(target:TargetColor){
     const colorName=recolorColorName(target);
@@ -141,13 +140,13 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
     if(duplicateNames.has(colorName.toLocaleLowerCase()))throw new Error("颜色名称不能重复，请为每一款颜色填写不同名称");
     if(sources.length<2||sources.length>4)throw new Error("必须有两张至四张有效姿势输入图（建议三至四张）");
     if(!hasTargetColor(target))throw new Error(`“${colorName}”缺少该颜色款的整件服装设计参考，请先完整框选该色款`);
-    const response=await fetch("/api/recolor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:p.id,...(reference.url?{colorReferenceImage:reference.url}:{}),...(target.cropImage?{colorReferenceCrop:target.cropImage}:{}),targetColorId:target.id,colorName,hexColor:target.hex||"",...trim,garmentArea:area,protectedAreas,extraRequirements:extra,face,mode,sourceMode,poseImages:sources,withModelImage:withModelImage&&sourceMode==="confirmed",modelPreference:"primary"})});
+    const response=await fetch("/api/recolor",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projectId:p.id,...(reference.url?{colorReferenceImage:reference.url}:{}),...(target.cropImage?{colorReferenceCrop:target.cropImage}:{}),targetColorId:target.id,colorName,hexColor:target.hex||"",...trim,garmentArea:area,protectedAreas,extraRequirements:extra,face,mode,sourceMode,poseImages:sources,withModelImage:withModelImage&&sourceMode==="confirmed",recolorMode,modelPreference:"primary"})});
     const data=await response.json() as {jobId?:string;error?:string};
     if(!response.ok||!data.jobId)throw new Error(data.error||"复色任务提交失败");
     return data.jobId;
   }
   async function startColor(target:TargetColor,slot?:number,modelPreference:"primary"|"fallback"="primary"){
-    await saveProject({settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:target.id,sourceMode,face,colorsLocked,withModelImage}},targetColors:colors});
+    await saveProject({settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:target.id,sourceMode,face,colorsLocked,withModelImage,recolorMode}},targetColors:colors});
     await submitColor(target,slot,modelPreference);
   }
   async function start(slot?:number,modelPreference:"primary"|"fallback"="primary"){if(!active)throw new Error("请先添加一个目标颜色");await startColor(active,slot,modelPreference)}
@@ -167,7 +166,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
     const nextColors=colors.map(color=>targetIds.has(color.id)?{...color,status:"generating" as const,generationStartedAt,sourceCount:sources.length}:color);
     setRetrySlots([]);setActiveId(first.id);setColors(nextColors);
     // 先建立全新的本轮状态，旧失败任务会立即退出结果视图；网络提交在随后快速完成。
-    await saveProject({status:"生成中",stepStatuses:{...p.stepStatuses,"4":"generating"},settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:first.id,sourceMode,face,colorsLocked,withModelImage}},targetColors:nextColors});
+    await saveProject({status:"生成中",stepStatuses:{...p.stepStatuses,"4":"generating"},settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:first.id,sourceMode,face,colorsLocked,withModelImage,recolorMode}},targetColors:nextColors});
     const results=await Promise.allSettled(targets.map(color=>enqueueColor(color)));
     const failed=results.flatMap((result,index)=>result.status==="rejected"?[`${normalizedColorName(targets[index])}：${result.reason instanceof Error?result.reason.message:"提交失败"}`]:[]);
     if(failed.length)throw new Error(`部分颜色提交失败（${failed.length}/${targets.length}）：${failed.join("；")}`);
@@ -180,7 +179,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
       if(colors.some(color=>!normalizedColorName(color)||!hasTargetColor(color)))throw new Error("请先完成每一款颜色的名称，并确认或框选该色款整件服装设计参考");
     }
     const next=!colorsLocked;setColorsLocked(next);
-    await saveProject({settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:activeId,sourceMode,face,colorsLocked,withModelImage:next}},targetColors:colors});
+    await saveProject({settings:{...p.settings,recolor:{mode,garmentArea:area,protectedAreas,extraRequirements:extra,activeColorId:activeId,sourceMode,face,colorsLocked:next,withModelImage,recolorMode}},targetColors:colors});
   }
   async function removeManual(index:number){await deleteAsset("standaloneRecolorPoseImages",index);setManual(v=>{const next=[...v];next[index]={status:"idle"};return next})}
   async function removeColor(target=active){if(!target||!confirm(`确认删除“${target.name}”颜色套装并将对应图片移入回收站？`))return;const response=await fetch(`/api/projects/${p.id}/colors/${target.id}`,{method:"DELETE"}),data=await response.json();if(!response.ok)throw new Error(data.error);const next=data.targetColors as TargetColor[];setColors(next);setBatchColorIds(ids=>ids.filter(id=>id!==target.id));setActiveId(next[0]?.id||"")}
@@ -222,6 +221,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
           <div className="recolor-section-title"><div><h3>颜色参考图</h3><small>{p.assets.colorReferenceCropImage?"只显示已框选的服装部位":p.assets.colorReferenceImage?"上传的多颜色参考图":"已自动使用产品主图，可重新上传多颜色参考图"}</small></div></div>
           <div className="recolor-reference-upload"><AssetUploadCard label="颜色参考图" description={p.assets.colorReferenceImage?"上传后可框选服装区域":"未单独上传时自动使用产品主图识别颜色" } value={reference} onChange={asset=>run(()=>persist(asset,"colorReferenceImage","color-reference"))} onDelete={()=>run(async()=>{await fetch(`/api/projects/${p.id}/colors/reference-crop`,{method:"DELETE"});await deleteAsset("colorReferenceImage");const fallback=p.assets.garmentImage;setReference(fallback?{url:fallback,name:"产品主图（自动作为颜色参考）",status:"saved"}:{status:"idle"});setReferenceSourceUrl(fallback||"");setReferenceCropOpen(false)})} onPreview={()=>reference.url&&setPreview({images:[reference.url],index:0})}/></div>
           {referenceSourceUrl&&<button type="button" className="reference-crop-trigger" onClick={()=>setReferenceCropOpen(true)}>▣ {p.assets.colorReferenceCropImage?"重新框选识别部位":"框选识别部位"}</button>}
+          <div className="recolor-mode-toggle"><div><h3>复色模式</h3><small>决定是否按每个颜色款的独立设计复刻</small></div><div className="segment compact"><button className={recolorMode==="perVariant"?"active":""} onClick={()=>setRecolorMode("perVariant")}>单件服装复色</button><button className={recolorMode==="uniform"?"active":""} onClick={()=>setRecolorMode("uniform")}>统一复色</button></div><small className="setting-help">{recolorMode==="uniform"?"统一复色：只替换颜色，各颜色款服装设计保持一致，直接换色即可。":"单件服装复色：逐款复刻每个颜色款的口袋、条纹、拼接、扣子等设计差异，同一颜色款内多张图设计必须一致。"}</small></div>
           <div className="recolor-reference-note"><b>识别原则</b><span>自动识别每个颜色款，并尝试为每款裁出整件服装设计参考；裁图必须包含口袋、条纹、拼接、扣子、印花、包边和面料分区。未可靠定位的色款会要求人工重新框选。</span></div>
         </div>
         <div className="recolor-source-column">
@@ -249,7 +249,7 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
             </div>})}</div>:<div className="empty-state compact-empty">上传颜色参考图后会自动建立色卡；也可以手动添加颜色。</div>}
             {duplicateNames.size>0&&<div className="error">存在重复颜色名称，请分别命名后再批量复色。</div>}
             <div className="notice">复色硬规则：每个色款必须拥有自己的整件服装设计参考；同一组三姿势只替换为该色款真实可见的颜色、口袋、条纹、拼接、扣子、印花、包边、线条位置和面料分区。人物、动作、景别、构图与画面样式不得改变。</div>
-            <div className="recolor-batch-bar"><div><b>已选择 {selectedBatchColors.length} 款颜色</b><span>{colorsLocked?"颜色已锁定":"请手动修改后锁定颜色"} · 预计生成 {selectedBatchColors.length*(sources.length>=2?sources.length:0)} 张图片</span></div><div className="recolor-resolution"><span>输出尺寸</span>{[["fast","1K"],["standard","2K"],["quality","4K"]].map(([key,label])=><button type="button" className={mode===key?"active":""} key={key} onClick={()=>setMode(key as typeof mode)}>{label}</button>)}</div><button type="button" className={`recolor-lock-button ${colorsLocked?"locked":""}`} disabled={busy||analyzing} onClick={()=>run(toggleColorLock)}>{colorsLocked?"解除锁定":"锁定颜色"}</button><button className="primary" disabled={busy||!colorsLocked||!configured||sources.length<2||sources.length>4||selectedBatchColors.length===0||duplicateNames.size>0||selectedBatchColors.some(color=>!normalizedColorName(color)||!hasTargetColor(color))} onClick={()=>run(startBatch)}>开始批量复色</button></div>
+            <div className="recolor-batch-bar"><div><b>已选择 {selectedBatchColors.length} 款颜色</b><span>{colorsLocked?"颜色已锁定":"请手动修改后锁定颜色"} · 预计生成 {selectedBatchColors.length*(sources.length>=2?sources.length:0)} 张图片</span></div><div className="recolor-resolution"><span>输出尺寸</span>{[["fast","1K"],["standard","2K"],["quality","4K"]].map(([key,label])=><button type="button" className={mode===key?"active":""} key={key} onClick={()=>setMode(key as typeof mode)}>{label}</button>)}</div><button type="button" className={`recolor-lock-button ${colorsLocked?"locked":""}`} disabled={busy||analyzing} onClick={()=>run(toggleColorLock)}>{colorsLocked?"解除锁定":"锁定颜色"}</button><button className="primary" disabled={busy||!colorsLocked||!configured||sources.length<2||sources.length>4||selectedBatchColors.length===0||duplicateNames.size>0||selectedBatchColors.some(color=>!normalizedColorName(color)||!hasTargetColor(color))} onClick={()=>run(startBatch)}>开始批量复色</button><GenerationControls workflow="recolor" jobs={historyJobs} cancelGeneration={cancelGeneration} clearWorkflowErrors={clearWorkflowErrors} run={run}/></div>
           </section>
         </div>
         {colorControlPanel}
