@@ -937,6 +937,53 @@ button:disabled {
   padding: 8px 12px;
   text-decoration: none;
 }
+.copy-image-button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: #535663;
+  padding: 5px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.copy-image-button:disabled { cursor: wait; opacity: .65; }
+.copy-image-button.compact {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #ffffff70;
+  border-radius: 7px;
+  background: #181922d9;
+  color: #fff;
+  box-shadow: 0 4px 14px #11131c35;
+  backdrop-filter: blur(5px);
+}
+.copy-image-button.compact:hover { background: #11121bea; }
+.photo-copy-floating { position: fixed; z-index: 240; }
+.photo-copy-toast {
+  position: fixed;
+  z-index: 260;
+  left: 50%;
+  bottom: 26px;
+  max-width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  border: 1px solid #b7e4ce;
+  border-radius: 7px;
+  background: #ecfbf4;
+  color: #176442;
+  box-shadow: 0 10px 34px #16192324;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.photo-copy-toast.error { border-color: #edbcbc; background: #fff0f0; color: #9b3434; }
+.dialog-tools .copy-image-button { border: 1px solid #ffffff40; background: #ffffff18; color: #fff; border-radius: 7px; padding: 8px 12px; }
+.upload-meta .copy-image-button { color: inherit; padding: 3px 5px; }
 .dialog-close {
   position: fixed;
   right: 25px;

@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld("desktop",Object.freeze({
   openOutputFolder:()=>ipcRenderer.invoke("desktop:open-output-folder"),
   openDataFolder:()=>ipcRenderer.invoke("desktop:open-data-folder"),
   openLogFolder:()=>ipcRenderer.invoke("desktop:open-log-folder"),
+  copyImage:value=>ipcRenderer.invoke("desktop:copy-image",value),
 }));

@@ -6,6 +6,7 @@ import { requestTextJson, requestVisionText } from "./vision-chat";
 import { readableColorName } from "../color-palette";
 import { extractStructuredColors } from "../structured-color";
 import { resizeToJpeg } from "../image-limits";
+import { chooseSpecificColorName, generationColorName, normalizeMaterialFeatures, normalizeTrimPart } from "./color-analysis-normalize";
 
 const normalizedBox = z.object({
   x: z.number().min(0).max(1),
@@ -15,17 +16,19 @@ const normalizedBox = z.object({
 }).refine((box) => box.x + box.width <= 1.01 && box.y + box.height <= 1.01, "颜色款区域越界");
 
 const shortName = z.string().min(1).max(200).transform((value) => value.trim().slice(0, 30));
+const optionalShortName = z.preprocess((value) => value == null ? "" : value, z.string().max(200).transform((value) => value.trim().slice(0, 30)));
 const shortDesignDetail = z.string().min(1).max(400).transform((value) => value.trim().slice(0, 80));
 const shortMaterial = z.string().max(1200).transform((value) => value.trim().slice(0, 300));
 const colorItem = z.object({
   name: shortName,
   hex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
-  trimColorName: shortName,
-  trimHex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  trimColorName: optionalShortName,
+  trimHex: z.preprocess((value) => value == null ? "" : value, z.union([z.literal(""),z.string().regex(/^#[0-9A-Fa-f]{6}$/)])),
+  trimPart: optionalShortName,
   confidence: z.number().min(0).max(1).optional().default(0.5),
   boundingBox: normalizedBox.optional(),
   designDetails: z.array(shortDesignDetail).max(16).optional().default([]),
-  materialFeatures: shortMaterial.optional().default(""),
+  materialFeatures: z.preprocess(normalizeMaterialFeatures, shortMaterial),
 });
 const schema = z.object({
   colors: z.array(colorItem).min(1).max(6),
@@ -52,7 +55,7 @@ export type GarmentColorResult = {
   needsReview: boolean;
   reviewReason?: string;
   /** 兼容旧接口：复色流程使用的色卡列表 */
-  colors: Array<{ name: string; hex: string; trimColorName: string; trimHex: string; confidence: number; boundingBox?: {x:number;y:number;width:number;height:number}; designDetails:string[]; materialFeatures:string }>;
+  colors: Array<{ name: string; generationName:string; hex: string; trimColorName: string; trimHex: string; trimPart:string; confidence: number; boundingBox?: {x:number;y:number;width:number;height:number}; designDetails:string[]; materialFeatures:string }>;
 };
 
 export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentColorResult> {
@@ -79,7 +82,7 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
       await requestTextJson(
         textRuntime,
         "你是服装色卡资料整理助手。只能依据图片识别结果整理色卡，必须只返回合法 JSON。",
-        `图片识别结果：\n${observation}\n\n返回 {"colors": [...]}，最多6项；按图片中服装款式从左到右/从上到下给出顺序。每项包含 name（主体色名称）、hex、trimColorName（边饰色名称）、trimHex、confidence（0到1）、designDetails（该色款真实可见的口袋/条纹/拼接/扣子/印花/包边/车线/线条位置/面料分区数组）、materialFeatures（面料纹理、织法、光泽、厚薄和垂感）和可选 boundingBox（完整色款服装的归一化 x、y、width、height）。主色必须按服装主体面积判断，不能被小面积条纹/印花取代；boundingBox 必须完整包含该颜色款服装，不能只框颜色小块或混入相邻款；看不到的设计不得猜测；只依据服装区域，背景、皮肤、头发、鞋子、道具、阴影和高光不得参与。所有 HEX 必须为 #RRGGBB。`,
+        `图片识别结果：\n${observation}\n\n返回 {"colors": [...]}，最多6项；按图片中服装款式从左到右/从上到下给出顺序。每项包含 name（主体色的具体标准中文名称）、hex、trimColorName（真实可见的主要边饰/局部色名称，没有则为空字符串）、trimHex（没有边饰则为空字符串）、trimPart（辅色所在部位，只能是“包边、条纹、扣子、拼接、印花、撞色、线条、边”之一，没有则为空字符串）、confidence（0到1）、designDetails（该色款真实可见的口袋/条纹/拼接/扣子/印花/包边/车线/线条位置/面料分区数组）、materialFeatures（面料纹理、织法、光泽、厚薄和垂感）和可选 boundingBox（完整色款服装的归一化 x、y、width、height）。名称必须具体、稳定且可直接用于作图，重点区分黑色/炭黑/深灰、白色/米白/奶油白/象牙白、棕色/焦糖棕/栗棕/巧克力棕/深咖啡、卡其/黄褐卡其/深卡其/驼色/杏色、蓝色/藏青/牛仔蓝/雾霾蓝、绿色/军绿/墨绿/橄榄绿；禁止使用“颜色1、深色、浅色、其他色、同色系”等含糊名称。同一颜色在所有色款中必须使用同一个名称。materialFeatures 必须是一段字符串，例如“细密针织纹理，哑光，中等厚度，垂感自然”，不得返回对象或数组。主色必须按服装主体面积判断，不能被小面积条纹/印花取代；边饰色和部位必须来自真实可见内容，没有就留空，禁止为了凑字段而猜测；boundingBox 必须完整包含该颜色款服装，不能只框颜色小块或混入相邻款；只依据服装区域，背景、皮肤、头发、鞋子、道具、阴影和高光不得参与。所有非空 HEX 必须为 #RRGGBB。`,
       ),
     );
 
@@ -88,7 +91,10 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
     const visionNames = await nameColors([...new Set([...allHexes, ...variantHexes])], textRuntime);
     const resolvedColors = parsed.colors.map((item) => {
       const upper = item.hex.toUpperCase();
-      return {...item,hex:upper,name:visionNames[upper]?.trim()||item.name.trim()};
+      const hexName=visionNames[upper]?.trim()||readableColorName(upper,[]);
+      const name=chooseSpecificColorName(item.name,hexName);
+      const trimPart=normalizeTrimPart(item.trimPart,item.designDetails);
+      return {...item,hex:upper,trimHex:item.trimHex.toUpperCase(),name,trimPart,generationName:generationColorName(name,item.trimColorName,trimPart)};
     });
     const nameOf = (hex: string) => {
       const upper = hex.toUpperCase();
@@ -125,11 +131,14 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
 
     // 多色款：如果视觉模型识别到多个颜色，且本地聚类也确认了多种主色，合并为变体列表
     const missingVariantBox = resolvedColors.some((item) => !item.boundingBox);
-    const needsReview = structured.needsReview || resolvedColors.some((item) => (item.confidence ?? 0.5) < 0.65) || resolvedColors.length > 4 || missingVariantBox;
+    const missingTrimPart = resolvedColors.some((item) => Boolean(item.trimColorName) && !item.trimPart);
+    const needsReview = structured.needsReview || resolvedColors.some((item) => (item.confidence ?? 0.5) < 0.65) || resolvedColors.length > 4 || missingVariantBox || missingTrimPart;
     const reviewReason = structured.needsReview
       ? structured.reviewReason
       : missingVariantBox
         ? "部分颜色款未可靠定位，需要人工框选该颜色款的整件服装"
+      : missingTrimPart
+        ? "识别到了辅色，但未能确认辅色位于包边、条纹或其他部位，需要人工确认"
       : resolvedColors.some((item) => (item.confidence ?? 0.5) < 0.65)
         ? "存在颜色置信度较低或相近色，建议人工确认"
         : resolvedColors.length > 4

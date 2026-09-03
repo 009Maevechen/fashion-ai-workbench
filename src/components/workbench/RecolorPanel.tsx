@@ -93,10 +93,10 @@ export default function RecolorPanel({p,jobs,historyJobs,health,modelRouting,bus
   async function analyzeReference(){
     setAnalyzing(true);
     try{
-      const response=await fetch(`/api/projects/${p.id}/colors/analyze`,{method:"POST"}),data=await response.json() as {colors?:Array<{name:string;hex:string;trimColorName?:string;trimHex?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;cropImage?:string;cropRegion?:CropRegion}>;needsReview?:boolean;reviewReason?:string;confidence?:number;error?:string};
+      const response=await fetch(`/api/projects/${p.id}/colors/analyze`,{method:"POST"}),data=await response.json() as {colors?:Array<{name:string;generationName?:string;hex:string;trimColorName?:string;trimHex?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;cropImage?:string;cropRegion?:CropRegion}>;needsReview?:boolean;reviewReason?:string;confidence?:number;error?:string};
       if(!response.ok||!data.colors)throw new Error(data.error||"颜色分析失败");
       // 重新识别颜色时清空旧的颜色任务队列，从零重新计算，不再与旧色卡合并。
-      const next=data.colors.map(color=>({id:crypto.randomUUID(),name:analyzedColorName(color),baseHex:color.hex,hex:color.hex,trimColorName:color.trimColorName,trimHex:color.trimHex,designDetails:color.designDetails,materialFeatures:color.materialFeatures,designConfidence:color.confidence,designNeedsReview:(color.confidence??1)<0.65||!color.cropImage,cropImage:color.cropImage,cropRegion:color.cropRegion,status:color.cropImage?"ready" as const:"draft" as const}));
+      const next=data.colors.map(color=>({id:crypto.randomUUID(),name:color.name,outputName:analyzedColorName(color),baseHex:color.hex,hex:color.hex,trimColorName:color.trimColorName,trimHex:color.trimHex,designDetails:color.designDetails,materialFeatures:color.materialFeatures,designConfidence:color.confidence,designNeedsReview:(color.confidence??1)<0.65||!color.cropImage,cropImage:color.cropImage,cropRegion:color.cropRegion,status:color.cropImage?"ready" as const:"draft" as const}));
       if(!next.length)throw new Error("没有从参考图中识别到有效颜色，请更换清晰的产品平铺图");
       const nextActive=next[0].id;
       setColorsLocked(false);setBatchColorIds(next.map(color=>color.id));setActiveId(nextActive);await persistColors(next,nextActive,false);

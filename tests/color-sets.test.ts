@@ -36,6 +36,7 @@ test("两张已确认姿势可以组成两张复色套装",()=>{
 });
 
 test("复色输出名称包含主色与边饰颜色",()=>{
+  assert.equal(recolorColorName({name:"黄褐卡其色",outputName:"黄褐卡其色黑色包边"}),"黄褐卡其色黑色包边");
   assert.equal(recolorColorName({name:"黄褐卡其色",trimColorName:"黑色"}),"黄褐卡其色黑边");
   assert.equal(recolorColorName({name:"巧克力棕",trimColorName:"白色"}),"巧克力棕白边");
   assert.equal(recolorColorName({name:"巧克力棕白边",trimColorName:"白色"}),"巧克力棕白边");

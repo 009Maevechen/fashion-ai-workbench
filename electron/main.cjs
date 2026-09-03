@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const {app,BrowserWindow,Menu,ipcMain,safeStorage,shell}=require("electron");
+const {app,BrowserWindow,Menu,clipboard,ipcMain,nativeImage,safeStorage,shell}=require("electron");
 const {spawn,execFile}=require("node:child_process");
 const crypto=require("node:crypto");
 const fs=require("node:fs");
@@ -68,6 +68,7 @@ async function createWindow(){
 }
 function installMenu(){Menu.setApplicationMenu(Menu.buildFromTemplate([{label:"文件",submenu:[{label:"打开输出文件夹",click:()=>shell.openPath(directories().pictures)},{label:"打开数据文件夹",click:()=>shell.openPath(directories().base)},{type:"separator"},{role:"quit",label:"退出"}]},{label:"视图",submenu:[{label:"安全刷新数据",accelerator:"CmdOrCtrl+R",click:()=>mainWindow?.webContents.executeJavaScript("window.dispatchEvent(new Event('workbench:refresh'))")},{role:"zoomIn",label:"放大"},{role:"zoomOut",label:"缩小"},{role:"resetZoom",label:"重置缩"},...(app.isPackaged?[]:[{role:"toggleDevTools",label:"开发者工具"}])]},{label:"帮助",submenu:[{label:`当前版本 ${app.getVersion()}`,enabled:false},{label:"日志目录",click:()=>shell.openPath(directories().logs)}]}]))}
 ipcMain.handle("desktop:get-app-info",()=>({version:app.getVersion(),platform:process.platform}));ipcMain.handle("desktop:open-output-folder",()=>shell.openPath(directories().pictures));ipcMain.handle("desktop:open-data-folder",()=>shell.openPath(directories().base));ipcMain.handle("desktop:open-log-folder",()=>shell.openPath(directories().logs));
+ipcMain.handle("desktop:copy-image",(_,value)=>{try{const bytes=value instanceof ArrayBuffer?Buffer.from(value):Buffer.from(value?.buffer||value);if(!bytes.length||bytes.length>60*1024*1024)throw new Error("图片文件过大，无法复制");const image=nativeImage.createFromBuffer(bytes);if(image.isEmpty())throw new Error("图片格式无法复制");clipboard.writeImage(image);return {ok:true}}catch(error){return {ok:false,error:error instanceof Error?error.message:"复制图片失败"}}});
 app.on("second-instance",()=>{if(mainWindow){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.focus()}});
 app.whenReady().then(async()=>{await ensureDirectories();await markDesktopSession("running");installMenu();await createWindow()}).catch(error=>{void writeLog(error?.stack||error);app.quit()});
 app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)void createWindow()});app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});

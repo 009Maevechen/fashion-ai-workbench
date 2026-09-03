@@ -1,14 +1,15 @@
 import type {TargetColor} from "./db";
 import {colorDistance} from "./color-palette";
 
-export type AnalyzedGarmentColor={name:string;hex:string;trimColorName?:string;trimHex?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;cropImage?:string;cropRegion?:{x:number;y:number;width:number;height:number}};
+export type AnalyzedGarmentColor={name:string;generationName?:string;hex:string;trimColorName?:string;trimHex?:string;trimPart?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;cropImage?:string;cropRegion?:{x:number;y:number;width:number;height:number}};
 
 const trimEdgeLabel=(trim?:string)=>{
   const value=trim?.trim();
   return value?.endsWith("边")?value:value?.endsWith("色")?`${value.slice(0,-1)}边`:value?`${value}边`:"";
 };
 
-export function analyzedColorName(color:Pick<AnalyzedGarmentColor,"name"|"trimColorName">){
+export function analyzedColorName(color:Pick<AnalyzedGarmentColor,"name"|"trimColorName"|"generationName">){
+  if(color.generationName?.trim())return color.generationName.trim();
   const main=color.name.trim(),trimLabel=trimEdgeLabel(color.trimColorName);
   return trimLabel&&!main.endsWith(trimLabel)?`${main}${trimLabel}`:main;
 }
