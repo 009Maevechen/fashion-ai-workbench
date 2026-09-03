@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
-import { MAX_INPUT_PIXELS, resizeToJpeg, rotatedDimensions, rotateAndExtract } from "../src/lib/image-limits";
+import { createThumbnail, MAX_INPUT_PIXELS, resizeToJpeg, rotatedDimensions, rotateAndExtract } from "../src/lib/image-limits";
 
 async function makeImage(width: number, height: number, quality = 90): Promise<Buffer> {
   return sharp({ create: { width, height, channels: 3, background: { r: 200, g: 150, b: 90 } } })
@@ -23,6 +23,14 @@ test("resizeToJpeg 不放大小于上限的图", async () => {
   const meta = await sharp(out).metadata();
   assert.equal(meta.width, 800);
   assert.equal(meta.height, 600);
+});
+
+test("列表缩略图等比例压缩完整画面而不裁剪",async()=>{
+  const wide=await makeImage(1200,600);
+  const out=await createThumbnail(wide,360);
+  const meta=await sharp(out).metadata();
+  assert.equal(meta.width,360);
+  assert.equal(meta.height,180);
 });
 
 test("rotateAndExtract 旋转后按框裁剪出正确尺寸", async () => {

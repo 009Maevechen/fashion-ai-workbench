@@ -23,13 +23,13 @@ export default function InpaintEditor({
   const [scale, setScale] = useState(1);
   const drawing = useRef(false);
   const lastPoint = useRef<{ x: number; y: number } | null>(null);
-  const maskRef = useRef<ImageData | null>(null);
+  const hasMask = useRef(false);
 
   function emit() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dataUrl = canvas.toDataURL("image/png");
-    onChange({ dataUrl, hasMask: maskRef.current !== null });
+    onChange({ dataUrl, hasMask: hasMask.current });
   }
 
   useEffect(() => {
@@ -43,22 +43,17 @@ export default function InpaintEditor({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0);
-      // 已有蒙版则叠加半透明红色显示已选区域
       if (initialMask) {
         const maskImage = new Image();
         maskImage.onload = () => {
-          ctx.save();
-          ctx.globalAlpha = 0.5;
           ctx.drawImage(maskImage, 0, 0);
-          ctx.restore();
-          // 把当前画布内容作为蒙版基图（仅红色层），但为简化用独立 mask canvas
-          maskRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          hasMask.current = true;
           emit();
         };
         maskImage.src = initialMask;
       } else {
-        emit();
+        hasMask.current = false;
+        onChange({dataUrl:"",hasMask:false});
       }
     };
     image.src = src;
@@ -85,7 +80,7 @@ export default function InpaintEditor({
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     if (mode === "brush") {
-      ctx.globalAlpha = 0.55;
+      ctx.globalAlpha = 0.68;
       ctx.strokeStyle = "#e23c3c";
     } else {
       ctx.globalCompositeOperation = "destination-out";
@@ -104,6 +99,7 @@ export default function InpaintEditor({
     const p = canvasPoint(e);
     lastPoint.current = p;
     stroke(p, p);
+    if(mode==="brush")hasMask.current=true;
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drawing.current) return;
@@ -114,7 +110,6 @@ export default function InpaintEditor({
   function onPointerUp() {
     drawing.current = false;
     lastPoint.current = null;
-    maskRef.current = canvasRef.current?.getContext("2d")?.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height) ?? null;
     emit();
   }
 
@@ -124,9 +119,8 @@ export default function InpaintEditor({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(imageRef.current, 0, 0);
-    maskRef.current = null;
-    emit();
+    hasMask.current = false;
+    onChange({dataUrl:"",hasMask:false});
   }
 
   return (
@@ -142,7 +136,7 @@ export default function InpaintEditor({
         <canvas
           ref={canvasRef}
           className="inpaint-canvas"
-          style={{ width: `${scale * 100}%`, maxWidth: "100%", cursor: "crosshair", touchAction: "none" }}
+          style={{ width: `${scale * 100}%`, maxWidth: "100%", cursor: "crosshair", touchAction: "none", backgroundImage:`url(${src})`, backgroundSize:"100% 100%", backgroundRepeat:"no-repeat" }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

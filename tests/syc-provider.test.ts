@@ -1,17 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {normalizeSycBaseUrl,sycEndpoint} from "../src/lib/ai/providers/syc/config";
+import {migrateSycBaseUrl,normalizeSycBaseUrl,SYC_DEFAULT_BASE_URL,sycEndpoint} from "../src/lib/ai/providers/syc/config";
 import {parseSycImageResponse,parseSycModels} from "../src/lib/ai/providers/syc/response-parser";
 import {normalizeSycImageUrl} from "../src/lib/ai/providers/syc/image-url";
 
 test("SYC URL保留用户填写的协议和路径",()=>{
+  assert.equal(SYC_DEFAULT_BASE_URL,"https://ai.sycagent.top/v1");
+  assert.equal(migrateSycBaseUrl("https://sycagent.top/v1/"),"https://ai.sycagent.top/v1");
   assert.equal(normalizeSycBaseUrl("https://sycagent.top"),"https://sycagent.top");
-  assert.equal(normalizeSycBaseUrl("https://sycagent.top/v1/"),"https://sycagent.top/v1/");
+  assert.equal(normalizeSycBaseUrl("https://sycagent.top/v1/"),"https://ai.sycagent.top/v1");
   assert.equal(normalizeSycBaseUrl("http://127.0.0.1:8080/custom"),"http://127.0.0.1:8080/custom");
   assert.equal(normalizeSycBaseUrl("  https://sycagent.top/api  "),"https://sycagent.top/api");
   assert.throws(()=>normalizeSycBaseUrl("ftp://sycagent.top"),/HTTP 或 HTTPS/);
   assert.throws(()=>normalizeSycBaseUrl("https://user:pass@sycagent.top/v1"),/账号或密码/);
-  assert.equal(sycEndpoint("https://sycagent.top/v1","models"),"https://sycagent.top/v1/models");
+  assert.equal(sycEndpoint(SYC_DEFAULT_BASE_URL,"models"),"https://ai.sycagent.top/v1/models");
 });
 
 test("SYC模型列表只接受真实data列表",()=>{

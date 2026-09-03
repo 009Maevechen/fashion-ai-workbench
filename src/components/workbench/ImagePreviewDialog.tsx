@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
+import {thumbnailUrl} from "@/lib/image-url";
 
 export default function ImagePreviewDialog({ images, index, onClose }: { images: string[]; index: number; onClose: () => void }) {
   const [active,setActive]=useState(index),[zoom,setZoom]=useState(1),[position,setPosition]=useState({x:0,y:0}),[meta,setMeta]=useState({width:0,height:0,bytes:0}),drag=useRef<{x:number;y:number;left:number;top:number}|null>(null);
@@ -18,7 +19,7 @@ export default function ImagePreviewDialog({ images, index, onClose }: { images:
         <img src={current} alt="大图预览" draggable={false} onLoad={event=>{const width=event.currentTarget.naturalWidth,height=event.currentTarget.naturalHeight;setMeta(value=>({...value,width,height}))}} style={{transform:`translate(${position.x}px,${position.y}px) scale(${zoom})`}}/>
       </div>
       <div className="image-meta">{meta.width>0?`${meta.width} × ${meta.height}px`:"读取原始尺寸中"} · {meta.bytes>0?`${(meta.bytes/1024/1024).toFixed(2)} MB`:"读取文件大小中"} · {active+1}/{images.length}</div>
-      {images.length>1&&<div className="dialog-thumbnails">{images.map((url,itemIndex)=><button key={`${url}-${itemIndex}`} className={itemIndex===active?"active":""} onClick={()=>setActive(itemIndex)}><img src={url} alt={`缩略图 ${itemIndex+1}`}/></button>)}</div>}
+      {images.length>1&&<div className="dialog-thumbnails">{images.map((url,itemIndex)=><button key={`${url}-${itemIndex}`} className={itemIndex===active?"active":""} onClick={()=>setActive(itemIndex)}><img src={thumbnailUrl(url,240)} alt={`缩略图 ${itemIndex+1}`}/></button>)}</div>}
       <div className="dialog-tools"><button onClick={()=>setZoom(value=>Math.max(.5,value-.25))}>− 缩小</button><button onClick={()=>{setZoom(1);setPosition({x:0,y:0})}}>适应窗口</button><button onClick={()=>setZoom(value=>Math.min(4,value+.25))}>＋ 放大</button>{images.length>1&&<><button onClick={()=>move(-1)}>上一张</button><button onClick={()=>move(1)}>下一张</button></>}<a href={current} download>下载</a><button onClick={()=>void navigator.clipboard.writeText(current)}>复制保存地址</button></div>
     </div>
   </div>;

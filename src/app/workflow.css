@@ -438,3 +438,19 @@
 /* 颜色名称语义解析预览 */
 .recolor-semantics{color:#16875d;font-size:10px}
 .recolor-semantics.warn{color:#b06a12}
+
+/* 列表缩略图完整显示原图构图，固定格子的空余区域用浅色背景补齐。 */
+.dialog-thumbnails img,
+.pose-library-thumbs img,
+.pose-reference-pair img,
+.pose-result-column .result-image,
+.recolor-source-tile img,
+.recolor-collection-item img,
+.final-qc-image img,
+.thumb-stack img,
+.tryon-history-grid img,
+.process-history-grid img,
+.tryon-results-panel .tryon-single-result .result-image{
+  object-fit:contain;
+  background:#f2f2f6;
+}

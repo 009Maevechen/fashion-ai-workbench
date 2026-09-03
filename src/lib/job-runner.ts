@@ -14,7 +14,9 @@ type JobRuntimeGlobal=typeof globalThis&{
   __workbenchActiveOperationCount?:number;
 };
 const jobRuntime=globalThis as JobRuntimeGlobal;
-const MAX_CONCURRENT_GENERATIONS=2;
+// 一次只展开一个完整工作流。单个工作流本身可能包含 2 至 4 张大图，
+// Windows 上再并行多个工作流会让 Node、Sharp 和 Electron 同时争抢内存。
+const MAX_CONCURRENT_GENERATIONS=1;
 export async function initializeJobState(){
   if(!jobRuntime.__workbenchJobStateInitialization){
     jobRuntime.__workbenchJobStateInitialization=(async()=>{await markInterruptedJobs();await markInterruptedOperations();await reconcileGeneratingProjects()})().catch(error=>{delete jobRuntime.__workbenchJobStateInitialization;throw error});

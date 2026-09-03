@@ -1,24 +1,36 @@
 import sharp from "sharp";
 
+type ImageQueueRuntime=typeof globalThis&{__workbenchImageQueue?:Promise<void>};
+const imageQueueRuntime=globalThis as ImageQueueRuntime;
+
+/** 大图读取与缩放依次执行，避免缩略图并发请求先把多张原图同时读进内存。 */
+export async function serializeImageWork<T>(work:()=>Promise<T>):Promise<T>{
+  const previous=imageQueueRuntime.__workbenchImageQueue||Promise.resolve();
+  let release!:()=>void;
+  imageQueueRuntime.__workbenchImageQueue=new Promise<void>(resolve=>{release=resolve});
+  await previous.catch(()=>{});
+  try{return await work()}finally{release()}
+}
+
 // 图片处理内存保护：Sharp 默认允许解码约 2.68 亿像素（约 1GB 内存/张），
 // 叠加并发后会把整台 Windows 机器内存耗尽导致整机卡死、黑屏关机。
 // 这里统一限制长边尺寸和像素上限，并对全局 libvips 做内存约束。
 
 // 输入图片长边上限：上传/预处理统一降采样到此以内，覆盖手机 48MP/108MP 原图。
-export const MAX_INPUT_DIMENSION = 2560;
+export const MAX_INPUT_DIMENSION = 2048;
 
 // 硬像素上限（安全网）：超过此值 sharp 直接拒绝，绝不触发全图解码。
 // 128MP 已覆盖绝大多数手机/相机原图，同时把单张解码峰值限制在约 512MB 以内。
-export const MAX_INPUT_PIXELS = 128_000_000;
+export const MAX_INPUT_PIXELS = 64_000_000;
 
 // 缩略图等服务端缩放用途的像素上限，比输入更严格。
-export const MAX_THUMBNAIL_PIXELS = 40_000_000;
+export const MAX_THUMBNAIL_PIXELS = 24_000_000;
 
 // 在服务启动时调用一次：关闭 libvips 输入缓存、限制并发线程，降低峰值内存。
 export function configureSharpMemory() {
   try {
     sharp.cache(false);
-    sharp.concurrency(2);
+    sharp.concurrency(1);
   } catch {
     // sharp 初始化失败不影响后续流程，图片处理会各自带上 limitInputPixels。
   }
@@ -58,5 +70,14 @@ export async function rotateAndExtract(
     .rotate()
     .extract({ left: box.left, top: box.top, width: box.width, height: box.height })
     .jpeg({ quality, mozjpeg: true })
+    .toBuffer();
+}
+
+/** 列表缩略图只等比例缩小并压缩画质，绝不裁剪原图。 */
+export async function createThumbnail(buffer:Buffer,width:number):Promise<Buffer>{
+  return sharp(buffer,{failOn:"error",animated:false,limitInputPixels:MAX_THUMBNAIL_PIXELS})
+    .rotate()
+    .resize({width:Math.max(120,Math.min(960,Math.round(width))),height:1280,fit:"inside",withoutEnlargement:true})
+    .jpeg({quality:76,mozjpeg:true})
     .toBuffer();
 }

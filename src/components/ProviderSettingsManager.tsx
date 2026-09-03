@@ -195,7 +195,7 @@ const CATALOG: CatalogItem[] = [
     newType: "syc-openai-compatible",
     model: "gpt-image-2",
     defaultModel: "gpt-image-2",
-    baseUrl: "https://sycagent.top/v1",
+    baseUrl: "https://ai.sycagent.top/v1",
     description: "OpenAI 兼容图片生成与图片编辑",
   },
   {

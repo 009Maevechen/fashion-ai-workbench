@@ -294,7 +294,7 @@ export default function SycSettingsDialog({
                   onChange={(e) =>
                     setForm({ ...form, baseUrl: e.target.value })
                   }
-                  placeholder="https://sycagent.top/v1"
+                  placeholder="https://ai.sycagent.top/v1"
                 />
               </label>
               <label className="field">

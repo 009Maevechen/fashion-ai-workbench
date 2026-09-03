@@ -69,37 +69,38 @@ async function replaceStoreFile(tmp:string,target:string){
   }
   throw lastError;
 }
-async function persistProjectProcessFiles(store:Store){
+async function persistProjectProcessFiles(store:Store,projectIds?:string[]){
   const root=runtimeProjectProcessDir();
-  await Promise.all(store.projects.map(async project=>{
+  const selected=projectIds?store.projects.filter(project=>projectIds.includes(project.id)):store.projects;
+  for(const project of selected){
     const directory=path.resolve(root,safeSegment(project.sku));
     if(!directory.startsWith(root+path.sep))throw new Error("非法商品流程目录");
     await fs.mkdir(directory,{recursive:true});
     const target=path.join(directory,"project-process.json"),temporary=`${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
     const snapshot={schemaVersion:SCHEMA_VERSION,savedAt:new Date().toISOString(),project,jobs:store.jobs.filter(job=>job.projectId===project.id),operations:store.operations.filter(operation=>operation.projectId===project.id)};
     try{await durableWriteJson(temporary,snapshot);await replaceStoreFile(temporary,target)}finally{await fs.unlink(temporary).catch(()=>{})}
-  }));
+  }
 }
 async function rotateBackups(){await fs.copyFile(backups[1],backups[2]).catch(()=>{});await fs.copyFile(backups[0],backups[1]).catch(()=>{});try{const current=await readValidJson(file,isStore);await durableWriteJson(backups[0],current)}catch{}}
-async function mutate<T>(fn:(s:Store)=>T|Promise<T>){let result!:T;queue=queue.then(async()=>{const s=await load();result=await fn(s);await fs.mkdir(dataDir,{recursive:true});await rotateBackups();await durableWriteJson(file,s);await persistProjectProcessFiles(s)});await queue;return result}
+async function mutate<T>(fn:(s:Store)=>T|Promise<T>,affectedProjectIds?:string[]|(()=>string[])){let result!:T;queue=queue.then(async()=>{const s=await load();result=await fn(s);await fs.mkdir(dataDir,{recursive:true});await rotateBackups();await durableWriteJson(file,s);const affected=typeof affectedProjectIds==="function"?affectedProjectIds():affectedProjectIds;await persistProjectProcessFiles(s,affected)});await queue;return result}
 export function persistenceStatus(){return {recovered:Boolean(persistenceRuntime.__workbenchRecoveredBackup||process.env.AI_STUDIO_RECOVERED==="1"),backup:persistenceRuntime.__workbenchRecoveredBackup,error:persistenceRuntime.__workbenchPersistenceError}}
 const normalize=(p:Project):Project=>({...p,assets:p.assets||{},profile:p.profile||{reviewStatus:"draft",tags:[],attributes:{}},settings:p.settings||{},stepStatuses:p.stepStatuses||{"1":"ready","2":"not_started","3":"not_started","4":"not_started","5":"not_started"},dependencyStatus:p.dependencyStatus||"current",targetColors:p.targetColors||[],poseReferenceInputs:p.poseReferenceInputs||[],poseReviewStates:p.poseReviewStates||{}});
 export const listProjects=async()=>{const s=await load();return s.projects.map(normalize).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))};
 // 项目页面地址既接受内部 ID，也接受用户可见的 SKU；这样复制地址或刷新 SKU 路径不会 404。
 export const getProject=async(idOrSku:string)=>{const p=findProjectByRouteKey((await load()).projects,idOrSku);return p?normalize(p):undefined};
 export const createProject=(v:Pick<Project,"sku"|"productName"|"productType">)=>mutate(s=>{const sku=v.sku.trim();if(!sku)throw new Error("SKU 不能为空");const normalized=sku.toLocaleLowerCase();const duplicate=s.projects.find(x=>x.sku.trim().toLocaleLowerCase()===normalized);if(duplicate)throw new Error(`SKU「${duplicate.sku}」已存在（商品名称：${duplicate.productName||"未命名"}），请换一个货号`);const now=new Date().toISOString();const p:Project={...v,sku,id:crypto.randomUUID(),currentStep:1,status:"未开始",createdAt:now,updatedAt:now,assets:{},settings:{},stepStatuses:{"1":"ready","2":"not_started","3":"not_started","4":"not_started","5":"not_started"},dependencyStatus:"current",targetColors:[]};s.projects.push(p);return p});
-export const updateProject=(id:string,patch:Partial<Project>)=>mutate(s=>{const p=s.projects.find(x=>x.id===id);if(!p)throw new Error("商品项目不存在");Object.assign(p,patch,{id:p.id,updatedAt:new Date().toISOString()});return normalize(p)});
-export const updateProjectWith=(id:string,updater:(project:Project)=>Partial<Project>)=>mutate(s=>{const p=s.projects.find(x=>x.id===id);if(!p)throw new Error("商品项目不存在");const patch=updater(normalize(p));Object.assign(p,patch,{id:p.id,updatedAt:new Date().toISOString()});return normalize(p)});
+export const updateProject=(id:string,patch:Partial<Project>)=>mutate(s=>{const p=s.projects.find(x=>x.id===id);if(!p)throw new Error("商品项目不存在");Object.assign(p,patch,{id:p.id,updatedAt:new Date().toISOString()});return normalize(p)},[id]);
+export const updateProjectWith=(id:string,updater:(project:Project)=>Partial<Project>)=>mutate(s=>{const p=s.projects.find(x=>x.id===id);if(!p)throw new Error("商品项目不存在");const patch=updater(normalize(p));Object.assign(p,patch,{id:p.id,updatedAt:new Date().toISOString()});return normalize(p)},[id]);
 export const deleteProject=(id:string)=>mutate(s=>{s.projects=s.projects.filter(x=>x.id!==id);s.jobs=s.jobs.filter(x=>x.projectId!==id);s.operations=s.operations.filter(x=>x.projectId!==id)});
 export const listJobs=async(filters?:{sku?:string;workflow?:string;projectId?:string})=>{let j=(await load()).jobs;if(filters?.sku)j=j.filter(x=>x.sku.includes(filters.sku!));if(filters?.workflow)j=j.filter(x=>x.workflow===filters.workflow);if(filters?.projectId)j=j.filter(x=>x.projectId===filters.projectId);return j.sort((a,b)=>b.startedAt.localeCompare(a.startedAt))};
-export const addJob=(job:Job)=>mutate(s=>{s.jobs.push(job);return job});
-export const patchJob=(id:string,patch:Partial<Job>)=>mutate(s=>{const j=s.jobs.find(x=>x.id===id);if(!j)throw new Error("任务不存在");Object.assign(j,patch,{id:j.id});return j});
+export const addJob=(job:Job)=>mutate(s=>{s.jobs.push(job);return job},[job.projectId]);
+export const patchJob=(id:string,patch:Partial<Job>)=>{let projectId="";return mutate(s=>{const j=s.jobs.find(x=>x.id===id);if(!j)throw new Error("任务不存在");projectId=j.projectId;Object.assign(j,patch,{id:j.id});return j},()=>projectId?[projectId]:[])};
 export const getJob=async(id:string)=>(await load()).jobs.find(x=>x.id===id);
 export const deleteWorkflowRecords=(projectId:string,workflow:WorkflowType)=>mutate(s=>{const jobIds=new Set(s.jobs.filter(job=>job.projectId===projectId&&job.workflow===workflow).map(job=>job.id));s.jobs=s.jobs.filter(job=>!jobIds.has(job.id));s.operations=s.operations.filter(operation=>!(operation.projectId===projectId&&operation.workflow===workflow));return jobIds.size});
 export const markInterruptedJobs=()=>mutate(s=>{const count=interruptJobs(s.jobs);if(count)persistenceRuntime.__workbenchRecoveredBackup=persistenceRuntime.__workbenchRecoveredBackup||"unfinished-tasks";return count});
-export const addOperation=(operation:Operation)=>mutate(s=>{s.operations.push(operation);return operation});
+export const addOperation=(operation:Operation)=>mutate(s=>{s.operations.push(operation);return operation},[operation.projectId]);
 export const getOperation=async(id:string)=>(await load()).operations.find(x=>x.id===id);
-export const patchOperation=(id:string,patch:Partial<Operation>)=>mutate(s=>{const operation=s.operations.find(x=>x.id===id);if(!operation)throw new Error("本地任务不存在");Object.assign(operation,patch,{id:operation.id,updatedAt:new Date().toISOString()});return operation});
+export const patchOperation=(id:string,patch:Partial<Operation>)=>{let projectId="";return mutate(s=>{const operation=s.operations.find(x=>x.id===id);if(!operation)throw new Error("本地任务不存在");projectId=operation.projectId;Object.assign(operation,patch,{id:operation.id,updatedAt:new Date().toISOString()});return operation},()=>projectId?[projectId]:[])};
 export const listOperations=async(projectId?:string)=>{const operations=(await load()).operations;return (projectId?operations.filter(x=>x.projectId===projectId):operations).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))};
 export const markInterruptedOperations=()=>mutate(s=>{const count=interruptOperations(s.operations);if(count)persistenceRuntime.__workbenchRecoveredBackup=persistenceRuntime.__workbenchRecoveredBackup||"unfinished-tasks";return count});
 export const reconcileGeneratingProjects=()=>mutate(s=>reconcileProjects(s.projects,s.operations));

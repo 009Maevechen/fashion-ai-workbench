@@ -21,7 +21,7 @@ import type {
   WorkflowRuntimeSummary,
 } from "./provider-settings-types";
 import { EMPTY_WORKFLOW_BINDINGS } from "./provider-settings-types";
-import { normalizeSycBaseUrl } from "./providers/syc/config";
+import { normalizeSycBaseUrl, SYC_DEFAULT_BASE_URL } from "./providers/syc/config";
 import { runtimeDataDir } from "../runtime-paths";
 import { WORKFLOW_REQUIRED_CAPABILITIES, capabilitiesMatch, inferCapabilities, missingCapabilities, CAPABILITY_LABELS } from "./model-capabilities";
 import {durableWriteJson} from "../durable-json";
@@ -324,7 +324,7 @@ export async function updateProviderTestResult(
 
 export const SYC_DEFAULTS = {
   name: "默认",
-  baseUrl: "https://sycagent.top/v1",
+  baseUrl: SYC_DEFAULT_BASE_URL,
   imageModel: "gpt-image-2",
   visionModel: "",
   chatModel: "",
@@ -343,7 +343,7 @@ function sycPublic(record?: ApiProviderSecretRecord): SycConfigPublic {
     id: record?.id || "syc-default",
     name: record?.name || SYC_DEFAULTS.name,
     providerType: "syc-openai-compatible",
-    baseUrl: record?.baseUrl || SYC_DEFAULTS.baseUrl,
+    baseUrl: normalizeSycBaseUrl(record?.baseUrl || SYC_DEFAULTS.baseUrl),
     apiKeyConfigured: hasKey,
     apiKeyMask: record?.apiKeyMasked
       ? `••••••••${record.apiKeyMasked.slice(-4)}`
@@ -673,7 +673,7 @@ export async function getProviderRuntime(
     id: record.id,
     name: record.name,
     type: record.type,
-    baseUrl: record.baseUrl,
+    baseUrl: record.type === "syc-openai-compatible" ? normalizeSycBaseUrl(record.baseUrl) : record.baseUrl,
     apiKey: await decrypt(record.encryptedApiKey),
     model: selectedModel,
     source: "stored",

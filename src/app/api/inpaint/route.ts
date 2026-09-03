@@ -1,8 +1,13 @@
 import {NextResponse} from "next/server";
 import {z} from "zod";
 import {enqueueWorkflow} from "@/lib/job-runner";
+import {getProject} from "@/lib/db";
+import {localImage,saveOutput} from "@/lib/ai/storage";
+import {prepareProviderInput,safeSegment} from "@/lib/ai/validators";
+import {serializeImageWork} from "@/lib/image-limits";
+import sharp from "sharp";
 
-const maskSchema = z.string().refine(
+const maskSchema = z.string().max(16*1024*1024).refine(
   (value) => /^data:image\/png;base64,/.test(value),
   "蒙版必须是 PNG Data URL",
 );
@@ -24,7 +29,29 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
-    const operation = await enqueueWorkflow("inpaint", input, input.idempotencyKey);
+    const project=await getProject(input.projectId);
+    if(!project)throw new Error("商品项目不存在");
+    const encoded=input.maskDataUrl.slice(input.maskDataUrl.indexOf(",")+1);
+    if(encoded.length>16*1024*1024)throw new Error("局部重绘选区过大，请缩小选区后重试");
+    const mask=Buffer.from(encoded,"base64");
+    if(mask.length<100||mask.length>12*1024*1024)throw new Error("局部重绘选区文件大小异常");
+    const metadata=await sharp(mask,{failOn:"error",limitInputPixels:24_000_000}).metadata().catch(()=>{throw new Error("局部重绘选区无法读取")});
+    if(metadata.format!=="png"||!metadata.width||!metadata.height)throw new Error("局部重绘选区必须是有效 PNG 图片");
+    const normalizedMask=await serializeImageWork(async()=>{
+      const source=await prepareProviderInput(await localImage(input.sourceUrl));
+      const sourceMeta=await sharp(source.buffer,{failOn:"error",limitInputPixels:24_000_000}).metadata();
+      if(!sourceMeta.width||!sourceMeta.height)throw new Error("局部重绘原图尺寸无效");
+      return sharp(mask,{failOn:"error",limitInputPixels:24_000_000})
+        .resize({width:sourceMeta.width,height:sourceMeta.height,fit:"fill",kernel:"nearest"})
+        .tint({r:255,g:255,b:255})
+        .png({compressionLevel:9})
+        .toBuffer();
+    });
+    const maskUrl=await saveOutput(project.sku,"inpaint/masks",`${safeSegment(input.sourceImageId)}-${crypto.randomUUID()}.png`,normalizedMask);
+    const {maskDataUrl:_,...payload}=input;
+    void _;
+    const workflowPayload={...payload,maskUrl};
+    const operation = await enqueueWorkflow("inpaint", workflowPayload, input.idempotencyKey);
     return NextResponse.json({ jobId: operation.id, status: operation.status }, { status: 202 });
   } catch (error) {
     return NextResponse.json(

@@ -9,6 +9,13 @@ const net=require("node:net");
 const path=require("node:path");
 
 app.setName("AI服装工作台");
+if(process.platform==="win32"){
+  // Windows 显卡驱动在同时解码大量高分辨率图片时可能拖垮整机。
+  // 工作台不是 3D 应用，使用软件绘制更稳，缩略图仍由服务端生成。
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("js-flags","--max-old-space-size=768");
+  app.commandLine.appendSwitch("disk-cache-size","134217728");
+}
 if(!app.requestSingleInstanceLock())app.quit();
 let mainWindow=null,serverProcess=null,serverPort=null,quitting=false;
 let recoveredLaunch=false;
@@ -43,7 +50,7 @@ async function startServer(){
   if(serverProcess)return `http://127.0.0.1:${serverPort}`;
   await ensureDirectories();serverPort=await findFreePort();
   const root=runtimeRoot(),entry=path.join(root,"server.js");if(!fs.existsSync(entry))throw new Error("未找到桌面版运行文件，请先执行 build:desktop");
-  const d=directories();serverProcess=spawn(process.execPath,[entry],{cwd:root,windowsHide:true,detached:process.platform!=="win32",env:{...process.env,ELECTRON_RUN_AS_NODE:"1",NODE_ENV:"production",HOSTNAME:"127.0.0.1",PORT:String(serverPort),AI_STUDIO_DATA_DIR:d.data,AI_STUDIO_OUTPUTS_DIR:d.outputs,AI_STUDIO_TEMP_DIR:d.temp,AI_STUDIO_LOG_DIR:d.logs,AI_STUDIO_RECOVERED:recoveredLaunch?"1":"0",PROVIDER_SETTINGS_SECRET:await getProviderSecret()},stdio:["ignore","pipe","pipe"]});
+  const d=directories();serverProcess=spawn(process.execPath,[entry],{cwd:root,windowsHide:true,detached:process.platform!=="win32",env:{...process.env,ELECTRON_RUN_AS_NODE:"1",NODE_OPTIONS:[process.env.NODE_OPTIONS,"--max-old-space-size=1024"].filter(Boolean).join(" "),NODE_ENV:"production",HOSTNAME:"127.0.0.1",PORT:String(serverPort),AI_STUDIO_DATA_DIR:d.data,AI_STUDIO_OUTPUTS_DIR:d.outputs,AI_STUDIO_TEMP_DIR:d.temp,AI_STUDIO_LOG_DIR:d.logs,AI_STUDIO_RECOVERED:recoveredLaunch?"1":"0",PROVIDER_SETTINGS_SECRET:await getProviderSecret()},stdio:["ignore","pipe","pipe"]});
   const child=serverProcess;child.stdout.on("data",data=>writeLog(`[next:${child.pid}] ${data}`));child.stderr.on("data",data=>writeLog(`[next:${child.pid}:error] ${data}`));child.once("exit",code=>{void writeLog(`Next.js service exited pid=${child.pid} code=${code}`);if(serverProcess===child)serverProcess=null});
   await writeLog(`Starting Next.js service pid=${child.pid} port=${serverPort}`);await waitForHealth(serverPort);return `http://127.0.0.1:${serverPort}`;
 }
