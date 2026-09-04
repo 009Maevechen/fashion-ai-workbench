@@ -21,7 +21,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     const cropHeight=Math.min(height-top,Math.max(10,Math.round(region.height*height)));
     const out=await rotateAndExtract(input,{left,top,width:cropWidth,height:cropHeight},95);
     const url=await saveOutput(project.sku,"source/colors",`${safeSegment(colorId)}-${crypto.randomUUID()}.jpg`,out);
-    const colors=(project.targetColors||[]).map(color=>color.id===colorId?{...color,cropImage:url,cropRegion:region,status:"ready" as const}:color);
+    const colors=(project.targetColors||[]).map(color=>color.id===colorId?{...color,cropImage:url,cropRegion:region,status:"ready" as const,manualReviewConfirmed:true,designNeedsReview:false}:color);
     await updateProject(id,{targetColors:colors});
     return NextResponse.json({url,region});
   }catch(error){

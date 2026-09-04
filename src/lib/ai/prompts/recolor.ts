@@ -1,26 +1,30 @@
 import { PHOTOREAL_QUALITY_PROMPT, QUALITY_SELF_CHECK_PROMPT } from "./image-quality";
 import { protectedClothingForArea, type RecolorGarmentArea } from "../../recolor-scope";
 
-export const RECOLOR_PROMPT_VERSION = "recolor-v10-uniform-vs-per-variant";
-export const RECOLOR_VARIANT_RULE = "颜色款一对一复刻规则：第二张图片是当前这一个颜色款的整件服装设计参考，不是普通色卡，也不是只用于取色的小色块。它同时提供目标颜色与该色款真实可见的独立设计。先以第一张输入图锁定人物、姿势、动作、景别、构图和画面样式，再逐项比对第二张参考图；参考图中明确可见且属于该颜色款的口袋、条纹、拼接、扣子、印花、包边、面料分区、车线和线条位置必须一对一还原到结果。每个颜色款必须分别读取自己的第二张参考图，禁止复用其他颜色款设计，禁止让所有颜色共用同一套基础款后只替换颜色，也不得臆造参考图看不到的细节。";
+export const RECOLOR_PROMPT_VERSION = "recolor-v11-reference-first-occlusion-safe";
+export const RECOLOR_VARIANT_RULE = "颜色款一对一复刻规则：第二张图片是当前这一个颜色款的整件服装设计参考，是本次复色颜色与设计的唯一主要依据，不是普通色卡，也不是只用于取色的小色块。先以第一张输入图锁定人物、姿势、动作、景别、构图和画面样式，再逐项比对第二张参考图；参考图中明确可见且属于该颜色款的主体色、包边色、条纹色、拼接色、扣子色、印花色、面料分区色，以及口袋、车线和线条位置都必须一对一还原。每个颜色款必须分别读取自己的第二张参考图，禁止复用其他颜色款设计，禁止让所有颜色共用同一套基础款后只替换颜色，也不得臆造参考图看不到的细节。";
 export const RECOLOR_UNIFORM_RULE = "统一复色规则：只替换目标服装区域的颜色，服装的版型、口袋、条纹、拼接、扣子、印花、包边、车线、面料分区和一切设计细节，都必须与第一张输入图完全一致，不得根据第二张参考图增加、删除、移动或改变任何设计细节；第二张参考图只用于取目标颜色，绝不改变服装设计。";
 export const RECOLOR_CONSISTENCY_RULE = "同款颜色设计一致性 · 最高规则：同一颜色款的多张输出图（对应不同姿势）必须使用完全相同的服装设计：扣子数量与位置、口袋、条纹、拼接、包边、印花、车线、面料分区必须逐张完全一致，绝对不允许某张多一块、某张少一块、或任何细节的数量、位置、形状出现不一致。每一张都必须是对同一套设计的忠实复刻，只是人物姿势不同，服装设计必须统一。";
 
-export function recolorPrompt(area: string, color: string, hex: string, protectedAreas: string[], extra: string, _showFace?: boolean, trimColorName = "", trimHex = "", variantDesignDetails: string[] = [], variantMaterialFeatures = "", colorNameRule = "", recolorMode: "uniform" | "perVariant" = "perVariant") {
+export function recolorPrompt(area: string, color: string, hex: string, protectedAreas: string[], extra: string, _showFace?: boolean, trimColorName = "", trimHex = "", variantDesignDetails: string[] = [], variantMaterialFeatures = "", colorNameRule = "", recolorMode: "uniform" | "perVariant" = "perVariant", variantColorRegions: Array<{part:string;colorName:string;hex?:string;confidence:number}> = [], isUniformColor = false, uniformColorConfidence = 0, occlusion: "none"|"partial"|"heavy" = "none", occlusionPolicy: "visible_only"|"extend_uniform" = "visible_only", occlusionReason = "") {
   const lockedArea = area as RecolorGarmentArea;
   const modeRule = recolorMode === "uniform" ? RECOLOR_UNIFORM_RULE : RECOLOR_VARIANT_RULE;
   return `任务：服装商品精准复色${recolorMode === "uniform" ? "（统一复色）" : "（单件服装一对一复色）"}。
 第一张图片必须是上一流程已经确认的姿势/换装结果，并且必须与当前输出姿势一一对应：它是本张输出的人物、露脸状态、姿势、动作、身体比例、景别、构图、背景、光影和整体画面样式的唯一基准。第二张图片必须是当前目标颜色款独立裁出的整件服装设计参考：它只提供该颜色款的颜色、面料和设计结构，不提供人物、动作、景别或构图。只分析和修改第一张图的目标服装区域，背景、皮肤、头发、鞋子、道具、地面、阴影和高光不得被改色或重绘。
 目标服装区域：${area}
-目标颜色名称：${color}
-目标HEX色值：${hex || "未指定"}
-${colorNameRule ? `【颜色名称就是生成规则 · 最高优先】${colorNameRule}` : ""}
+参考图辅助名称：${color}
+参考图辅助HEX：${hex || "未指定"}
+【证据优先级 · 最高规则】颜色款参考图的真实可见像素和设计证据 > 人工确认的局部配色 > 名称、标题、文件名与HEX辅助值。名称、标题和HEX只能帮助定位/命名，绝不能单独决定生成结果；一旦文字与第二张参考图冲突，必须完全以第二张参考图为准。
+${colorNameRule ? `名称辅助解析（仅在与参考图真实可见内容一致时可采用）：${colorNameRule}` : ""}
 ${modeRule}
 ${RECOLOR_CONSISTENCY_RULE}
 当前颜色款结构化设计识别：${variantDesignDetails.length ? variantDesignDetails.join("；") : "以第二张整件服装参考图中真实可见内容为准，不得猜测"}。
 当前颜色款面料识别：${variantMaterialFeatures || "以第二张整件服装参考图中真实可见的纹理、织法、光泽、厚薄和垂感为准"}。
+当前颜色款局部配色识别：${variantColorRegions.length?variantColorRegions.map(region=>`${region.part}=${region.colorName}${region.hex?`(${region.hex})`:""}，置信度${Math.round(region.confidence*100)}%`).join("；"):"仅依据第二张参考图逐部位读取，不得根据名称补色"}。
+遮挡判断：${occlusion==="none"?"参考图未发现影响配色判断的明显遮挡":`参考图存在${occlusion==="heavy"?"明显":"部分"}遮挡。${occlusionReason||"必须只依据可见证据处理"}`}。
+遮挡区域执行规则：${occlusionPolicy==="extend_uniform"&&isUniformColor&&uniformColorConfidence>=0.75?`可见证据以${Math.round(uniformColorConfidence*100)}%置信度确认整件服装为统一单色，且没有异色包边、条纹、拼接、扣子、印花或面料分区；因此仅允许遮挡区域延续参考图可见的同一主体色。`:"禁止对不可见区域猜色或自动同色延展；只能复刻参考图真实可见的分区与局部颜色，不能确认的遮挡区域必须保持原有结构并进入人工审核。"}
 颜色识别规则：主色按服装主体面积判断，辅色按较大面积拼接/条纹判断，点缀色按小面积印花/扣子/包边判断；不得把小面积细节误判为主色。重点区分黑色/深灰/炭灰、白色/米白/奶白、棕色/深棕/咖色、卡其/驼色/杏色/米色、蓝色/深蓝/藏蓝/牛仔蓝、绿色/军绿/墨绿/橄榄绿。识别时忽略光线、阴影和高光影响，不确定的相近色必须保留人工确认。
-复色成功硬性标准：第一张图只允许在目标服装区域内发生变化，目标颜色必须准确统一；不得保留原主体颜色；没有真正改变目标服装主体颜色必须视为生成失败。先锁定第一张图的人物和画面，再${recolorMode === "uniform" ? "仅替换目标颜色，服装设计完全保持第一张图不变，不得根据第二张参考图增减任何设计" : "将第二张图当前色款明确可见的设计映射到相同服装部位；第二张图有独特口袋、条纹、拼接、扣子、印花、包边、车线、线条位置或面料分区时必须同步还原，第二张图没有的设计不得沿用其他色款"}。扣子数量、扣子位置、扣子大小、扣子颜色、扣子形状、扣子排列方式和门襟方向必须完全一致，扣子不得多一颗、少一颗、错位、变形、糊掉或消失。面料类别、织法/针法、纹理清晰度、厚薄、光泽、垂感和褶皱响应必须前后一致，不得因改色变成另一种材质。不得猜测、混入其他颜色款细节或把复色做成无依据的新衣服；渐变方向、层次和过渡边界必须保持对应色款真实设计。
+复色成功硬性标准：第一张图只允许在目标服装区域内发生变化；服装主体和每个局部部位的颜色都必须与第二张对应色款参考图一致，不得把多色款错误统一成单色。不得保留原主体颜色中与第二张参考图冲突的部分；没有真正改变目标服装主体颜色必须视为生成失败，没有真正匹配参考图逐部位颜色也必须视为生成失败。先锁定第一张图的人物和画面，再${recolorMode === "uniform" ? "仅替换目标颜色，服装设计完全保持第一张图不变，不得根据第二张参考图增减任何设计" : "将第二张图当前色款明确可见的设计映射到相同服装部位；第二张图有独特口袋、条纹、拼接、扣子、印花、包边、车线、线条位置或面料分区时必须同步还原，第二张图没有的设计不得沿用其他色款"}。扣子数量、扣子位置、扣子大小、扣子颜色、扣子形状、扣子排列方式和门襟方向必须完全一致，扣子不得多一颗、少一颗、错位、变形、糊掉或消失。面料类别、织法/针法、纹理清晰度、厚薄、光泽、垂感和褶皱响应必须前后一致，不得因改色变成另一种材质。不得猜测、混入其他颜色款细节或把复色做成无依据的新衣服；渐变方向、层次和过渡边界必须保持对应色款真实设计。
 绝对不得改色的其他服饰：${protectedClothingForArea(lockedArea)}。以下区域必须保持不变：${protectedAreas.join("、")}。
 指定边饰颜色：${trimColorName || "按目标颜色参考图中该颜色款的真实边饰处理"}${trimHex ? `（${trimHex}）` : ""}
 露脸与原图样式锁定：有脸就保留同一张脸、五官、发型和可见程度；没有脸就不得补画、生成或露出脸部。不得改变原图人物、姿势、景别、构图、背景或光影。
@@ -28,5 +32,5 @@ ${RECOLOR_CONSISTENCY_RULE}
 ${extra}
 【人物与构图最高优先级】无论补充要求如何填写，都必须以第一张上一流程已确认图片为唯一人物与画面基准：有脸保留同一张脸和可见程度，无脸不得补画或露出脸部；不得改变人物、姿势、景别、构图、背景或整体画面样式。
 【禁止裁剪服装 · 最高优先规则】原图中可见的全部服装范围必须完整保留；不得裁掉领口、肩部、袖口、腰头、口袋、下摆、裙摆、裤腿或裤脚。比例不一致时必须等比例缩放整张画面并扩展背景，只能扩展背景，绝对不能裁切人物或服装，不能拉伸或压扁人物和服装。必须检查服装所有可见边缘均未被新画面边界裁掉。
-禁止多宫格、文字和水印；不得直接返回原图。成图前检查：是否只改了服装区域、背景和人物是否未染色、目标颜色是否准确、同一颜色款多张图的设计是否完全一致（不允许多一块少一块）、颜色名称中各部位配色是否逐项执行、面料纹理与结构是否完整；任何一项不满足都必须失败并重试。${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`;
+禁止多宫格、文字和水印；不得直接返回原图。成图前检查：是否只改了服装区域、背景和人物是否未染色、主体与局部颜色是否逐项匹配第二张参考图、同一颜色款多张图的设计是否完全一致（不允许多一块少一块）、遮挡区域是否遵守安全延展或人工审核规则、面料纹理与结构是否完整；任何一项不满足都必须失败并重试。${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`;
 }

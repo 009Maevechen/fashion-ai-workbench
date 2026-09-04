@@ -94,3 +94,25 @@ test("统一复色只换颜色，单件复色按颜色款一对一复刻设计",
   assert.match(perVariant,/同款颜色设计一致性/);
   assert.match(uniform,/不允许多一块少一块/);
 });
+
+test("复色以参考图为唯一主要依据，名称和HEX不能覆盖图片",()=>{
+  const prompt=recolorPrompt("裤子","标题写红色","#FF0000",["背景"],"",false,"","",["黑白侧条纹"],"细密梭织","标题辅助规则","perVariant",[
+    {part:"主体",colorName:"橄榄绿",hex:"#556B2F",confidence:.94},
+    {part:"侧条纹",colorName:"白色",hex:"#FFFFFF",confidence:.91},
+  ]);
+  assert.match(prompt,/唯一主要依据/);
+  assert.match(prompt,/名称、标题和HEX只能帮助定位\/命名/);
+  assert.match(prompt,/文字与第二张参考图冲突，必须完全以第二张参考图为准/);
+  assert.match(prompt,/主体=橄榄绿\(#556B2F\)/);
+  assert.match(prompt,/侧条纹=白色\(#FFFFFF\)/);
+  assert.doesNotMatch(prompt,/颜色名称就是生成规则/);
+});
+
+test("遮挡区域只有明确统一单色时才允许延展",()=>{
+  const safe=recolorPrompt("裤子","绿色","#556B2F",[],"",false,"","",[],"","","perVariant",[],true,.91,"partial","extend_uniform","裤腿被折叠");
+  assert.match(safe,/确认整件服装为统一单色/);
+  assert.match(safe,/仅允许遮挡区域延续参考图可见的同一主体色/);
+  const review=recolorPrompt("裤子","绿色","#556B2F",[],"",false,"","",["黑白侧条纹"],"","","perVariant",[],false,.4,"partial","visible_only","侧边被遮挡");
+  assert.match(review,/禁止对不可见区域猜色或自动同色延展/);
+  assert.match(review,/进入人工审核/);
+});
