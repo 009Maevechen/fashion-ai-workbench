@@ -714,7 +714,10 @@ function environmentRuntime(
         baseUrl:
           process.env.VOLCENGINE_API_BASE_URL ||
           "https://ark.cn-beijing.volces.com/api/v3",
-        apiKey: process.env.VOLCENGINE_API_KEY || "",
+        apiKey:
+          process.env.ARK_API_KEY ||
+          process.env.VOLCENGINE_API_KEY ||
+          "",
       },
       flux: {
         name: "FLUX",

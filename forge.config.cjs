@@ -3,7 +3,7 @@ module.exports={
     asar:true,
     executableName:"ai-fashion-workbench",
     icon:"build/icons/icon",
-    extraResource:["desktop-runtime"],
+    extraResource:["desktop-runtime","scripts/volcengine-seedream.py"],
     ignore:[/^\/(?:\.git|\.next|data|outputs|uploads|logs|temp|desktop-runtime|build)(?:\/|$)/,/^\/(?:\.env|\.env\..*)$/],
   },
   rebuildConfig:{},
