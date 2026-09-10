@@ -13,6 +13,7 @@ import FinalPanel from "./workbench/FinalPanel";
 import ProductDetailsPanel from "./workbench/ProductDetailsPanel";
 import type {ApiHealth,PanelProps,Runner} from "./workbench/types";
 import type {WorkflowRuntimeSummary} from "@/lib/ai/provider-settings-types";
+import '../styles/windows-theme.css';
 export type {ApiHealth} from "./workbench/types";
 
 const STEP_PATH:Record<number,string>={1:"/details",2:"/tryon",3:"/pose",4:"/recolor",5:"/final"};
@@ -21,6 +22,17 @@ export default function Workspace({initial,initialJobs,health,modelRouting,initi
   const requested=initialStep||Number(search.get("step")||initial.currentStep);
   const [p,setP]=useState(initial),[step,setStep]=useState(Math.min(Math.max(requested,1),5)),[jobs,setJobs]=useState(initialJobs),[pendingActions,setPendingActions]=useState(0),[error,setError]=useState(""),[notice,setNotice]=useState("");
   const busy=pendingActions>0;
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isWindows = navigator.platform.includes('Win') || 
+                        navigator.userAgent.includes('Windows');
+      if (isWindows) {
+        document.body.classList.add('windows-platform');
+      }
+    }
+  }, []);
+  
   const goStep=(next:number)=>{if(next===5&&p.currentStep<5)return;setStep(next);router.push(`/projects/${p.id}${STEP_PATH[next]}`,{scroll:false})};
   const latest=(workflow:string,byColor=false)=>{const map=new Map<string,Job>();for(const job of jobs.filter(x=>resultWorkflow(x)===workflow)){const key=`${byColor?job.targetColorId||"":workflow}:${job.slot||0}`;if(!map.has(key))map.set(key,job)}return [...map.values()].sort((a,b)=>(a.slot||0)-(b.slot||0))};
   const refresh=useCallback(async()=>{const [project,responseJobs]=await Promise.all([fetch(`/api/projects/${p.id}`,{cache:"no-store"}).then(r=>r.json()),fetch(`/api/jobs?projectId=${p.id}`,{cache:"no-store"}).then(r=>r.json())]);setP(project);setJobs(responseJobs)},[p.id]);

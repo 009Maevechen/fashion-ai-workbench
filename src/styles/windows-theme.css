@@ -1,0 +1,426 @@
+/* Windows 11 Fluent Design Theme */
+/* Apply this theme only on Windows platform */
+
+.windows-platform {
+  /* Windows 11 System Font */
+  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  
+  /* Fluent Design - Acrylic Material */
+  --win-acrylic-bg: rgba(243, 243, 243, 0.7);
+  --win-acrylic-bg-dark: rgba(32, 32, 32, 0.7);
+  
+  /* Windows 11 Color Palette */
+  --win-neutral-50: #fafafa;
+  --win-neutral-100: #f5f5f5;
+  --win-neutral-200: #e5e5e5;
+  --win-neutral-300: #d4d4d4;
+  --win-neutral-400: #a3a3a3;
+  --win-neutral-500: #737373;
+  --win-neutral-600: #525252;
+  --win-neutral-700: #404040;
+  --win-neutral-800: #262626;
+  --win-neutral-900: #171717;
+  
+  /* Windows 11 Accent Color (Blue) */
+  --win-accent-light: #0067c0;
+  --win-accent: #0078d4;
+  --win-accent-dark: #005a9e;
+  
+  /* Border Radius (Windows 11 standard) */
+  --win-border-radius-sm: 4px;
+  --win-border-radius: 8px;
+  --win-border-radius-lg: 12px;
+  
+  /* Shadows */
+  --win-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08);
+  --win-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --win-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.16);
+  
+  /* Transitions */
+  --win-transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Acrylic Background Effect */
+.windows-platform .acrylic-bg {
+  background: var(--win-acrylic-bg);
+  backdrop-filter: blur(60px) saturate(150%);
+  -webkit-backdrop-filter: blur(60px) saturate(150%);
+}
+
+.windows-platform.dark .acrylic-bg {
+  background: var(--win-acrylic-bg-dark);
+}
+
+/* Mica Material Effect (for main containers) */
+.windows-platform .mica-bg {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+}
+
+/* Windows 11 Cards */
+.windows-platform .win-card {
+  background: var(--win-neutral-50);
+  border: 1px solid var(--win-neutral-200);
+  border-radius: var(--win-border-radius);
+  box-shadow: var(--win-shadow-sm);
+  transition: var(--win-transition);
+}
+
+.windows-platform .win-card:hover {
+  box-shadow: var(--win-shadow);
+  transform: translateY(-2px);
+}
+
+.windows-platform.dark .win-card {
+  background: var(--win-neutral-800);
+  border-color: var(--win-neutral-700);
+}
+
+/* Windows 11 Buttons */
+.windows-platform button,
+.windows-platform .win-button {
+  font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  font-weight: 600;
+  border-radius: var(--win-border-radius-sm);
+  padding: 8px 16px;
+  transition: var(--win-transition);
+  border: 1px solid transparent;
+}
+
+.windows-platform button:hover,
+.windows-platform .win-button:hover {
+  background-color: var(--win-neutral-100);
+  border-color: var(--win-neutral-300);
+}
+
+.windows-platform.dark button:hover,
+.windows-platform.dark .win-button:hover {
+  background-color: var(--win-neutral-700);
+  border-color: var(--win-neutral-600);
+}
+
+/* Accent Buttons */
+.windows-platform .win-button-accent,
+.windows-platform button[type="submit"],
+.windows-platform button.primary {
+  background-color: var(--win-accent);
+  color: white;
+  border: none;
+}
+
+.windows-platform .win-button-accent:hover,
+.windows-platform button[type="submit"]:hover,
+.windows-platform button.primary:hover {
+  background-color: var(--win-accent-dark);
+}
+
+.windows-platform .win-button-accent:active,
+.windows-platform button[type="submit"]:active,
+.windows-platform button.primary:active {
+  background-color: var(--win-accent-light);
+}
+
+/* Windows 11 Inputs */
+.windows-platform input[type="text"],
+.windows-platform input[type="email"],
+.windows-platform input[type="password"],
+.windows-platform textarea,
+.windows-platform select,
+.windows-platform .win-input {
+  font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  background: var(--win-neutral-50);
+  border: 1px solid var(--win-neutral-300);
+  border-radius: var(--win-border-radius-sm);
+  padding: 8px 12px;
+  transition: var(--win-transition);
+}
+
+.windows-platform input:focus,
+.windows-platform textarea:focus,
+.windows-platform select:focus,
+.windows-platform .win-input:focus {
+  outline: 2px solid var(--win-accent);
+  outline-offset: 2px;
+  border-color: var(--win-accent);
+}
+
+.windows-platform.dark input,
+.windows-platform.dark textarea,
+.windows-platform.dark select,
+.windows-platform.dark .win-input {
+  background: var(--win-neutral-800);
+  border-color: var(--win-neutral-600);
+  color: var(--win-neutral-100);
+}
+
+/* Windows 11 Scrollbar */
+.windows-platform ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.windows-platform ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.windows-platform ::-webkit-scrollbar-thumb {
+  background: var(--win-neutral-400);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+.windows-platform ::-webkit-scrollbar-thumb:hover {
+  background: var(--win-neutral-500);
+  background-clip: content-box;
+}
+
+.windows-platform.dark ::-webkit-scrollbar-thumb {
+  background: var(--win-neutral-600);
+  background-clip: content-box;
+}
+
+/* Windows 11 Navigation/Tabs */
+.windows-platform .win-nav-item {
+  padding: 12px 20px;
+  border-radius: var(--win-border-radius-sm);
+  transition: var(--win-transition);
+  font-weight: 500;
+}
+
+.windows-platform .win-nav-item:hover {
+  background: var(--win-neutral-100);
+}
+
+.windows-platform .win-nav-item.active {
+  background: var(--win-neutral-200);
+  font-weight: 600;
+}
+
+.windows-platform.dark .win-nav-item:hover {
+  background: var(--win-neutral-800);
+}
+
+.windows-platform.dark .win-nav-item.active {
+  background: var(--win-neutral-700);
+}
+
+/* Windows 11 Modal/Dialog */
+.windows-platform .win-modal {
+  background: var(--win-neutral-50);
+  border-radius: var(--win-border-radius-lg);
+  box-shadow: var(--win-shadow-lg);
+  border: 1px solid var(--win-neutral-200);
+}
+
+.windows-platform.dark .win-modal {
+  background: var(--win-neutral-800);
+  border-color: var(--win-neutral-700);
+}
+
+/* Windows 11 Divider */
+.windows-platform .win-divider {
+  height: 1px;
+  background: var(--win-neutral-200);
+  margin: 16px 0;
+}
+
+.windows-platform.dark .win-divider {
+  background: var(--win-neutral-700);
+}
+
+/* Windows 11 Badge/Chip */
+.windows-platform .win-badge {
+  background: var(--win-neutral-200);
+  color: var(--win-neutral-800);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.windows-platform.dark .win-badge {
+  background: var(--win-neutral-700);
+  color: var(--win-neutral-100);
+}
+
+/* Windows Title Bar Area (for Electron) */
+.windows-platform .win-titlebar {
+  height: 32px;
+  background: var(--win-acrylic-bg);
+  backdrop-filter: blur(60px);
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--win-neutral-200);
+}
+
+.windows-platform .win-titlebar-controls {
+  -webkit-app-region: no-drag;
+  display: flex;
+  gap: 0;
+}
+
+.windows-platform .win-titlebar-button {
+  width: 46px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  transition: background-color 0.1s;
+  padding: 0;
+}
+
+.windows-platform .win-titlebar-button:hover {
+  background: var(--win-neutral-200);
+}
+
+.windows-platform .win-titlebar-button.close:hover {
+  background: #c42b1c;
+  color: white;
+}
+
+/* Windows 11 Loading Spinner */
+.windows-platform .win-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--win-neutral-300);
+  border-top-color: var(--win-accent);
+  border-radius: 50%;
+  animation: win-spin 0.8s linear infinite;
+}
+
+@keyframes win-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Windows 11 Progress Bar */
+.windows-platform .win-progress {
+  height: 4px;
+  background: var(--win-neutral-200);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.windows-platform .win-progress-bar {
+  height: 100%;
+  background: var(--win-accent);
+  transition: width 0.3s ease;
+}
+
+.windows-platform.dark .win-progress {
+  background: var(--win-neutral-700);
+}
+
+/* Workspace Specific Overrides */
+.windows-platform .workspace-container {
+  background: var(--win-neutral-100);
+  border-radius: var(--win-border-radius-lg);
+}
+
+.windows-platform.dark .workspace-container {
+  background: var(--win-neutral-900);
+}
+
+.windows-platform .step-card {
+  background: white;
+  border: 1px solid var(--win-neutral-200);
+  border-radius: var(--win-border-radius);
+  box-shadow: var(--win-shadow-sm);
+  padding: 20px;
+  transition: var(--win-transition);
+}
+
+.windows-platform .step-card:hover {
+  box-shadow: var(--win-shadow);
+}
+
+.windows-platform.dark .step-card {
+  background: var(--win-neutral-800);
+  border-color: var(--win-neutral-700);
+}
+
+/* Image Upload Area */
+.windows-platform .upload-area {
+  border: 2px dashed var(--win-neutral-300);
+  border-radius: var(--win-border-radius);
+  background: var(--win-neutral-50);
+  transition: var(--win-transition);
+}
+
+.windows-platform .upload-area:hover {
+  border-color: var(--win-accent);
+  background: var(--win-neutral-100);
+}
+
+.windows-platform.dark .upload-area {
+  background: var(--win-neutral-800);
+  border-color: var(--win-neutral-600);
+}
+
+.windows-platform.dark .upload-area:hover {
+  border-color: var(--win-accent);
+  background: var(--win-neutral-700);
+}
+
+/* Result Gallery */
+.windows-platform .result-image {
+  border-radius: var(--win-border-radius);
+  box-shadow: var(--win-shadow);
+  transition: var(--win-transition);
+}
+
+.windows-platform .result-image:hover {
+  box-shadow: var(--win-shadow-lg);
+  transform: scale(1.02);
+}
+
+/* Toast Notifications (Windows Style) */
+.windows-platform .win-toast {
+  background: var(--win-acrylic-bg);
+  backdrop-filter: blur(60px);
+  border: 1px solid var(--win-neutral-200);
+  border-radius: var(--win-border-radius);
+  box-shadow: var(--win-shadow-lg);
+  padding: 12px 16px;
+}
+
+.windows-platform.dark .win-toast {
+  background: var(--win-acrylic-bg-dark);
+  border-color: var(--win-neutral-700);
+}
+
+/* Accessibility - High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  .windows-platform {
+    --win-accent: #0067c0;
+  }
+  
+  .windows-platform button,
+  .windows-platform .win-button {
+    border: 2px solid currentColor;
+  }
+  
+  .windows-platform input,
+  .windows-platform textarea,
+  .windows-platform select {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .windows-platform * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

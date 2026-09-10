@@ -4,7 +4,6 @@ import {canManuallyConfirmJob,resultWorkflow} from "./tryon-confirmation";
 
 export function recolorColorsWithSavedJobs(project:Project,jobs:Job[]){
   return (project.targetColors||[]).map(color=>{
-    if(color.status==="confirmed")return color;
     const bySlot=new Map<number,string>();
     for(const [index,url] of (color.poseResults||[]).entries())if(url)bySlot.set(index+1,url);
     const saved=jobs
@@ -15,7 +14,7 @@ export function recolorColorsWithSavedJobs(project:Project,jobs:Job[]){
     if(!poseResults.length)return color;
     const expected=color.sourceCount||Math.max(...bySlot.keys());
     const status:TargetColor["status"]=poseResults.length>=expected?"success":"partial_success";
-    return {...color,status:color.status==="confirmed"?color.status:status,sourceCount:expected,poseResults};
+    return {...color,status,sourceCount:expected,poseResults};
   });
 }
 
