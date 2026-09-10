@@ -82,7 +82,9 @@ export default function ResultCard({
   const url = job?.outputImages[0],
     status = job?.status || (pending ? "queued" : "idle"),
     labelText =
-      job?.phase && !["success", "failed"].includes(job.phase)
+      job?.correctionQualityCheck && !job.correctionQualityCheck.passed
+        ? "画质下降·需要重做"
+        : job?.phase && !["success", "failed"].includes(job.phase)
         ? PHASES[job.phase]
         : LABELS[status] || "等待生成";
   return (
@@ -121,7 +123,9 @@ export default function ResultCard({
       {job?.qualityIssues && job.qualityIssues.length > 0 && (
         <div className="quality-issues">
           <b>
-            {job?.correctionCheck && !job.correctionCheck.passed
+            {job?.correctionQualityCheck && !job.correctionQualityCheck.passed
+              ? "生成画质未通过"
+              : job?.correctionCheck && !job.correctionCheck.passed
               ? "咒语命令未通过"
               : status === "needs_redo"
                 ? "服装细节未通过"
@@ -226,6 +230,25 @@ export default function ResultCard({
               </ul>
             </details>
           )}
+        </div>
+      )}
+      {job?.correctionQualityCheck && (
+        <div
+          className={`subject-fidelity ${job.correctionQualityCheck.passed ? "passed" : "needs_redo"}`}
+        >
+          <b>
+            {job.correctionQualityCheck.passed
+              ? "生成画质保持通过"
+              : "生成画质下降"}
+          </b>
+          <span>
+            分辨率：{job.correctionQualityCheck.baselineWidth}×
+            {job.correctionQualityCheck.baselineHeight} →{" "}
+            {job.correctionQualityCheck.outputWidth}×
+            {job.correctionQualityCheck.outputHeight}；锐度：
+            {Math.round(job.correctionQualityCheck.baselineSharpness)} →{" "}
+            {Math.round(job.correctionQualityCheck.outputSharpness)}
+          </span>
         </div>
       )}
       <div className="result-actions">

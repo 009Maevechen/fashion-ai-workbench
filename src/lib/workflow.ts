@@ -33,6 +33,7 @@ import { recolorPrompt, RECOLOR_PROMPT_VERSION } from "./ai/prompts/recolor";
 import { inpaintPrompt, INPAINT_PROMPT_VERSION } from "./ai/prompts/inpaint";
 import { POSE_PRESETS } from "./ai/pose-presets";
 import {
+  resultWorkflow,
   tryonCompletionPatch,
   tryonSubjectFidelityFailurePatch,
 } from "./tryon-confirmation";
@@ -45,6 +46,7 @@ import { appendModelRunRecord } from "./model-runs";
 import { optimizeFinalImage } from "./image-optimize";
 import { cachedPrepare } from "./image-cache";
 import { acquireProviderSlot } from "./provider-concurrency";
+import { generationProviderConcurrency } from "./generation-performance";
 import { optimizePrompt } from "./ai/prompt-optimize";
 import { checkGarmentConsistency } from "./ai/garment-consistency";
 import { parseColorName, colorNameRuleText } from "./color-name-semantics";
@@ -73,6 +75,7 @@ import {
 } from "./tryon-edit-pipeline";
 import { randomGenerationSeed } from "./generation-seed";
 import { isRetryableGenerationError } from "./generation-retry";
+import { checkCorrectionQuality } from "./correction-quality";
 export const DEFAULT_DETAILS =
   "保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
 export async function persistUpload(file: File, sku: string, name: string) {
@@ -232,6 +235,8 @@ async function runOne(args: {
   inpaint?: InpaintMeta;
   batchId?: string;
   correctionPlan?: CorrectionCommandPlan;
+  correctionQualityBaseline?: string;
+  enforceSourceQuality?: boolean;
   detailReferenceImages?: GarmentDetailReference[];
   garmentDetailLockVersion?: GarmentDetailLock["version"];
   tryonEditTask?: TryOnEditTask;
@@ -251,6 +256,14 @@ async function runOne(args: {
     seed = randomGenerationSeed(),
     startedAt = new Date().toISOString();
   args.correctionPlan = correctionPlan;
+  // Always compare with the original uncompressed person/source image, inheriting
+  // its earliest quality baseline across correction and regeneration chains.
+  if (!args.correctionQualityBaseline) {
+    const sourceJob = (await listJobs({ projectId: project.id })).find(
+      (job) => job.outputImages.includes(args.images[0]),
+    );
+    args.correctionQualityBaseline = sourceJob?.correctionQualityBaseline || args.images[0];
+  }
   if (isGenerationCancelled(project.id, args.workflow))
     throw new Error("任务已被用户取消");
   await addJob({
@@ -283,6 +296,7 @@ async function runOne(args: {
     batchId: args.batchId,
     inpaint: args.inpaint,
     correctionPlan,
+    correctionQualityBaseline: args.correctionQualityBaseline,
     detailReferenceImages: args.detailReferenceImages,
     garmentDetailLockVersion: args.garmentDetailLockVersion,
     tryonEditTask: args.tryonEditTask,
@@ -297,10 +311,10 @@ async function runOne(args: {
       phase: "uploading",
     });
     const preprocessStart = Date.now();
-    const sourceBuffers = await runInOrder(args.images, localImage),
-      prepared = await runInOrder(sourceBuffers, (buffer) =>
+    const sourceBuffers = await Promise.all(args.images.map(localImage)),
+      prepared = await Promise.all(sourceBuffers.map((buffer) =>
         cachedPrepare(buffer, prepareProviderInput),
-      ),
+      )),
       dataUrls = prepared.map((image) => toDataUrl(image.buffer, image.mime)),
       inputHashes = sourceBuffers.map(sha);
     const preprocessMs = Date.now() - preprocessStart;
@@ -389,13 +403,23 @@ async function runOne(args: {
       args.workflow === "recolor" ? sourceBuffers[0] : undefined,
     );
     await patchJob(id, { phase: "optimizing" });
-    const optimized = await optimizeFinalImage(downloaded.buffer);
+    const optimized = await optimizeFinalImage(downloaded.buffer, { preserveQuality: true });
+    let correctionQualityCheck;
+    if (args.correctionQualityBaseline || args.enforceSourceQuality) {
+      const baseline = args.correctionQualityBaseline
+        ? await localImage(args.correctionQualityBaseline)
+        : sourceBuffers[0];
+      correctionQualityCheck = await checkCorrectionQuality(
+        baseline,
+        optimized.buffer,
+      );
+    }
     const localMs = Date.now() - localStart;
     await patchJob(id, { phase: "saving" });
     const url = await saveOutput(
       project.sku,
       args.folder,
-      args.filename,
+      args.filename.replace(/\.[^.]+$/, optimized.mime === "image/png" ? ".png" : optimized.mime === "image/webp" ? ".webp" : ".jpg"),
       optimized.buffer,
     );
     let correctionCheck;
@@ -410,6 +434,9 @@ async function runOne(args: {
       /* QC模型未配置时保留结果并交给人工审核 */
     }
     const commandFailed = Boolean(correctionCheck && !correctionCheck.passed),
+      qualityRegressed = Boolean(
+        correctionQualityCheck && !correctionQualityCheck.passed,
+      ),
       commandIssues =
         correctionCheck && !correctionCheck.passed
           ? [...correctionCheck.missed, ...correctionCheck.violations].map(
@@ -418,7 +445,7 @@ async function runOne(args: {
           : [],
       review =
         checks.needsReview || Boolean(args.correctionPlan && !correctionCheck),
-      finalStatus = commandFailed
+      finalStatus = commandFailed || qualityRegressed
         ? ("needs_redo" as const)
         : review
           ? ("needs_review" as const)
@@ -437,6 +464,7 @@ async function runOne(args: {
       qualityIssues = [
         ...checks.warnings,
         ...commandIssues,
+        ...(correctionQualityCheck?.issues || []),
         ...(args.correctionPlan && !correctionCheck
           ? ["咒语命中检查暂不可用，需要人工审核"]
           : []),
@@ -449,14 +477,19 @@ async function runOne(args: {
       error: undefined,
       errorMessage: commandFailed
         ? `咒语强制命令未完全命中：${correctionCheck?.summary || "请查看未命中项"}`
-        : undefined,
+        : qualityRegressed
+          ? "图片修改后画质降低，已标记重做；原图和结果均已保留供人工审核"
+          : undefined,
       finishedAt,
       requestFinishedAt: finishedAt,
       durationMs,
       timing,
       qualityIssues: qualityIssues.length ? qualityIssues : undefined,
-      sharpnessScore: checks.sharpnessScore,
+      sharpnessScore:
+        correctionQualityCheck?.outputSharpness || checks.sharpnessScore,
       correctionCheck,
+      correctionQualityCheck,
+      correctionQualityBaseline: args.correctionQualityBaseline,
     });
     await appendModelRunRecord({
       workflowType: args.workflow,
@@ -466,9 +499,14 @@ async function runOne(args: {
       startedAt,
       completedAt: finishedAt,
       durationMs,
-      success: !commandFailed,
+      success: !commandFailed && !qualityRegressed,
       retryCount,
-      qcResult: commandFailed ? "failed" : review ? "needs_review" : "passed",
+      qcResult:
+        commandFailed || qualityRegressed
+          ? "failed"
+          : review
+            ? "needs_review"
+            : "passed",
       promptVersion: args.promptVersion,
       generationMode: args.mode,
       parameters: {
@@ -552,6 +590,7 @@ export async function executeTryon(v: {
   modelPreference?: ModelSlot;
   correctionRequest?: string;
   correctionPlan?: CorrectionCommandPlan;
+  correctionQualityBaseline?: string;
 }) {
   const p = await getProject(v.projectId);
   if (!p) throw new Error("项目不存在");
@@ -653,8 +692,12 @@ export async function executeTryon(v: {
     hashes: string[] = v.slot
       ? await existingHashes(p.id, "tryon", v.slot)
       : [];
-  const firstPass = await runInOrder(slots, (slot) =>
-    runTryOnEdit({
+  const slotKey = `${choice.id}:${choice.model}`,
+    maxConcurrency = generationProviderConcurrency(choice.type, v.mode);
+  const firstPass = await Promise.all(slots.map(async (slot) => {
+    const release = await acquireProviderSlot(slotKey, maxConcurrency);
+    try {
+      return await runTryOnEdit({
       task: editTask,
       garmentDescription,
       execute: (structuredPrompt) =>
@@ -680,9 +723,13 @@ export async function executeTryon(v: {
           garmentDetailLockVersion: lock.version,
           tryonEditTask: editTask,
           correctionPlan: v.correctionPlan,
+          correctionQualityBaseline: v.correctionQualityBaseline,
         }),
-    }),
-  );
+      });
+    } finally {
+      release();
+    }
+  }));
   const results = [];
   for (const candidate of firstPass) {
     let current = candidate,
@@ -743,6 +790,7 @@ export async function executeTryon(v: {
             detailRepairOfJobId: current.id,
             detailRepairAttempt: repairAttempt,
             correctionPlan: v.correctionPlan,
+            correctionQualityBaseline: v.correctionQualityBaseline,
           }),
       });
       if (!repaired.url) {
@@ -915,6 +963,7 @@ export async function executePose(v: {
   slot?: number;
   modelPreference?: ModelSlot;
   correctionPlan?: CorrectionCommandPlan;
+  correctionQualityBaseline?: string;
 }) {
   const p = await getProject(v.projectId);
   if (!p) throw new Error("项目不存在");
@@ -977,6 +1026,7 @@ export async function executePose(v: {
     stepStatuses: { ...p.stepStatuses, "3": "generating" },
   });
   const slotKey = `${choice.id}:${choice.model}`;
+  const maxConcurrency = generationProviderConcurrency(choice.type, v.mode);
   const garmentSource = p.assets.garmentImage;
   const hasGarmentSource = Boolean(garmentSource);
   const batchId = crypto.randomUUID();
@@ -984,7 +1034,7 @@ export async function executePose(v: {
     slots.map(async (slot) => {
       const instruction = instructions[slot - 1],
         reference = v.poseReferenceImages[slot - 1];
-      const release = await acquireProviderSlot(slotKey, 1);
+      const release = await acquireProviderSlot(slotKey, maxConcurrency);
       try {
         return await runOne({
           projectId: p.id,
@@ -1012,6 +1062,7 @@ export async function executePose(v: {
           sourceModelImage: v.sourceImage,
           batchId,
           correctionPlan: v.correctionPlan,
+          correctionQualityBaseline: v.correctionQualityBaseline,
         });
       } finally {
         release();
@@ -1062,6 +1113,7 @@ export async function executeRecolor(v: {
   slot?: number;
   modelPreference?: ModelSlot;
   correctionPlan?: CorrectionCommandPlan;
+  correctionQualityBaseline?: string;
 }) {
   const p = await getProject(v.projectId);
   if (!p) throw new Error("项目不存在");
@@ -1157,6 +1209,7 @@ export async function executeRecolor(v: {
     };
   });
   const slotKey = `${choice.id}:${choice.model}`;
+  const maxConcurrency = generationProviderConcurrency(choice.type, v.mode);
   const results = await Promise.all(
     slots.map(async (slot) => {
       const source = sources[slot - 1];
@@ -1165,7 +1218,7 @@ export async function executeRecolor(v: {
       const colorSample = v.colorReferenceCrop || v.colorReferenceImage;
       const refs = colorSample ? [source, colorSample] : [source];
       const trim = v as typeof v & { trimColorName?: string; trimHex?: string };
-      const release = await acquireProviderSlot(slotKey, 1);
+      const release = await acquireProviderSlot(slotKey, maxConcurrency);
       try {
         return await runOne({
           projectId: p.id,
@@ -1204,6 +1257,7 @@ export async function executeRecolor(v: {
           targetColorId: targetId,
           colorName: v.colorName,
           correctionPlan: v.correctionPlan,
+          correctionQualityBaseline: v.correctionQualityBaseline,
         });
       } finally {
         release();
@@ -1261,6 +1315,8 @@ export async function executeInpaint(v: {
   sourceImageId: string;
   sourceStep: WorkflowType;
   sourceUrl: string;
+  correctionPlan?: CorrectionCommandPlan;
+  correctionQualityBaseline?: string;
   maskUrl?: string;
   maskDataUrl?: string;
   editPrompt: string;
@@ -1271,6 +1327,10 @@ export async function executeInpaint(v: {
 }) {
   const p = await getProject(v.projectId);
   if (!p) throw new Error("项目不存在");
+  const sourceJob = await getJob(v.sourceImageId);
+  if (!sourceJob || sourceJob.projectId !== p.id || !sourceJob.outputImages.includes(v.sourceUrl))
+    throw new Error("局部重绘原图不属于当前项目的已保存结果");
+  const sourceStep = resultWorkflow(sourceJob);
   const storedMask = v.maskUrl,
     mask = storedMask
       ? toDataUrl(await localImage(storedMask), "image/png")
@@ -1278,29 +1338,34 @@ export async function executeInpaint(v: {
   if (!mask) throw new Error("局部重绘选区不存在，请重新涂抹");
   const inpaintMeta: InpaintMeta = {
     sourceImageId: v.sourceImageId,
-    sourceStep: v.sourceStep,
+    sourceStep,
     sourceUrl: v.sourceUrl,
     maskUrl: storedMask || "旧版任务内嵌蒙版",
     editPrompt: v.editPrompt,
   };
-  const slot = v.slot || 1,
+  const slot = sourceJob.slot || v.slot || 1,
     filename = `${safeSegment(p.sku)}_inpaint_${String(slot).padStart(2, "0")}_${crypto.randomUUID().slice(0, 8)}.jpg`;
   const result = await runOne({
     projectId: p.id,
     workflow: "inpaint",
-    mode: v.mode,
+    mode: "quality",
     modelSlot: v.modelPreference,
     images: [v.sourceUrl],
     mask,
     prompt: inpaintPrompt(
-      v.editPrompt,
-      v.contextHint || contextHintForStep(v.sourceStep),
+      v.correctionPlan ? correctionCommandText(v.correctionPlan) : v.editPrompt,
+      v.contextHint || contextHintForStep(sourceStep),
     ),
     promptVersion: INPAINT_PROMPT_VERSION,
     folder: "inpaint",
     filename,
     slot,
     inpaint: inpaintMeta,
+    targetColorId: sourceJob.targetColorId,
+    colorName: sourceJob.colorName,
+    correctionPlan: v.correctionPlan,
+    correctionQualityBaseline: v.correctionQualityBaseline || sourceJob.correctionQualityBaseline,
+    enforceSourceQuality: true,
   });
   return [result];
 }

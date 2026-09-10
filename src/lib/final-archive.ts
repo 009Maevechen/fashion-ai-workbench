@@ -88,7 +88,8 @@ export async function archiveFinalDeliverables(
       continue;
     }
     const base = `${sku}_${productName}_${entry.color}_姿势${String(entry.poseIndex).padStart(2, "0")}`;
-    const target = uniquePath(dir, base, ".jpg", used);
+    const extension = /\.(png|webp)$/i.exec(entry.url)?.[0].toLowerCase() || ".jpg";
+    const target = uniquePath(dir, base, extension, used);
     await durableWriteFile(target,buffer);
     const relativePath = path.relative(root, target).split(path.sep).join("/");
     archived.push({

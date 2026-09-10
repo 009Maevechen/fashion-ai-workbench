@@ -77,3 +77,16 @@ test("尚未确认时按候选完成情况更新换装步骤",()=>{
   assert.equal(patch.stepStatuses?.["2"],"partial_success");
   assert.equal(patch.status,"等待人工确认");
 });
+
+test("所有生图阶段的已保存 AI 失败结果均允许人工确认，未完成和过期结果仍受保护", async()=>{
+  const {canManuallyConfirmJob}=await import("../src/lib/tryon-confirmation");
+  for(const workflow of ["tryon","pose","recolor","inpaint"] as const){
+    for(const status of ["success","needs_review","needs_redo","failed","confirmed"] as const){
+      assert.equal(canManuallyConfirmJob(job(status,{workflow}),image),true);
+      assert.equal(canManuallyConfirmJob(job(status,{workflow,outputImages:[]}),image),false);
+      assert.equal(canManuallyConfirmJob(job(status,{workflow,dependencyStatus:"stale"}),image),false);
+    }
+    assert.equal(canManuallyConfirmJob(job("generating",{workflow}),image),false);
+    assert.equal(canManuallyConfirmJob(job("success",{workflow}),"/api/files/unrelated.png"),false);
+  }
+});

@@ -70,12 +70,22 @@ export async function retryJob(id:string,modelPreference:ModelSlot="primary",cor
   const operations=await listOperations(job.projectId),operation=operations.find(item=>item.jobIds.includes(id));
   if(!operation)throw new Error("找不到该任务的原始请求，无法安全重试");
   const payload:Record<string,unknown>={...(operation.payload as Record<string,unknown>),slot:job.slot,modelPreference};
+  payload.mode="quality";
+  payload.correctionQualityBaseline=job.correctionQualityBaseline||job.outputImages[0]||job.inputImages[0];
   const correction=correctionRequest?.trim();
+  if(correction&&!job.outputImages[0])throw new Error("没有已保存的生成结果，无法执行咒语修改，请先重新生成");
   if(correction){
     payload.correctionRequest=correction;
+    // 咒语修改一律使用精细模式；连续修改始终继承第一次修改前的图片作为
+    // 质量基线，不能一代接一代逐步变糊。
+    payload.mode="quality";
     const plan=confirmedPlan?normalizeCorrectionCommandPlan(confirmedPlan,correction):await refineCorrectionRequest(correction);
     payload.correctionPlan=plan;
-    if(job.workflow==="tryon"){
+    if(job.workflow==="inpaint"){
+      payload.sourceUrl=job.outputImages[0];
+      payload.sourceImageId=job.id;
+      payload.editPrompt=correction;
+    }else if(job.workflow==="tryon"){
       payload.modelImage=job.outputImages[0];
     }else if(job.workflow==="pose"){
       payload.sourceImage=job.outputImages[0];

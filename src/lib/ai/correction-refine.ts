@@ -10,10 +10,10 @@ import {
 
 const schema = z.object({
   mustChange: z.array(z.string().min(1).max(300)).max(12).default([]),
-  mustKeep: z.array(z.string().min(1).max(300)).max(12).default([]),
-  forbiddenChanges: z.array(z.string().min(1).max(300)).max(12).default([]),
+  mustKeep: z.array(z.string().min(1).max(300)).max(16).default([]),
+  forbiddenChanges: z.array(z.string().min(1).max(300)).max(16).default([]),
   referenceSources: z.array(z.string().min(1).max(300)).max(8).default([]),
-  acceptanceCriteria: z.array(z.string().min(1).max(300)).max(12).default([]),
+  acceptanceCriteria: z.array(z.string().min(1).max(300)).max(16).default([]),
 });
 
 /**

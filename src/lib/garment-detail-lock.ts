@@ -274,11 +274,17 @@ export function resolveTryonDetailStatus(input: {
   score: number;
   checks: TryonDetailChecks;
 }) {
-  const critical = [
+  // 换装中的每一项都是产品事实，而不是可被质量评分抵消的软指标。
+  // 任一明确的不一致都必须重做；只有各项全部通过但整体可信度仍不足时，
+  // 才交给人工复核。
+  const allGarmentFacts = [
     input.checks.singleSourceGarment,
     input.checks.silhouette,
     input.checks.material,
+    input.checks.texture,
     input.checks.construction,
+    input.checks.details,
+    input.checks.color,
     input.checks.buttons,
     input.checks.pockets,
     input.checks.stripesTrimStitching,
@@ -290,17 +296,11 @@ export function resolveTryonDetailStatus(input: {
   ];
   if (
     !input.consistent ||
-    input.score < 78 ||
-    critical.some((passed) => !passed)
+    input.score < 85 ||
+    allGarmentFacts.some((passed) => !passed)
   )
     return "needs_redo" as const;
-  if (
-    input.score < 90 ||
-    !input.checks.texture ||
-    !input.checks.details ||
-    !input.checks.color
-  )
-    return "needs_review" as const;
+  if (input.score < 95) return "needs_review" as const;
   return "passed" as const;
 }
 
@@ -311,6 +311,6 @@ export function buildTryonDetailRepairPrompt(lock: GarmentDetailLock) {
     `第2张是服装产品主依据；后续图片是按名称标注的细节证据。产品图和特写拥有全部服装设计事实。\n` +
     `${buildGarmentDetailProtectedDetails(lock)}\n` +
     `服装只能对应第2张产品依据中的同一件、同一颜色款；若产品依据包含多件或多色，禁止从第二件服装借用颜色、图案、面料或细节。` +
-    `只纠正错误的服装局部：扣子、口袋、条纹、包边、车线、印花、刺绣、拼接、领口、袖口、下摆、面料纹理。未出错区域保持候选图像素和质感。输出一张完整高清实拍图，不输出对比图、文字或水印。`
+    `只纠正错误的服装局部：扣子、口袋、条纹、包边、车线、印花、刺绣、拼接、领口、袖口、下摆、面料纹理。对应细节必须与产品证据在数量、相对位置、方向、形状、比例、颜色和材质关系上逐项一致，相似或接近仍视为失败。未出错区域保持候选图像素和质感。输出一张完整高清实拍图，不输出对比图、文字或水印。`
   );
 }

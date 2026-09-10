@@ -27,3 +27,9 @@ test("无需确认颜色，成功任务会自动进入对应最终结果集合",
   assert.deepEqual(white.poseResults,jobs.map(job=>job.outputImages[0]));
   assert.equal(white.status,"success");
 });
+
+test("复色 AI 质检失败仍进入人工结果集合，过期结果不替换当前结果",()=>{
+  const base={id:"qc",projectId:"p",sku:"SKU",workflow:"recolor",provider:"test",model:"image",mode:"standard",inputImages:[],promptVersion:"v1",startedAt:"2026-01-01",outputImages:["/api/files/review.png"],status:"needs_redo",slot:1,targetColorId:"black"} satisfies Job;
+  const stale:Job={...base,id:"stale",startedAt:"2026-01-02",dependencyStatus:"stale",outputImages:["/api/files/stale.png"]};
+  assert.equal(recolorColorsWithSavedJobs(project,[base,stale])[0].poseResults?.[0],"/api/files/review.png");
+});

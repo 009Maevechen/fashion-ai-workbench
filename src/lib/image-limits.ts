@@ -30,7 +30,14 @@ export const MAX_THUMBNAIL_PIXELS = 24_000_000;
 export function configureSharpMemory() {
   try {
     sharp.cache(false);
-    sharp.concurrency(1);
+    // 2 个 libvips 工作线程在 Windows 上仍保持较低峰值内存，同时可让
+    // 缩放、取色和本地 QC 利用多核；可用环境变量回退为 1。
+    const configured = Number(process.env.AI_STUDIO_SHARP_CONCURRENCY || 2);
+    sharp.concurrency(
+      Number.isFinite(configured)
+        ? Math.max(1, Math.min(4, Math.round(configured)))
+        : 2,
+    );
   } catch {
     // sharp 初始化失败不影响后续流程，图片处理会各自带上 limitInputPixels。
   }

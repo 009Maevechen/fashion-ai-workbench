@@ -40,3 +40,16 @@ test("Provider 并发信号量：同一 Provider 串行排队，释放后继续"
   assert.equal(peak, 1, `并发上限为 1 时峰值应为 1，实际 ${peak}`);
   assert.equal(order.length, 4);
 });
+
+test("Provider 并发信号量：快速模式可安全提高已存在信号量上限", async () => {
+  const key = `test-${Date.now()}-${Math.random()}`;
+  const first = await acquireProviderSlot(key, 1);
+  first();
+  const releases = await Promise.all([
+    acquireProviderSlot(key, 3),
+    acquireProviderSlot(key, 3),
+    acquireProviderSlot(key, 3),
+  ]);
+  assert.equal(releases.length, 3);
+  releases.forEach((release) => release());
+});

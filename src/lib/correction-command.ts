@@ -25,19 +25,21 @@ export function normalizeCorrectionCommandPlan(
     mustChange: effectiveMustChange,
     mustKeep: unique(
       [
-        ...plan.mustKeep,
+        ...plan.mustKeep.slice(0, 13),
         "未指定区域保持修正前图片不变",
         "保持原图人物身份、姿势、景别、构图和画质不变",
+        "连续多次修改始终保持第一次修正前图片的分辨率、锐度、皮肤和面料质感",
       ],
-      12,
+      16,
     ),
     forbiddenChanges: unique(
       [
-        ...plan.forbiddenChanges,
+        ...plan.forbiddenChanges.slice(0, 13),
         "不得修改用户未指定区域",
         "不得降低清晰度、皮肤质感或服装面料细节",
+        "不得整张重绘、反复压缩、过度降噪、磨皮或锐化",
       ],
-      12,
+      16,
     ),
     referenceSources: unique(
       [...plan.referenceSources, "修正前图片", "用户原始咒语"],
@@ -46,13 +48,15 @@ export function normalizeCorrectionCommandPlan(
     acceptanceCriteria: unique(
       [
         ...(plan.acceptanceCriteria.length
-          ? plan.acceptanceCriteria
-          : effectiveMustChange.map(
+          ? plan.acceptanceCriteria.slice(0, 13)
+          : effectiveMustChange.slice(0, 13).map(
               (item) => `必须肉眼可见且精确完成：${item}`,
             )),
         "未指定区域必须与修正前图片一致",
+        "输出分辨率不得低于第一次修正前图片，清晰度和细节解析力不得明显下降",
+        "人物皮肤必须保持细腻、自然、真实，不得出现塑料感、脏感、噪点或涂抹感",
       ],
-      12,
+      16,
     ),
   };
 }
@@ -126,6 +130,7 @@ export function correctionCommandText(plan: CorrectionCommandPlan) {
     line("验收条件", normalized.acceptanceCriteria),
     "执行顺序：先锁定必须保留项和禁止修改区，再逐项执行必须修改项，最后逐条按验收条件自检。不得用近似结果代替明确数量、颜色、部位、形状或增删要求。",
     "执行优先级：用户强制命令 > 用户人工确认规则 > 产品图真实细节 > 系统自动建议 > 默认Prompt。未指定区域默认保持修正前图片不变。必须修改项未真实命中，或必须保留/禁止修改项被破坏，结果即为失败。",
+    "【无损画质继承】第一次执行咒语前的图片是整个连续修改链的永久画质基线。每次只编辑指定部位及必要过渡像素，禁止整图重绘或重新编码式劣化；输出分辨率不得降低，锐度、噪点水平、真实皮肤毛孔与光泽、服装面料纹理和边缘细节不得弱于该基线。若不能同时完成修改并保持画质，必须判定失败，不得输出低清结果冒充成功。",
     `${MACHINE_PLAN_MARKER}${JSON.stringify(normalized)}`,
   ].join("\n");
 }

@@ -9,7 +9,7 @@ const MANUALLY_REVIEWABLE_STATUSES=new Set<Job["status"]>([
   "confirmed",
 ]);
 
-export function canManuallyConfirmTryonJob(job:Job|undefined,image?:string){
+export function canManuallyConfirmJob(job:Job|undefined,image?:string){
   return Boolean(
     job
     &&job.outputImages.length>0
@@ -18,6 +18,8 @@ export function canManuallyConfirmTryonJob(job:Job|undefined,image?:string){
     &&job.dependencyStatus!=="stale"
   );
 }
+
+export const canManuallyConfirmTryonJob = canManuallyConfirmJob;
 
 export function canConfirmTryonSelection(selected:string,jobs:Job[]){
   if(!selected)return false;
@@ -41,4 +43,8 @@ export function tryonCompletionPatch(project:Project,status:StepStatus):Partial<
     status:status==="failed"?"生成失败":status==="needs_redo"?"服装细节需要重做":"等待人工确认",
     stepStatuses:{...project.stepStatuses,"2":status},
   };
+}
+
+export function resultWorkflow(job: Job) {
+  return job.workflow === "inpaint" ? job.inpaint?.sourceStep || job.workflow : job.workflow;
 }

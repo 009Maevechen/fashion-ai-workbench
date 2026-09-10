@@ -1,5 +1,6 @@
 "use client";
 
+import { canManuallyConfirmJob } from "@/lib/tryon-confirmation";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Job, PoseReferenceAnalysis, PoseTemplateGroup } from "@/lib/db";
@@ -177,8 +178,7 @@ export default function PosePanel({
     const currentImages = jobs
       .filter(
         (job) =>
-          ["success", "needs_review", "confirmed"].includes(job.status) &&
-          job.dependencyStatus !== "stale",
+          canManuallyConfirmJob(job),
       )
       .flatMap((job) => job.outputImages);
     setSelected((value) =>
@@ -275,9 +275,7 @@ export default function PosePanel({
     selectedJobs.length === selected.length &&
     selectedJobs.every(
       (job) =>
-        ["success", "needs_review", "awaiting_confirmation", "confirmed"].includes(
-          job.status,
-        ) && job.dependencyStatus !== "stale",
+        canManuallyConfirmJob(job),
     );
   const draftSettings = useMemo(
     () => ({
@@ -870,13 +868,7 @@ export default function PosePanel({
                           reviewState === "approved" ? "review-approved" : ""
                         }
                         disabled={
-                          !job ||
-                          ![
-                            "success",
-                            "needs_review",
-                            "awaiting_confirmation",
-                            "confirmed",
-                          ].includes(job.status)
+                          !canManuallyConfirmJob(job, url)
                         }
                         onClick={() => run(() => review(slot, "approved"))}
                       >

@@ -11,7 +11,12 @@ const globalState = (globalThis as GlobalRuntime).__workbenchProviderSemaphore ?
 
 function slot(key: string, max: number): ConcurrencyState {
   const existing = globalState.get(key);
-  if (existing) return existing;
+  if (existing) {
+    // 同一服务先以标准模式启动、之后切到快速模式时允许安全提高上限。
+    // 只升不降，避免运行中的任务因动态缩容产生计数错乱。
+    existing.max = Math.max(existing.max, max);
+    return existing;
+  }
   const created: ConcurrencyState = { max, running: 0, queue: [] };
   globalState.set(key, created);
   return created;

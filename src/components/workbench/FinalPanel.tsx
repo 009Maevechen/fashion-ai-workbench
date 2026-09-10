@@ -1,5 +1,6 @@
 "use client";
 
+import {resultWorkflow} from "@/lib/tryon-confirmation";
 import {useState} from "react";
 import type {Job,Project} from "@/lib/db";
 import ImagePreviewDialog from "./ImagePreviewDialog";
@@ -15,7 +16,7 @@ const ACTIVE_STATUSES=["queued","generating","uploading","submitting","waiting_p
 
 export default function FinalPanel({p,jobs,onStep,onComplete,enqueue}:{p:Project;jobs:Job[];onStep:(step:number)=>void;onComplete:()=>Promise<void>;enqueue:(url:string,body:unknown)=>Promise<unknown>}){
   const [busy,setBusy]=useState(false),[error,setError]=useState(""),[folderOpen,setFolderOpen]=useState(false),[preview,setPreview]=useState<{images:string[];index:number}|null>(null);
-  const colors=recolorColorsWithSavedJobs(p,jobs),recolorJobs=jobs.filter(job=>job.workflow==="recolor"),failedJobs=recolorJobs.filter(job=>job.status==="failed"||job.status==="interrupted");
+  const colors=recolorColorsWithSavedJobs(p,jobs),recolorJobs=jobs.filter(job=>resultWorkflow(job)==="recolor"),failedJobs=recolorJobs.filter(job=>job.status==="failed"||job.status==="interrupted");
   const jobFor=(url?:string,colorId?:string,slot?:number)=>recolorJobs.find(job=>(url&&job.outputImages.includes(url))||(colorId&&job.targetColorId===colorId&&job.slot===slot));
   const stateFor=(job?:Job,url?:string):GalleryImage["status"]=>job?.status==="failed"||job?.status==="interrupted"?"failed":job?.status==="confirmed"||job?.status==="success"?"passed":url?"review":ACTIVE_STATUSES.includes(job?.status||"")?"review":"failed";
   const groups:GalleryGroup[]=[

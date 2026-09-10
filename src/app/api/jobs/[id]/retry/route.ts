@@ -5,10 +5,10 @@ import { retryJob } from "@/lib/job-runner";
 const commandPlanSchema = z.object({
   original: z.string().trim().min(1).max(800),
   mustChange: z.array(z.string().trim().min(1).max(300)).max(12),
-  mustKeep: z.array(z.string().trim().min(1).max(300)).max(12),
-  forbiddenChanges: z.array(z.string().trim().min(1).max(300)).max(12),
+  mustKeep: z.array(z.string().trim().min(1).max(300)).max(16),
+  forbiddenChanges: z.array(z.string().trim().min(1).max(300)).max(16),
   referenceSources: z.array(z.string().trim().min(1).max(300)).max(8),
-  acceptanceCriteria: z.array(z.string().trim().min(1).max(300)).max(12),
+  acceptanceCriteria: z.array(z.string().trim().min(1).max(300)).max(16),
 });
 const schema = z
   .object({

@@ -13,11 +13,12 @@ function validVariantRegion(region?: Region) {
 }
 
 export async function POST(
-  _: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const startedAt = Date.now();
   try {
+    const body = await request.json().catch(() => ({})) as { force?: boolean };
     const project = await getProject((await params).id);
     if (!project) throw new Error("商品项目不存在");
     const reference =
@@ -30,7 +31,9 @@ export async function POST(
       project.confirmedTryonImage ||
       project.assets.garmentCropImage ||
       project.assets.garmentImage;
-    const result = await analyzeGarmentColors(reference, baseStyle);
+    const result = await analyzeGarmentColors(reference, baseStyle, {
+      force: Boolean(body.force),
+    });
     if (!result.colors.length)
       throw new Error("没有从参考图中识别到有效颜色，请更换清晰的产品平铺图");
     const source = await localImage(reference);

@@ -10,6 +10,7 @@ import type {
 import type { ApiProviderType, ModelSlot } from "./ai/provider-settings-types";
 import type { ColorAdjustment } from "./color-adjustment";
 import type { CorrectionCommandPlan } from "./correction-command";
+import type { CorrectionQualityCheck } from "./correction-quality";
 import type {
   RecolorStructureMode,
   RecolorStyleRelation,
@@ -561,6 +562,8 @@ export type Job = {
   subjectFidelity?: TryonSubjectFidelityCheck;
   correctionPlan?: CorrectionCommandPlan;
   correctionCheck?: CorrectionInstructionCheck;
+  correctionQualityBaseline?: string;
+  correctionQualityCheck?: CorrectionQualityCheck;
   qualityIssues?: string[];
   sharpnessScore?: number;
   inpaint?: InpaintMeta;

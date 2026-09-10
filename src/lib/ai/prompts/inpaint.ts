@@ -1,6 +1,6 @@
 import {PHOTOREAL_QUALITY_PROMPT,QUALITY_SELF_CHECK_PROMPT} from "./image-quality";
 
-export const INPAINT_PROMPT_VERSION="inpaint-v1-masked-region-only";
+export const INPAINT_PROMPT_VERSION="inpaint-v2-lossless-quality-baseline";
 
 export function inpaintPrompt(editPrompt:string,contextHint:string){return `任务：对图片进行局部重绘（局部修改）。只修改用户选中的区域，其余区域必须逐像素保持不变。
 
@@ -13,9 +13,10 @@ ${contextHint}
 执行规则：
 1. 严格依据蒙版定位需要修改的区域，只在该区域内按照用户咒语进行修改。
 2. 修改后的内容必须与周围未选中区域自然融合，边缘过渡自然，不产生生硬的接缝、色差或涂抹痕迹。
-3. 保持图片整体风格、光影、色彩基调、分辨率和画质与原始图一致。
+3. 原始图是永久画质基线。输出宽高分辨率不得降低，锐度、噪点水平、真实皮肤毛孔与光泽、服装面料纹理和边缘细节不得弱于原始图；禁止因反复修改造成逐代模糊或压缩劣化。
 4. 不要臆测或添加用户咒语中没有要求的改动；用户没提到的内容一律保持原样。
 5. 若蒙版区域内的修改会牵涉到服装，仍须保持服装整体设计逻辑、面料纹理和版型连贯。
-6. 不得生成多宫格、对比图、文字或水印；每次只输出一张独立图片。
+6. 不得整张重绘、全局磨皮、过度降噪、过度锐化或改变全局色彩；可见皮肤必须保持原图的自然细腻、干净和真实质感，不得变成塑料皮、油画感、脏感或涂抹感。
+7. 不得生成多宫格、对比图、文字或水印；每次只输出一张独立图片。
 
 成图前自检：蒙版外区域是否与原始图完全一致、被选中的区域是否按要求完成修改、修改是否自然融合。任何未按蒙版约束执行、或整图被无关重绘的结果都必须失败并重试。${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`}

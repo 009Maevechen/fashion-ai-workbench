@@ -14,7 +14,7 @@ const SIZE_STEPS = [
 
 export type OptimizeResult = {
   buffer: Buffer;
-  mime: "image/jpeg";
+  mime: "image/jpeg" | "image/png" | "image/webp";
   originalSize: number;
   finalSize: number;
   optimized: boolean;
@@ -28,11 +28,28 @@ export type OptimizeResult = {
  * 把最终交付图片压缩到 ≤3MB，纯本地处理，不调用任何模型。
  * 策略：原图已达标则不压缩；否则分级降 JPEG 质量；仍超才降分辨率（保持 3:4）。
  */
-export async function optimizeFinalImage(input: Buffer): Promise<OptimizeResult> {
+export async function optimizeFinalImage(input: Buffer, options: { preserveQuality?: boolean } = {}): Promise<OptimizeResult> {
   const originalSize = input.length;
   const meta = await sharp(input,{limitInputPixels:MAX_INPUT_PIXELS}).metadata();
   const originalWidth = meta.width || 0;
   const originalHeight = meta.height || 0;
+
+  // Generation masters are edited again: preserve provider bytes without JPEG
+  // recompression or resizing. Export callers retain the existing size policy.
+  if (options.preserveQuality) {
+    if (!["jpeg", "png", "webp"].includes(meta.format || ""))
+      throw new Error("生成图片格式不支持无损保留");
+    return {
+      buffer: input,
+      mime: meta.format === "png" ? "image/png" : meta.format === "webp" ? "image/webp" : "image/jpeg",
+      originalSize,
+      finalSize: originalSize,
+      optimized: false,
+      width: originalWidth,
+      height: originalHeight,
+    };
+  }
+
 
   if (originalSize <= FINAL_IMAGE_MAX_BYTES && originalWidth >= MINIMUM_WIDTH) {
     return {

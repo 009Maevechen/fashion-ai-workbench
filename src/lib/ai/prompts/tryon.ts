@@ -10,7 +10,7 @@ import {
   type TryOnEditTask,
 } from "@/lib/tryon-edit-pipeline";
 
-export const TRYON_PROMPT_VERSION = "tryon-v15-structured-edit-pipeline";
+export const TRYON_PROMPT_VERSION = "tryon-v16-exact-garment-fidelity";
 export function tryonPrompt(
   productType: string,
   description: string,

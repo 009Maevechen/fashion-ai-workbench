@@ -27,6 +27,13 @@ test("强制咒语保留原文并按五类规则传入生成提示", () => {
     normalizeCorrectionCommandPlan(plan),
   );
   assert.match(text, /执行顺序：先锁定必须保留项和禁止修改区/);
+  assert.match(text, /第一次执行咒语前的图片是整个连续修改链的永久画质基线/);
+  assert.match(text, /输出分辨率不得降低/);
+  assert.ok(
+    normalizeCorrectionCommandPlan(plan).acceptanceCriteria.some((item) =>
+      item.includes("皮肤必须保持细腻"),
+    ),
+  );
 });
 
 test("非咒语提示不会误触发指令命中检查", () => {
@@ -65,4 +72,11 @@ test("机器可读规则保证页面确认内容原样进入执行阶段", () =>
   });
   const parsed = correctionPlanFromText(correctionCommandText(plan));
   assert.deepEqual(parsed, plan);
+});
+
+test("咒语条目达到上限时仍保留画质与皮肤保护",()=>{
+  const plan=normalizeCorrectionCommandPlan({original:"修改扣子",mustChange:["修改扣子"],mustKeep:Array.from({length:16},(_,i)=>`保留${i}`),forbiddenChanges:Array.from({length:16},(_,i)=>`禁止${i}`),referenceSources:[],acceptanceCriteria:Array.from({length:16},(_,i)=>`验收${i}`)});
+  assert.match(plan.mustKeep.join("；"),/第一次修正前/);
+  assert.match(plan.forbiddenChanges.join("；"),/不得降低清晰度/);
+  assert.match(plan.acceptanceCriteria.join("；"),/人物皮肤必须保持细腻/);
 });

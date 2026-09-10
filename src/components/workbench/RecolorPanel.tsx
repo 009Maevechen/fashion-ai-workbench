@@ -1,5 +1,6 @@
 "use client";
 
+import { canManuallyConfirmJob } from "@/lib/tryon-confirmation";
 import {
   useEffect,
   useMemo,
@@ -76,6 +77,7 @@ export default function RecolorPanel({
   saveProject,
   post,
   enqueue,
+  confirmFlow,
 }: PanelProps & { historyJobs: Job[] }) {
   const saved = p.settings.recolor;
   const lockedArea = recolorAreaForProductType(p.productType);
@@ -353,11 +355,13 @@ export default function RecolorPanel({
       id,
     );
   }
-  async function analyzeReference() {
+  async function analyzeReference(force = false) {
     setAnalyzing(true);
     try {
       const response = await fetch(`/api/projects/${p.id}/colors/analyze`, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force }),
         }),
         data = (await response.json()) as {
           colors?: Array<{
@@ -1412,7 +1416,7 @@ export default function RecolorPanel({
                       type="button"
                       className="recolor-analyze-button"
                       disabled={!reference.url || analyzing || busy}
-                      onClick={() => run(() => analyzeReference())}
+                      onClick={() => run(() => analyzeReference(false))}
                     >
                       {analyzing ? "正在识别…" : "▶ 开始识别颜色"}
                     </button>
@@ -1420,7 +1424,7 @@ export default function RecolorPanel({
                       type="button"
                       className="secondary"
                       disabled={!reference.url || analyzing || busy}
-                      onClick={() => run(() => analyzeReference())}
+                      onClick={() => run(() => analyzeReference(true))}
                     >
                       重新分析颜色
                     </button>
@@ -1934,6 +1938,20 @@ export default function RecolorPanel({
               </span>
             )}
           </div>
+          {active && (
+            <div className="confirm-block">
+              <p>AI 质检仅供参考。人工检查本套图片无误后，可确认结果进入下一阶段。</p>
+              <button
+                className="primary"
+                disabled={busy || Array.from({length: expectedCount}, (_, index) => index + 1).some(slot => !canManuallyConfirmJob(historyJob?.targetColorId === activeId && historyJob.slot === slot ? historyJob : colorJobs.find(job => job.slot === slot)))}
+                onClick={() => run(() => confirmFlow("recolor", Array.from({length: expectedCount}, (_, index) => {
+                  const slot = index + 1;
+                  const job = historyJob?.targetColorId === activeId && historyJob.slot === slot ? historyJob : colorJobs.find(item => item.slot === slot);
+                  return job!.outputImages[0];
+                })))}
+              >人工确认本套结果并继续</button>
+            </div>
+          )}
           {active ? (
             <div
               className={`result-grid ${expectedCount === 3 ? "three" : expectedCount === 4 ? "four" : ""}`}

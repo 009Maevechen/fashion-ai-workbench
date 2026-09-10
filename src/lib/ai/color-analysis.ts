@@ -9,6 +9,7 @@ import { resizeToJpeg } from "../image-limits";
 import { chooseSpecificColorName, generationColorName, isButtonColorPart, isComplexColorPart, normalizeColorAnalysisPayload, normalizeMaterialFeatures, normalizeTrimPart } from "./color-analysis-normalize";
 import {recolorStructureNeedsReview,resolveRecolorStructureMode} from "../recolor-structure";
 import {localColorFallbackResult,visualFailureReason} from "./color-analysis-fallback";
+import { colorAnalysisCacheKey, getCachedColorAnalysis, putCachedColorAnalysis } from "../color-analysis-cache";
 
 const normalizedBox = z.object({
   x: z.coerce.number().min(0).max(1),
@@ -62,13 +63,22 @@ export type GarmentColorResult = {
   colors: Array<{ name: string; generationName:string; hex: string; trimColorName: string; trimHex: string; trimPart:string; confidence: number; boundingBox?: {x:number;y:number;width:number;height:number}; designDetails:string[]; materialFeatures:string; colorRegions:Array<{part:string;colorName:string;hex:string;confidence:number}>; isUniformColor:boolean; uniformColorConfidence:number; occlusion:"none"|"partial"|"heavy"; occlusionPolicy:"visible_only"|"extend_uniform"; occlusionReason:string; styleRelation:"same"|"explicit_difference"|"uncertain"; structureMode:"same_style"|"explicit_variant"; structureDifferenceConfidence:number; structureDifferences:string[]; needsReview:boolean; reviewReason?:string }>;
 };
 
-export async function analyzeGarmentColors(imageUrl: string, baseStyleImageUrl?:string): Promise<GarmentColorResult> {
+export async function analyzeGarmentColors(
+  imageUrl: string,
+  baseStyleImageUrl?: string,
+  options: { force?: boolean } = {},
+): Promise<GarmentColorResult> {
   const [visionRuntime, fallbackRuntime, input, baseInput] = await Promise.all([
     resolveProductAnalysisModel(),
     resolveProductAnalysisModel("fallback").catch(()=>undefined),
     localImage(imageUrl),
     baseStyleImageUrl&&baseStyleImageUrl!==imageUrl?localImage(baseStyleImageUrl):Promise.resolve(undefined),
   ]);
+  const cacheKey = colorAnalysisCacheKey(input, baseInput);
+  if (!options.force) {
+    const cached = await getCachedColorAnalysis<GarmentColorResult>(cacheKey);
+    if (cached?.colors?.length) return cached;
+  }
   const [normalized,normalizedBase]=await Promise.all([
     resizeToJpeg(input,1280,88),
     baseInput?resizeToJpeg(baseInput,1280,88):Promise.resolve(undefined),
@@ -182,7 +192,7 @@ export async function analyzeGarmentColors(imageUrl: string, baseStyleImageUrl?:
           ? "识别到多种颜色款式，建议人工确认"
         : undefined;
 
-    return {
+    const result: GarmentColorResult = {
       primaryColor,
       secondaryColors,
       accentColors,
@@ -192,6 +202,8 @@ export async function analyzeGarmentColors(imageUrl: string, baseStyleImageUrl?:
       reviewReason,
       colors: resolvedColors,
     };
+    await putCachedColorAnalysis(cacheKey, result);
+    return result;
   } catch (error) {
     throw new Error(`颜色识别失败：${error instanceof Error ? error.message : "未知错误"}`);
   }

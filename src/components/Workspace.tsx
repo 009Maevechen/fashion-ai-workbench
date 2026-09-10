@@ -1,5 +1,6 @@
 "use client";
 
+import {resultWorkflow} from "@/lib/tryon-confirmation";
 import {useCallback,useEffect,useState} from "react";
 import {useRouter,useSearchParams} from "next/navigation";
 import type {Job,Project,ProjectAssets} from "@/lib/db";
@@ -21,7 +22,7 @@ export default function Workspace({initial,initialJobs,health,modelRouting,initi
   const [p,setP]=useState(initial),[step,setStep]=useState(Math.min(Math.max(requested,1),5)),[jobs,setJobs]=useState(initialJobs),[pendingActions,setPendingActions]=useState(0),[error,setError]=useState(""),[notice,setNotice]=useState("");
   const busy=pendingActions>0;
   const goStep=(next:number)=>{if(next===5&&p.currentStep<5)return;setStep(next);router.push(`/projects/${p.id}${STEP_PATH[next]}`,{scroll:false})};
-  const latest=(workflow:string,byColor=false)=>{const map=new Map<string,Job>();for(const job of jobs.filter(x=>x.workflow===workflow)){const key=`${byColor?job.targetColorId||"":workflow}:${job.slot||0}`;if(!map.has(key))map.set(key,job)}return [...map.values()].sort((a,b)=>(a.slot||0)-(b.slot||0))};
+  const latest=(workflow:string,byColor=false)=>{const map=new Map<string,Job>();for(const job of jobs.filter(x=>resultWorkflow(x)===workflow)){const key=`${byColor?job.targetColorId||"":workflow}:${job.slot||0}`;if(!map.has(key))map.set(key,job)}return [...map.values()].sort((a,b)=>(a.slot||0)-(b.slot||0))};
   const refresh=useCallback(async()=>{const [project,responseJobs]=await Promise.all([fetch(`/api/projects/${p.id}`,{cache:"no-store"}).then(r=>r.json()),fetch(`/api/jobs?projectId=${p.id}`,{cache:"no-store"}).then(r=>r.json())]);setP(project);setJobs(responseJobs)},[p.id]);
   // 响应顶部“刷新”按钮：只重新拉取最新项目与任务数据，绝不清空任何状态或重新提交 API。
   useEffect(()=>{const handler=()=>{void refresh()};window.addEventListener("workbench:refresh",handler);return()=>window.removeEventListener("workbench:refresh",handler)},[refresh]);
@@ -40,9 +41,9 @@ export default function Workspace({initial,initialJobs,health,modelRouting,initi
   const common:Omit<PanelProps,"jobs">={p,health,modelRouting,busy,run,refreshProject:refresh,persistAsset,deleteAsset,clearSourceAssets,clearWorkflowResults,cancelGeneration,clearWorkflowErrors,saveProject,post,enqueue,confirmFlow};
   return <><ProjectHeader project={p} step={step} onStep={goStep}/>{error&&<div className="error">{error}</div>}{notice&&<div className="notice workspace-notice">{notice}</div>}
     {step===1&&<ProductDetailsPanel p={p} jobs={jobs} busy={busy} run={run} persistAsset={persistAsset} deleteAsset={deleteAsset} clearSourceAssets={clearSourceAssets} saveProject={saveProject} onNext={()=>goStep(2)}/>}
-    {step===2&&<TryonPanel {...common} jobs={latest("tryon")} historyJobs={jobs.filter(job=>job.workflow==="tryon")}/>}
-    {step===3&&<PosePanel {...common} jobs={latest("pose")} historyJobs={jobs.filter(job=>job.workflow==="pose")}/>}
-    {step===4&&<RecolorPanel {...common} jobs={latest("recolor",true)} historyJobs={jobs.filter(job=>job.workflow==="recolor")}/>}
+    {step===2&&<TryonPanel {...common} jobs={latest("tryon")} historyJobs={jobs.filter(job=>resultWorkflow(job)==="tryon")}/>}
+    {step===3&&<PosePanel {...common} jobs={latest("pose")} historyJobs={jobs.filter(job=>resultWorkflow(job)==="pose")}/>}
+    {step===4&&<RecolorPanel {...common} jobs={latest("recolor",true)} historyJobs={jobs.filter(job=>resultWorkflow(job)==="recolor")}/>}
     {step===5&&<FinalPanel p={p} jobs={jobs} onStep={goStep} onComplete={complete} enqueue={enqueue}/>}
     <RecentTaskList jobs={jobs}/>
   </>;

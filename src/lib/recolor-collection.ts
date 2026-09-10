@@ -1,13 +1,14 @@
 import type {Job,Project,TargetColor} from "./db";
 
-const RESULT_STATUSES=new Set(["success","needs_review","confirmed"]);
+import {canManuallyConfirmJob,resultWorkflow} from "./tryon-confirmation";
 
 export function recolorColorsWithSavedJobs(project:Project,jobs:Job[]){
   return (project.targetColors||[]).map(color=>{
+    if(color.status==="confirmed")return color;
     const bySlot=new Map<number,string>();
     for(const [index,url] of (color.poseResults||[]).entries())if(url)bySlot.set(index+1,url);
     const saved=jobs
-      .filter(job=>job.workflow==="recolor"&&job.targetColorId===color.id&&RESULT_STATUSES.has(job.status)&&job.outputImages[0])
+      .filter(job=>resultWorkflow(job)==="recolor"&&job.targetColorId===color.id&&canManuallyConfirmJob(job))
       .sort((a,b)=>a.startedAt.localeCompare(b.startedAt));
     for(const job of saved)if(job.slot)bySlot.set(job.slot,job.outputImages[0]);
     const poseResults=[...bySlot.entries()].sort(([a],[b])=>a-b).map(([,url])=>url);

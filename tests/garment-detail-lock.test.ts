@@ -180,6 +180,38 @@ test("任一关键服装细节不一致会进入 needs_redo", () => {
     }),
     "needs_review",
   );
+  assert.equal(
+    resolveTryonDetailStatus({
+      consistent: true,
+      score: 96,
+      checks: { ...allPassed, texture: false },
+    }),
+    "needs_redo",
+  );
+  assert.equal(
+    resolveTryonDetailStatus({
+      consistent: true,
+      score: 96,
+      checks: { ...allPassed, details: false },
+    }),
+    "needs_redo",
+  );
+  assert.equal(
+    resolveTryonDetailStatus({
+      consistent: true,
+      score: 96,
+      checks: { ...allPassed, color: false },
+    }),
+    "needs_redo",
+  );
+  assert.equal(
+    resolveTryonDetailStatus({
+      consistent: true,
+      score: 94,
+      checks: allPassed,
+    }),
+    "needs_review",
+  );
 });
 
 test("生成随机种子始终位于方舟兼容的正整数范围", () => {
