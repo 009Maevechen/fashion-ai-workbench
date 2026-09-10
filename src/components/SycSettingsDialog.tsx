@@ -69,8 +69,16 @@ export default function SycSettingsDialog({
     apiKey: form.apiKey || undefined,
     imageModel: form.imageModel,
   };
+  const visionDraft = {
+    baseUrl: form.baseUrl,
+    apiKey: form.apiKey || undefined,
+    visionModel: form.visionModel,
+  };
   const canRequest = Boolean(
     form.baseUrl && form.imageModel && (form.apiKey || config.apiKeyConfigured),
+  );
+  const canRequestVision = Boolean(
+    form.baseUrl && form.visionModel && (form.apiKey || config.apiKeyConfigured),
   );
   function feedback() {
     setMessage("");
@@ -202,6 +210,16 @@ export default function SycSettingsDialog({
       )) as { message: string; imageUrl: string };
       setTestImage(result.imageUrl);
       setMessage(result.message);
+      await onChanged();
+    });
+  }
+  async function testVisionCapability() {
+    await run("vision", async () => {
+      const result = (await requestJson(
+        "/api/settings/syc/test-vision",
+        visionDraft,
+      )) as { message: string; latencyMs: number };
+      setMessage(`${result.message} · ${result.latencyMs}ms`);
       await onChanged();
     });
   }
@@ -441,7 +459,7 @@ export default function SycSettingsDialog({
                 <div>
                   <h3>连接测试</h3>
                   <p>
-                    连接测试读取 /models；图片测试会真实生成并保存一张图片。
+                    连接测试读取 /models；视觉测试会真正发送图片；图片测试会真实生成并保存一张图片。
                   </p>
                 </div>
               </div>
@@ -502,6 +520,31 @@ export default function SycSettingsDialog({
                     onClick={() => void testImageCapability()}
                   >
                     {busy === "image" ? "生成中…" : "测试图片生成"}
+                  </button>
+                </article>
+                <article>
+                  <b>视觉模型</b>
+                  <span>
+                    {config.lastVisionTestStatus === "success"
+                      ? "视觉模型正常"
+                      : config.lastVisionTestStatus === "failed"
+                        ? "失败"
+                        : "未测试"}
+                  </span>
+                  <small>
+                    {config.lastVisionTestAt
+                      ? `${new Date(config.lastVisionTestAt).toLocaleString("zh-CN")}${config.lastVisionTestLatencyMs ? ` · ${config.lastVisionTestLatencyMs}ms` : ""}`
+                      : "检查 Base URL、API Key、模型名和真实图片输入"}
+                  </small>
+                  {config.lastVisionTestError && (
+                    <p className="danger-text">{config.lastVisionTestError}</p>
+                  )}
+                  <button
+                    className="secondary"
+                    disabled={!!busy || !canRequestVision}
+                    onClick={() => void testVisionCapability()}
+                  >
+                    {busy === "vision" ? "识别中…" : "测试视觉模型"}
                   </button>
                 </article>
               </div>

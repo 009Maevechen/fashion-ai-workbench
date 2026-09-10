@@ -67,7 +67,22 @@ export default function InpaintDialog({
         <div className="inpaint-dialog-body">
           <InpaintEditor src={sourceUrl} onChange={setMask} />
           <div className="inpaint-prompt-area">
-            <label className="field">修改咒语<textarea maxLength={800} placeholder="例如：把这个口袋去掉 / 把裤脚改宽一点 / 把这一块颜色改成黑色" value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} /><span className="field-count">{editPrompt.length}/800</span></label>
+            <details className="inpaint-spell-collapse">
+              <summary className="spell-collapse-summary">
+                <span>
+                  <b>✨ 修改咒语</b>
+                  <small>框选完成后点开填写</small>
+                </span>
+                <span className="spell-collapse-state" aria-hidden="true">
+                  <span className="collapsed">展开</span>
+                  <span className="expanded">收起</span>
+                  <span className="chevron">⌄</span>
+                </span>
+              </summary>
+              <div className="inpaint-spell-body">
+                <label className="field">修改咒语<textarea maxLength={800} placeholder="例如：把这个口袋去掉 / 把裤脚改宽一点 / 把这一块颜色改成黑色" value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} /><span className="field-count">{editPrompt.length}/800</span></label>
+              </div>
+            </details>
             {error && <div className="error">{error}</div>}
             <div className="inpaint-actions">
               <button type="button" className="secondary" disabled={busy} onClick={onClose}>取消</button>

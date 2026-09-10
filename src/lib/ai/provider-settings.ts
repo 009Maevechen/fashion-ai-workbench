@@ -171,6 +171,10 @@ function publicProvider(record: ApiProviderSecretRecord): ApiProviderPublic {
     lastImageTestStatus: record.lastImageTestStatus,
     lastImageTestAt: record.lastImageTestAt,
     lastImageTestError: record.lastImageTestError,
+    lastVisionTestStatus: record.lastVisionTestStatus,
+    lastVisionTestAt: record.lastVisionTestAt,
+    lastVisionTestError: record.lastVisionTestError,
+    lastVisionTestLatencyMs: record.lastVisionTestLatencyMs,
     lastTestLatencyMs: record.lastTestLatencyMs,
   };
 }
@@ -269,7 +273,7 @@ export async function updateApiProvider(
       record.apiKeyMasked = maskKey(input.apiKey.trim());
     }
     if (!record.enabled)
-      for (const workflow of ["tryon", "pose", "recolor", "qc", "research", "assistant"] as const) {
+      for (const workflow of ["product", "tryon", "pose", "recolor", "qc", "research", "assistant", "correction", "prompt-optimize"] as const) {
         if (store.workflowModelBindings[workflow].primary?.providerId === id)
           delete store.workflowModelBindings[workflow].primary;
         if (store.workflowModelBindings[workflow].fallback?.providerId === id)
@@ -282,6 +286,10 @@ export async function updateApiProvider(
     record.lastImageTestStatus = "untested";
     record.lastImageTestAt = undefined;
     record.lastImageTestError = undefined;
+    record.lastVisionTestStatus = "untested";
+    record.lastVisionTestAt = undefined;
+    record.lastVisionTestError = undefined;
+    record.lastVisionTestLatencyMs = undefined;
     return publicProvider(record);
   });
 }
@@ -300,9 +308,10 @@ export async function deleteApiProvider(id: string) {
 }
 export async function updateProviderTestResult(
   id: string,
-  kind: "connection" | "image",
+  kind: "connection" | "image" | "vision",
   status: ProviderTestStatus,
   error?: string,
+  latencyMs?: number,
 ) {
   return mutate((store) => {
     const record = store.apiProviders.find((item) => item.id === id);
@@ -312,10 +321,15 @@ export async function updateProviderTestResult(
       record.lastTestStatus = status;
       record.lastTestAt = now;
       record.lastError = error;
-    } else {
+    } else if (kind === "image") {
       record.lastImageTestStatus = status;
       record.lastImageTestAt = now;
       record.lastImageTestError = error;
+    } else {
+      record.lastVisionTestStatus = status;
+      record.lastVisionTestAt = now;
+      record.lastVisionTestError = error;
+      record.lastVisionTestLatencyMs = latencyMs;
     }
     record.updatedAt = now;
     return publicProvider(record);
@@ -367,6 +381,10 @@ function sycPublic(record?: ApiProviderSecretRecord): SycConfigPublic {
     lastImageTestStatus: record?.lastImageTestStatus || "untested",
     lastImageTestAt: record?.lastImageTestAt,
     lastImageTestError: record?.lastImageTestError,
+    lastVisionTestStatus: record?.lastVisionTestStatus || "untested",
+    lastVisionTestAt: record?.lastVisionTestAt,
+    lastVisionTestError: record?.lastVisionTestError,
+    lastVisionTestLatencyMs: record?.lastVisionTestLatencyMs,
     lastTestLatencyMs: record?.lastTestLatencyMs,
   };
 }
@@ -411,7 +429,12 @@ export async function saveSycConfig(input: SycConfigInput) {
         !record ||
         record.baseUrl !== value.baseUrl ||
         keyChanged ||
-        record.imageModel !== value.imageModel;
+        record.imageModel !== value.imageModel,
+      visionChanged =
+        !record ||
+        record.baseUrl !== value.baseUrl ||
+        keyChanged ||
+        record.visionModel !== value.visionModel;
     if (!record) {
       const key = value.apiKey!;
       record = {
@@ -449,6 +472,23 @@ export async function saveSycConfig(input: SycConfigInput) {
     record.codexCliCompatible = value.codexCliCompatible;
     record.timeoutSeconds = value.timeoutSeconds;
 
+    // “图片识别模型”保存后立即成为商品视觉识别的真实运行配置，避免
+    // 页面显示已保存、后端却继续回退到 VISION_* 环境变量。
+    if (record.enabled && value.visionModel) {
+      store.workflowModelBindings.product.primary = {
+        providerId: record.id,
+        model: value.visionModel,
+      };
+      const qc = store.workflowModelBindings.qc.primary;
+      if (!qc || qc.providerId === record.id)
+        store.workflowModelBindings.qc.primary = {
+          providerId: record.id,
+          model: value.visionModel,
+        };
+    } else if (store.workflowModelBindings.product.primary?.providerId === record.id) {
+      delete store.workflowModelBindings.product.primary;
+    }
+
     if (connectionChanged) {
       record.lastTestStatus = "untested";
       record.lastTestAt = undefined;
@@ -458,8 +498,14 @@ export async function saveSycConfig(input: SycConfigInput) {
       record.lastImageTestError = undefined;
       record.lastTestLatencyMs = undefined;
     }
+    if (visionChanged) {
+      record.lastVisionTestStatus = "untested";
+      record.lastVisionTestAt = undefined;
+      record.lastVisionTestError = undefined;
+      record.lastVisionTestLatencyMs = undefined;
+    }
     if (!record.enabled)
-      for (const workflow of ["tryon", "pose", "recolor", "qc", "research", "assistant"] as const) {
+      for (const workflow of ["product", "tryon", "pose", "recolor", "qc", "research", "assistant", "correction", "prompt-optimize"] as const) {
         if (
           store.workflowModelBindings[workflow].primary?.providerId ===
           record.id
@@ -519,6 +565,42 @@ export async function getSycRuntime(draft?: {
   };
 }
 
+export async function getSycVisionRuntime(draft?: {
+  baseUrl?: string;
+  apiKey?: string;
+  visionModel?: string;
+}) {
+  const record = (await loadStore()).apiProviders.find(
+    (item) => item.type === "syc-openai-compatible",
+  );
+  const baseUrl = normalizeSycBaseUrl(
+    draft?.baseUrl || record?.baseUrl || SYC_DEFAULTS.baseUrl,
+  );
+  const apiKey =
+    draft?.apiKey?.trim() ||
+    (record?.encryptedApiKey ? await decrypt(record.encryptedApiKey) : "");
+  const model = draft?.visionModel?.trim() || record?.visionModel?.trim() || "";
+  if (!baseUrl) throw new Error("视觉模型 Base URL 尚未配置");
+  if (!apiKey) throw new Error("视觉模型 API Key 尚未配置");
+  if (!model) throw new Error("图片识别模型名称尚未配置");
+  return {
+    id: record?.id || "syc-default",
+    name: record?.name || SYC_DEFAULTS.name,
+    type: "syc-openai-compatible" as const,
+    baseUrl,
+    apiKey,
+    model,
+    source: "stored" as const,
+    syc: {
+      stream: false,
+      partialImages: 0,
+      returnBase64: false,
+      codexCliCompatible: record?.codexCliCompatible ?? false,
+      timeoutSeconds: record?.timeoutSeconds ?? SYC_DEFAULTS.timeoutSeconds,
+    },
+  };
+}
+
 export async function getSycChatRuntime() {
   const record = (await loadStore()).apiProviders.find(
     (item) => item.type === "syc-openai-compatible",
@@ -540,7 +622,7 @@ export async function getSycChatRuntime() {
 }
 
 export async function updateSycTestResult(
-  kind: "connection" | "image",
+  kind: "connection" | "image" | "vision",
   status: SycTestStatus,
   error?: string,
   latencyMs?: number,
@@ -556,10 +638,15 @@ export async function updateSycTestResult(
       record.lastTestAt = now;
       record.lastError = error;
       record.lastTestLatencyMs = latencyMs;
-    } else {
+    } else if (kind === "image") {
       record.lastImageTestStatus = status;
       record.lastImageTestAt = now;
       record.lastImageTestError = error;
+    } else {
+      record.lastVisionTestStatus = status;
+      record.lastVisionTestAt = now;
+      record.lastVisionTestError = error;
+      record.lastVisionTestLatencyMs = latencyMs;
     }
     record.updatedAt = now;
     return sycPublic(record);
@@ -769,7 +856,11 @@ export async function resolveProductAnalysisModel(slot: ModelSlot = "primary") {
       );
     return getProviderRuntime(selection.providerId, selection.model);
   }
-  // 环境变量兜底：未在工作台存储中绑定时，读取服务器 .env.local 中的视觉识别模型配置
+  // 兼容旧版本：视觉模型已经在“视觉模型设置”中保存，但旧版本没有同步
+  // product 工作流绑定时，直接使用加密存储里的视觉模型。
+  const stored = await storedVisionRuntime();
+  if (stored) return stored;
+  // 环境变量仅作为最后兜底；页面保存配置永远优先。
   const vision = environmentVisionRuntime();
   if (vision) return vision;
   throw new Error(
@@ -777,6 +868,18 @@ export async function resolveProductAnalysisModel(slot: ModelSlot = "primary") {
       ? "产品识别尚未配置对话模型，请到“API与模型设置 → 工作流模型分配”中选择"
       : "产品识别尚未配置图片识别模型，请到“API与模型设置 → 工作流模型分配”中选择",
   );
+}
+
+async function storedVisionRuntime(): Promise<ProviderRuntimeConfig | null> {
+  const record = (await loadStore()).apiProviders.find(
+    (item) =>
+      item.enabled &&
+      item.visionModel?.trim() &&
+      item.baseUrl?.trim() &&
+      item.encryptedApiKey,
+  );
+  if (!record) return null;
+  return getProviderRuntime(record.id, record.visionModel);
 }
 
 /** 服务器环境变量配置的视觉识别模型（用于产品识别 / QC 等看图工作流兜底）。 */

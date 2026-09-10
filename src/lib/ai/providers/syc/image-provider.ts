@@ -29,7 +29,7 @@ export class SycImageProvider implements ImageProvider{
       form.set("response_format","b64_json");
       form.set("stream",String(options.stream));form.set("partial_images",String(options.partialImages));
       if(options.codexCliCompatible)form.set("codexCli","true");
-      input.images.forEach((image,index)=>{const part=dataUrl(image),ext=part.mime==="image/png"?"png":part.mime==="image/webp"?"webp":"jpg";form.append("image[]",new Blob([part.bytes],{type:part.mime}),providerInputImageFilename(input.workflow,index,ext))});
+      input.images.forEach((image,index)=>{const part=dataUrl(image),ext=part.mime==="image/png"?"png":part.mime==="image/webp"?"webp":"jpg";form.append("image[]",new Blob([part.bytes],{type:part.mime}),providerInputImageFilename(input.workflow,index,ext,input.images.length))});
       if(input.mask){const mask=dataUrl(input.mask);form.append("mask",new Blob([mask.bytes],{type:"image/png"}),`mask.png`)}
       body=form;
     }else{

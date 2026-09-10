@@ -37,16 +37,22 @@ test("两张已确认姿势可以组成两张复色套装",()=>{
 
 test("复色输出名称包含主色与边饰颜色",()=>{
   assert.equal(recolorColorName({name:"黄褐卡其色",outputName:"黄褐卡其色黑色包边"}),"黄褐卡其色黑色包边");
-  assert.equal(recolorColorName({name:"黄褐卡其色",trimColorName:"黑色"}),"黄褐卡其色黑边");
-  assert.equal(recolorColorName({name:"巧克力棕",trimColorName:"白色"}),"巧克力棕白边");
-  assert.equal(recolorColorName({name:"巧克力棕白边",trimColorName:"白色"}),"巧克力棕白边");
+  assert.equal(recolorColorName({name:"黄褐卡其色",trimColorName:"黑色",trimPart:"包边"}),"黄褐卡其色黑边");
+  assert.equal(recolorColorName({name:"巧克力棕",trimColorName:"白色",trimPart:"包边"}),"巧克力棕白边");
+  assert.equal(recolorColorName({name:"巧克力棕白边",trimColorName:"白色",trimPart:"包边"}),"巧克力棕白边");
   assert.equal(recolorColorName({name:"识别错误",trimColorName:"白色",outputName:"手动修改的黑边款"}),"手动修改的黑边款");
 });
 
+test("普通颜色款不把扣子颜色写进名称或复色参数",()=>{
+  const color={name:"冷白色",outputName:"冷白色黑色扣子",trimColorName:"黑色",trimHex:"#101010",trimPart:"扣子"};
+  assert.equal(recolorColorName(color),"冷白色");
+  assert.deepEqual(recolorGenerationTrim(color),{trimColorName:"",trimHex:""});
+});
+
 test("手动输出名称中的黑边白边覆盖自动识别残留的边饰颜色",()=>{
-  assert.deepEqual(recolorGenerationTrim({outputName:"深卡其色黑边",trimColorName:"白色",trimHex:"#F4F6F5"}),{trimColorName:"黑色",trimHex:"#101010"});
-  assert.deepEqual(recolorGenerationTrim({outputName:"巧克力棕白边",trimColorName:"黑色",trimHex:"#101010"}),{trimColorName:"白色",trimHex:"#F4F6F5"});
-  assert.deepEqual(recolorGenerationTrim({outputName:"雾蓝色",trimColorName:"黑色",trimHex:"#101010"}),{trimColorName:"黑色",trimHex:"#101010"});
+  assert.deepEqual(recolorGenerationTrim({outputName:"深卡其色黑边",trimColorName:"白色",trimHex:"#F4F6F5",trimPart:"包边"}),{trimColorName:"黑色",trimHex:"#101010"});
+  assert.deepEqual(recolorGenerationTrim({outputName:"巧克力棕白边",trimColorName:"黑色",trimHex:"#101010",trimPart:"包边"}),{trimColorName:"白色",trimHex:"#F4F6F5"});
+  assert.deepEqual(recolorGenerationTrim({outputName:"雾蓝色",trimColorName:"黑色",trimHex:"#101010"}),{trimColorName:"",trimHex:""});
 });
 
 test("重复名称检查以用户手动输出名称为准",()=>{
@@ -63,8 +69,8 @@ test("重新识别会把黑边白边写回已有色卡并保留生成结果",()=
     {...complete("巧克力棕"),hex:"#58382D"},
   ];
   const result=mergeAnalyzedColorDetails(existing,[
-    {name:"黄褐卡其色",hex:"#A88F69",trimColorName:"黑色",trimHex:"#101010"},
-    {name:"巧克力棕",hex:"#59392E",trimColorName:"白色",trimHex:"#F4F6F5"},
+    {name:"黄褐卡其色",hex:"#A88F69",trimColorName:"黑色",trimHex:"#101010",trimPart:"包边"},
+    {name:"巧克力棕",hex:"#59392E",trimColorName:"白色",trimHex:"#F4F6F5",trimPart:"包边"},
   ]);
   assert.equal(recolorColorName(result.colors[0]),"黄褐卡其色黑边");
   assert.equal(recolorColorName(result.colors[1]),"巧克力棕白边");
@@ -87,4 +93,19 @@ test("自动识别会写入每个颜色款的整件设计参考，人工框选�
     [{name:"卡其色",hex:"#A88F69",cropImage:"/api/files/SKU/source/colors/auto-new.jpg",cropRegion:{x:0,y:0,width:0.4,height:0.8}}],
   );
   assert.equal(manual.colors[0].cropImage,"/api/files/SKU/source/colors/manual.jpg");
+});
+
+test("自动识别默认写入同款结构，人工确认的结构规则不会被覆盖",()=>{
+  const automatic=mergeAnalyzedColorDetails(
+    [{id:"khaki",name:"卡其色",hex:"#A68D68",status:"ready"}],
+    [{name:"卡其色",hex:"#A88F69",styleRelation:"same",structureMode:"same_style",structureDifferenceConfidence:0,structureDifferences:[]}],
+  );
+  assert.equal(automatic.colors[0].structureMode,"same_style");
+
+  const manual=mergeAnalyzedColorDetails(
+    [{id:"khaki",name:"卡其色",hex:"#A68D68",structureMode:"explicit_variant",styleRelation:"explicit_difference",structureDifferenceConfidence:1,structureDifferences:["包边宽度不同"],manualReviewConfirmed:true,status:"ready"}],
+    [{name:"卡其色",hex:"#A88F69",styleRelation:"same",structureMode:"same_style",structureDifferenceConfidence:0,structureDifferences:[]}],
+  );
+  assert.equal(manual.colors[0].structureMode,"explicit_variant");
+  assert.deepEqual(manual.colors[0].structureDifferences,["包边宽度不同"]);
 });

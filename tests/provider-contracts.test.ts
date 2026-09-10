@@ -45,3 +45,12 @@ test("通用多图接口通过文件名严格标记换装双图职责",()=>{
   assert.equal(providerInputImageFilename("tryon",0,"jpg"),"01-model-reference-keep-person-pose-scene.jpg");
   assert.equal(providerInputImageFilename("tryon",1,"png"),"02-garment-product-use-clothing-only.png");
 });
+test("三姿势三图输入文件名固定人物底图、服装与姿势职责",()=>{
+  assert.equal(providerInputImageFilename("pose",0,"jpg",3),"01-source-model-keep-exact-person-and-scene.jpg");
+  assert.equal(providerInputImageFilename("pose",1,"png",3),"02-garment-product-use-clothing-only.png");
+  assert.equal(providerInputImageFilename("pose",2,"jpg",3),"03-pose-reference-use-pose-only-discard-person.jpg");
+});
+test("三姿势双图输入仍把第二张严格标记为仅姿势参考",()=>{
+  assert.equal(providerInputImageFilename("pose",0,"jpg",2),"01-source-model-keep-exact-person-and-scene.jpg");
+  assert.equal(providerInputImageFilename("pose",1,"jpg",2),"02-pose-reference-use-pose-only-discard-person.jpg");
+});

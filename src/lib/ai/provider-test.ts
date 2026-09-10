@@ -7,6 +7,7 @@ import {getProviderRuntime} from "./provider-settings";
 import {downloadImage,localImage,saveOutput,toDataUrl} from "./storage";
 import {safeSegment,validateOutput} from "./validators";
 import {listProjects} from "../db";
+import {testVisionRuntime} from "./vision-test";
 
 function modelsEndpoint(baseUrl:string){const url=new URL(baseUrl);url.pathname=url.pathname.replace(/\/images\/(generations|edits)\/?$/i,"").replace(/\/$/,"")+"/models";url.search="";return url.toString()}
 function connectionHeaders(type:string,key:string):HeadersInit{return type==="bfl"?{"x-key":key,Accept:"application/json"}:{Authorization:`Bearer ${key}`,Accept:"application/json"}}
@@ -52,4 +53,8 @@ export async function testProviderImage(id:string){
   const jpeg=await sharp(downloaded.buffer).jpeg({quality:90}).toBuffer(),filename=`test-${Date.now()}-${crypto.randomUUID()}.jpg`;
   const url=await saveOutput("provider-tests",safeSegment(provider.id),filename,jpeg);
   return {ok:true,message:"图片能力测试成功，测试结果已保存",imageUrl:url};
+}
+
+export async function testProviderVision(id:string,model?:string){
+  return testVisionRuntime(await getProviderRuntime(id,model));
 }

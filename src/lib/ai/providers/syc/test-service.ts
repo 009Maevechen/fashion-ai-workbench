@@ -2,12 +2,13 @@ import "server-only";
 import crypto from "node:crypto";
 import sharp from "sharp";
 import {generateImage} from "../../generate";
-import {getSycRuntime} from "../../provider-settings";
+import {getSycRuntime,getSycVisionRuntime} from "../../provider-settings";
 import {downloadImage,saveOutput} from "../../storage";
 import {validateOutput} from "../../validators";
 import {fetchSycModels} from "./client";
+import {testVisionRuntime} from "../../vision-test";
 
-type Draft={baseUrl?:string;apiKey?:string;imageModel?:string};
+type Draft={baseUrl?:string;apiKey?:string;imageModel?:string;visionModel?:string};
 
 export async function listSycModels(draft?:Draft){
   const runtime=await getSycRuntime(draft);
@@ -32,4 +33,8 @@ export async function testSycImage(draft?:Draft){
   const output=extension==="png"?await sharp(downloaded.buffer).png().toBuffer():await sharp(downloaded.buffer).jpeg({quality:92}).toBuffer();
   const imageUrl=await saveOutput("api-test","syc",`syc-test-${Date.now()}-${crypto.randomUUID()}.${extension}`,output);
   return {ok:true,message:"真实图片测试成功，结果已保存",imageUrl,mimeType:`image/${extension==="jpg"?"jpeg":"png"}`,width:metadata.width,height:metadata.height};
+}
+
+export async function testSycVision(draft?:Draft){
+  return testVisionRuntime(await getSycVisionRuntime(draft));
 }

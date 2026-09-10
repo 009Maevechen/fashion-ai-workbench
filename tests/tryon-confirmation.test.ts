@@ -21,11 +21,11 @@ const job=(status:Job["status"],overrides:Partial<Job>={}):Job=>({
   ...overrides,
 });
 
-test("复制产品图模特或残留原服装特征的换装结果直接失败且禁止确认",()=>{
+test("复制产品图模特或残留原服装特征时保留 AI 风险提示但允许人工复核",()=>{
   assert.deepEqual(tryonSubjectFidelityFailurePatch(),{
     status:"failed",
     requestStatus:"failed",
-    errorMessage:"换装主体错误：结果残留了参考模特原服装特征、复制/更接近了服装产品图中的模特、或皮肤质感画质明显低于参考模特图，已禁止确认。请重新生成",
+    errorMessage:"AI 换装质检未通过：结果可能残留参考模特原服装特征、复制/更接近服装产品图中的模特，或皮肤质感画质明显低于参考模特图。建议重新生成；图片仍保留，可由用户人工审核后确认",
   });
 });
 const project=(confirmedTryonImage?:string):Project=>({
@@ -48,9 +48,15 @@ test("已选成功候选可在另一候选仍生成时确认",()=>{
   assert.equal(canConfirmTryonSelection(image,jobs),true);
 });
 
-test("未完成、失败或过期的候选不能确认",()=>{
+test("有真实输出的 AI 待重做或失败候选允许人工确认",()=>{
+  assert.equal(canConfirmTryonSelection(image,[job("needs_redo")]),true);
+  assert.equal(canConfirmTryonSelection(image,[job("failed")]),true);
+});
+
+test("未完成、无输出、中断或过期的候选不能确认",()=>{
   assert.equal(canConfirmTryonSelection(image,[job("generating")]),false);
-  assert.equal(canConfirmTryonSelection(image,[job("failed")]),false);
+  assert.equal(canConfirmTryonSelection(image,[job("failed",{outputImages:[]})]),false);
+  assert.equal(canConfirmTryonSelection(image,[job("interrupted")]),false);
   assert.equal(canConfirmTryonSelection(image,[job("success",{dependencyStatus:"stale"})]),false);
 });
 

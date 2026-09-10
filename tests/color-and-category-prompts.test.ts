@@ -46,23 +46,24 @@ test("换装严格隔离双图职责且只允许修改服装区域",()=>{
   assert.match(prompt,/扣子数量——产品图有几颗就生成几颗/);
   assert.match(prompt,/单排扣、双排扣、明门襟、暗门襟/);
   assert.match(prompt,/扣子不得出现漂浮、歪斜、糊掉、消失、变形、错位/);
+  assert.match(prompt,/多件\/多色产品图单件隔离/);
+  assert.match(prompt,/这一件、这一个颜色款.*唯一服装来源/);
+  assert.match(prompt,/禁止从其他颜色款借颜色、借细节、补结构或拼成混合款/);
+  assert.match(prompt,/结果不得混入第二件服装的颜色、图案、面料或任何局部设计/);
 });
 
-test("复色提示词按颜色款一对一复刻设计且保持人物原样",()=>{
+test("普通复色只映射主体色并让扣子继承原款",()=>{
   const prompt=recolorPrompt("裙子","焦糖色","#C8A06A",["印花"],"保持背景",false,"白色","#FFFFFF");
-  assert.match(prompt,/颜色款一对一复刻规则/);
-  assert.match(prompt,/第二张图片是当前这一个颜色款的整件服装设计参考/);
-  assert.match(prompt,/每个颜色款必须分别读取自己的第二张参考图/);
+  assert.match(prompt,/同款不同色默认规则/);
+  assert.match(prompt,/第1张图片.*颜色区域布局的唯一基础底图/);
+  assert.match(prompt,/普通款只负责提供主体颜色/);
+  assert.match(prompt,/扣子、纽扣和统一五金颜色始终继承第1张图/);
+  assert.match(prompt,/先锁布局，再映射颜色/);
   assert.match(prompt,/口袋、条纹、拼接、扣子、印花、包边/);
   assert.match(prompt,/#C8A06A/);
-  assert.match(prompt,/边饰颜色：白色（#FFFFFF）/);
-  assert.match(prompt,/线条位置或面料分区时必须同步还原/);
-  assert.match(prompt,/第二张图没有的设计不得沿用其他色款/);
-  assert.match(prompt,/不得保留原主体颜色/);
-  assert.match(prompt,/没有真正改变目标服装主体颜色必须视为生成失败/);
-  assert.match(prompt,/面料类别、织法\/针法/);
-  assert.match(prompt,/厚薄、光泽、垂感和褶皱响应必须前后一致/);
-  assert.match(prompt,/渐变方向、层次和过渡边界/);
+  assert.match(prompt,/普通款不单独识别或改动边饰、扣子与五金颜色/);
+  assert.match(prompt,/当前颜色款按同款不同色处理，所有结构与第一张图完全一致/);
+  assert.match(prompt,/面料类别、织法、纹理、光泽、厚薄和垂感/);
   assert.match(prompt,/禁止裁剪服装 · 最高优先规则/);
   assert.match(prompt,/只能扩展背景，绝对不能裁切人物或服装/);
   assert.match(prompt,/服装所有可见边缘均未被新画面边界裁掉/);
@@ -80,29 +81,30 @@ test("复色区域由商品类型锁定，上衣不得改动下装",()=>{
   assert.match(prompt,/背景、皮肤、头发、鞋子、道具/);
 });
 
-test("统一复色只换颜色，单件复色按颜色款一对一复刻设计",()=>{
+test("所有复色模式默认同款不同色，只有明确高置信度差异才允许局部改款",()=>{
   const uniform=recolorPrompt("上衣","黑色","#000000",["背景"],"保持结构",false,"","",[],"","","uniform");
-  assert.match(uniform,/统一复色/);
-  assert.match(uniform,/统一复色规则/);
-  assert.match(uniform,/只替换目标服装区域的颜色/);
-  assert.doesNotMatch(uniform,/颜色款一对一复刻规则/);
+  assert.match(uniform,/同款不同色默认规则/);
+  assert.match(uniform,/默认只允许改变对应服装区域的颜色/);
   const perVariant=recolorPrompt("上衣","黑色","#000000",["背景"],"保持结构",false,"","",[],"","","perVariant");
-  assert.match(perVariant,/颜色款一对一复刻规则/);
-  assert.doesNotMatch(perVariant,/统一复色规则/);
-  // 两种模式都必须保证同一颜色款内多张图设计一致，不允许某张多一块少一块。
+  assert.match(perVariant,/同款不同色默认规则/);
+  const explicitVariant=recolorPrompt("上衣","黑色","#000000",["背景"],"保持结构",false,"","",["包边宽度不同"],"","","perVariant",[],false,0,"none","visible_only","","explicit_variant",["包边宽度不同"],.93);
+  assert.match(explicitVariant,/明确颜色款差异规则/);
+  assert.match(explicitVariant,/允许的明确差异仅限：包边宽度不同/);
+  assert.match(explicitVariant,/未列明的版型、结构、口袋/);
+  // 所有模式都必须保证同一颜色款内多张图设计一致，不允许某张多一块少一块。
   assert.match(uniform,/同款颜色设计一致性/);
   assert.match(perVariant,/同款颜色设计一致性/);
   assert.match(uniform,/不允许多一块少一块/);
 });
 
-test("复色以参考图为唯一主要依据，名称和HEX不能覆盖图片",()=>{
+test("复色款式以底图为唯一依据，颜色以参考图为主要依据",()=>{
   const prompt=recolorPrompt("裤子","标题写红色","#FF0000",["背景"],"",false,"","",["黑白侧条纹"],"细密梭织","标题辅助规则","perVariant",[
     {part:"主体",colorName:"橄榄绿",hex:"#556B2F",confidence:.94},
     {part:"侧条纹",colorName:"白色",hex:"#FFFFFF",confidence:.91},
   ]);
-  assert.match(prompt,/唯一主要依据/);
-  assert.match(prompt,/名称、标题和HEX只能帮助定位\/命名/);
-  assert.match(prompt,/文字与第二张参考图冲突，必须完全以第二张参考图为准/);
+  assert.match(prompt,/第1张图始终负责款式结构和区域布局/);
+  assert.match(prompt,/名称和 HEX 只能辅助命名/);
+  assert.match(prompt,/冲突时以第2张图可见颜色为准/);
   assert.match(prompt,/主体=橄榄绿\(#556B2F\)/);
   assert.match(prompt,/侧条纹=白色\(#FFFFFF\)/);
   assert.doesNotMatch(prompt,/颜色名称就是生成规则/);
@@ -110,9 +112,9 @@ test("复色以参考图为唯一主要依据，名称和HEX不能覆盖图片",
 
 test("遮挡区域只有明确统一单色时才允许延展",()=>{
   const safe=recolorPrompt("裤子","绿色","#556B2F",[],"",false,"","",[],"","","perVariant",[],true,.91,"partial","extend_uniform","裤腿被折叠");
-  assert.match(safe,/确认整件服装为统一单色/);
-  assert.match(safe,/仅允许遮挡区域延续参考图可见的同一主体色/);
+  assert.match(safe,/确认该颜色款是统一单色/);
+  assert.match(safe,/只把可见主体色延展到同一个服装主体区域/);
   const review=recolorPrompt("裤子","绿色","#556B2F",[],"",false,"","",["黑白侧条纹"],"","","perVariant",[],false,.4,"partial","visible_only","侧边被遮挡");
-  assert.match(review,/禁止对不可见区域猜色或自动同色延展/);
-  assert.match(review,/进入人工审核/);
+  assert.match(review,/无法确认的颜色必须标记人工审核/);
+  assert.match(review,/禁止猜色、乱分区/);
 });

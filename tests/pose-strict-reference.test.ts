@@ -1,10 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {POSE_PROMPT_VERSION,posePrompt} from "../src/lib/ai/prompts/pose";
+import {POSE_PROMPT_VERSION,poseInputImages,posePrompt} from "../src/lib/ai/prompts/pose";
+
+test("姿势多图输入始终把人物底图放在第一位",()=>{
+  assert.deepEqual(poseInputImages("model","pose","garment"),["model","garment","pose"]);
+  assert.deepEqual(poseInputImages("model","pose"),["model","pose"]);
+});
 
 test("姿势生成使用严格参考模板且姿势参考图优先于文字",()=>{
   const prompt=posePrompt("自然站立","上衣","全身",false,true,"保持衣长");
-  assert.equal(POSE_PROMPT_VERSION,"pose-v7-model-shot-scene-focus");
+  assert.equal(POSE_PROMPT_VERSION,"pose-v8-exact-person-base-edit");
   assert.match(prompt,/最后一张“姿势参考图”/);
   assert.match(prompt,/以姿势参考图的姿势为准/);
   assert.match(prompt,/不得左右镜像/);
@@ -39,9 +44,17 @@ test("姿势生成支持侧重上半身或下半身重点展示",()=>{
 test("姿势生成把产品服装原图作为服装唯一来源",()=>{
   const prompt=posePrompt("自然站立","上衣","全身",false,true,"保持衣长",true);
   assert.match(prompt,/产品服装原图/);
-  assert.match(prompt,/服装外观的唯一真值、唯一来源和最高优先级依据/);
-  assert.match(prompt,/放在所有参考图的主参考位/);
+  assert.match(prompt,/服装外观的唯一真值和最高优先级依据/);
   assert.match(prompt,/服装设计最高优先级规则/);
   assert.match(prompt,/绝对不允许因为参考姿势图而忽略、弱化、替换或改变产品服装原图的服装设计/);
   assert.match(prompt,/在三种姿势下都必须与产品服装原图严格一致/);
+});
+
+test("姿势生成以已确认换装图为人物底图并禁止复制姿势参考人物",()=>{
+  const prompt=posePrompt("右手扶腰","上衣","半身",true,true,"保持衣长",true);
+  assert.match(prompt,/第一张“已确认换装图 \/ 人物底图”/);
+  assert.match(prompt,/本次编辑的唯一底图/);
+  assert.match(prompt,/输出必须仍能明确识别为第一张里的同一个真人/);
+  assert.match(prompt,/禁止借用、融合或复制姿势参考图中的人物/);
+  assert.match(prompt,/若无法同时保持原模特身份与目标姿势，宁可判定失败/);
 });

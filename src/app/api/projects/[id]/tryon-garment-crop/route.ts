@@ -20,7 +20,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const cropHeight = Math.min(height - top, Math.max(10, Math.round(region.height * height)));
     const output = await rotateAndExtract(input, { left, top, width: cropWidth, height: cropHeight }, 96);
     const url = await saveOutput(project.sku, "source", `garment-crop-${crypto.randomUUID()}.jpg`, output);
-    await updateProject(id, { assets: { ...project.assets, garmentCropImage: url, garmentCropRegion: region } });
+    await updateProject(id, { assets: { ...project.assets, garmentCropImage: url, garmentCropRegion: region }, garmentDetailLock: undefined });
     return NextResponse.json({ url, region });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "保存服装框选区域失败" }, { status: 400 });
@@ -35,7 +35,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
     const assets = { ...project.assets };
     delete assets.garmentCropImage;
     delete assets.garmentCropRegion;
-    await updateProject(id, { assets });
+    await updateProject(id, { assets, garmentDetailLock: undefined });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "清除服装框选区域失败" }, { status: 400 });

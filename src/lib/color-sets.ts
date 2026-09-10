@@ -1,14 +1,16 @@
 import type {TargetColor} from "./db";
 import {colorDistance} from "./color-palette";
+import {isButtonColorPart,isComplexColorPart} from "./ai/color-analysis-normalize";
 
-export type AnalyzedGarmentColor={name:string;generationName?:string;hex:string;trimColorName?:string;trimHex?:string;trimPart?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;cropImage?:string;cropRegion?:{x:number;y:number;width:number;height:number}};
+export type AnalyzedGarmentColor={name:string;generationName?:string;hex:string;trimColorName?:string;trimHex?:string;trimPart?:string;confidence?:number;designDetails?:string[];materialFeatures?:string;colorRegions?:TargetColor["colorRegions"];isUniformColor?:boolean;uniformColorConfidence?:number;occlusion?:TargetColor["occlusion"];occlusionPolicy?:TargetColor["occlusionPolicy"];occlusionReason?:string;styleRelation?:TargetColor["styleRelation"];structureMode?:TargetColor["structureMode"];structureDifferenceConfidence?:number;structureDifferences?:string[];needsReview?:boolean;cropImage?:string;cropRegion?:{x:number;y:number;width:number;height:number}};
 
 const trimEdgeLabel=(trim?:string)=>{
   const value=trim?.trim();
   return value?.endsWith("边")?value:value?.endsWith("色")?`${value.slice(0,-1)}边`:value?`${value}边`:"";
 };
 
-export function analyzedColorName(color:Pick<AnalyzedGarmentColor,"name"|"trimColorName"|"generationName">){
+export function analyzedColorName(color:Pick<AnalyzedGarmentColor,"name"|"trimColorName"|"trimPart"|"generationName">){
+  if(isButtonColorPart(color.trimPart)||/扣子|纽扣|钮扣/.test(color.generationName||""))return color.name.trim();
   if(color.generationName?.trim())return color.generationName.trim();
   const main=color.name.trim(),trimLabel=trimEdgeLabel(color.trimColorName);
   return trimLabel&&!main.endsWith(trimLabel)?`${main}${trimLabel}`:main;
@@ -28,16 +30,26 @@ export function mergeAnalyzedColorDetails(existing:TargetColor[],analyzed:Analyz
     if(match<0||best>maximumDistance)return color;
     claimed.add(match);
     const candidate=analyzed[match];
-    return {...color,name:analyzedColorName(candidate),trimColorName:candidate.trimColorName||color.trimColorName,trimHex:candidate.trimHex||color.trimHex,designDetails:candidate.designDetails?.length?candidate.designDetails:color.designDetails,materialFeatures:candidate.materialFeatures||color.materialFeatures,designConfidence:candidate.confidence??color.designConfidence,designNeedsReview:(candidate.confidence??1)<0.65||!(color.cropImage||candidate.cropImage),cropImage:color.cropImage||candidate.cropImage,cropRegion:color.cropRegion||candidate.cropRegion};
+    const preserveManualStructure=color.manualReviewConfirmed&&Boolean(color.structureMode);
+    const buttonOnly=isButtonColorPart(candidate.trimPart);
+    return {...color,name:analyzedColorName(candidate),trimColorName:buttonOnly?undefined:candidate.trimColorName||color.trimColorName,trimHex:buttonOnly?undefined:candidate.trimHex||color.trimHex,trimPart:buttonOnly?undefined:candidate.trimPart||color.trimPart,designDetails:candidate.designDetails?.length?candidate.designDetails:color.designDetails,materialFeatures:candidate.materialFeatures||color.materialFeatures,colorRegions:candidate.colorRegions?.length?candidate.colorRegions:color.colorRegions,isUniformColor:candidate.isUniformColor??color.isUniformColor,uniformColorConfidence:candidate.uniformColorConfidence??color.uniformColorConfidence,occlusion:candidate.occlusion||color.occlusion,occlusionPolicy:candidate.occlusionPolicy||color.occlusionPolicy,occlusionReason:candidate.occlusionReason||color.occlusionReason,styleRelation:preserveManualStructure?color.styleRelation:candidate.styleRelation||color.styleRelation,structureMode:preserveManualStructure?color.structureMode:candidate.structureMode||color.structureMode||"same_style",structureDifferenceConfidence:preserveManualStructure?color.structureDifferenceConfidence:candidate.structureDifferenceConfidence??color.structureDifferenceConfidence,structureDifferences:preserveManualStructure?color.structureDifferences:candidate.structureDifferences?.length?candidate.structureDifferences:color.structureDifferences,designConfidence:candidate.confidence??color.designConfidence,designNeedsReview:preserveManualStructure?false:Boolean(candidate.needsReview||(candidate.confidence??1)<0.65||!(color.cropImage||candidate.cropImage)),cropImage:color.cropImage||candidate.cropImage,cropRegion:color.cropRegion||candidate.cropRegion};
   });
   return {colors,unmatched:analyzed.filter((_,index)=>!claimed.has(index))};
 }
 
 export function normalizedColorName(color:Pick<TargetColor,"name">){return color.name.trim()}
-export function recolorColorName(color:Pick<TargetColor,"name"|"trimColorName"|"outputName">){
+export function isComplexColorway(color:Pick<TargetColor,"trimPart"|"colorRegions"|"structureMode"|"structureDifferences">){
+  return color.structureMode==="explicit_variant"
+    ||Boolean(color.structureDifferences?.length)
+    ||isComplexColorPart(color.trimPart)
+    ||Boolean(color.colorRegions?.some(region=>isComplexColorPart(region.part)));
+}
+export function recolorColorName(color:Pick<TargetColor,"name"|"trimColorName"|"trimPart"|"outputName">){
   const manual=color.outputName?.trim();
+  if(isButtonColorPart(color.trimPart)||/扣子|纽扣|钮扣/.test(manual||""))return normalizedColorName(color);
   if(manual)return manual;
   const main=normalizedColorName(color),trim=color.trimColorName?.trim();
+  if(!isComplexColorway(color as TargetColor))return main;
   const trimLabel=trimEdgeLabel(trim);
   return trimLabel&&!main.endsWith(trimLabel)?`${main}${trimLabel}`:main;
 }
@@ -45,7 +57,8 @@ const MANUAL_TRIM_SUFFIXES=["冷白","米白","纯白","纯黑","深棕","咖啡
 const MANUAL_TRIM_HEX:Record<string,string>={黑:"#101010",纯黑:"#101010",白:"#F4F6F5",纯白:"#F4F6F5",冷白:"#F4F6F5",米白:"#EDE8DC"};
 
 /** 手动输出名称拥有最高优先级，例如“深卡其色黑边”必须覆盖自动识别残留的白色边饰。 */
-export function recolorGenerationTrim(color:Pick<TargetColor,"outputName"|"trimColorName"|"trimHex">){
+export function recolorGenerationTrim(color:Pick<TargetColor,"outputName"|"trimColorName"|"trimHex"|"trimPart"|"colorRegions"|"structureMode"|"structureDifferences">){
+  if(isButtonColorPart(color.trimPart)||!isComplexColorway(color as TargetColor))return {trimColorName:"",trimHex:""};
   const manual=color.outputName?.trim()||"";
   const suffix=MANUAL_TRIM_SUFFIXES.find(name=>manual.endsWith(`${name}边`));
   if(!suffix)return {trimColorName:color.trimColorName?.trim()||"",trimHex:color.trimHex?.trim()||""};

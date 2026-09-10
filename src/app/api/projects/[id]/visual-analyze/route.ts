@@ -8,6 +8,11 @@ const AUTO_ASSET_KEYS = [
   "productDetailImage",
   "printCloseupImage",
   "buttonCloseupImage",
+  "pocketCloseupImage",
+  "necklineCloseupImage",
+  "sleeveCloseupImage",
+  "hemCloseupImage",
+  "stitchingCloseupImage",
   "fabricTextureImage",
   "colorReferenceImage",
 ] as const;
@@ -34,6 +39,11 @@ export async function POST(
           detail: "productDetailImage",
           print: "printCloseupImage",
           buttons: "buttonCloseupImage",
+          pockets: "pocketCloseupImage",
+          neckline: "necklineCloseupImage",
+          sleeve: "sleeveCloseupImage",
+          hem: "hemCloseupImage",
+          stitching: "stitchingCloseupImage",
           fabric: "fabricTextureImage",
           multiColor: "colorReferenceImage",
           modelReference: "modelReferenceImage",
@@ -41,6 +51,10 @@ export async function POST(
       )[region.type];
       if (!regionAssetKey || !(AUTO_ASSET_KEYS as readonly string[]).includes(regionAssetKey))
         continue;
+      const existingEvidence = project.assetEvidence?.[regionAssetKey];
+      const preserveHumanWork = Boolean(project.assets[regionAssetKey])
+        && (existingEvidence?.source !== "ai_crop" || existingEvidence.confirmed);
+      if (preserveHumanWork) continue;
       regions.push(await buildVisualRegion(project.sku, source, region));
     }
     const assets = { ...project.assets };
@@ -56,8 +70,9 @@ export async function POST(
         sourceImage: source,
         confidence: region.confidence,
         boundingBox: region.boundingBox,
-        needsReview: region.needsReview,
-        reason: region.reason,
+        needsReview: true,
+        confirmed: false,
+        reason: `${region.reason}；AI建议裁图，等待用户人工确认`,
         regionId: region.id,
         createdAt: now,
       };
@@ -73,6 +88,7 @@ export async function POST(
         regions,
         missing: detected.missing,
       },
+      garmentDetailLock: undefined,
     }));
     return NextResponse.json({
       project: updated,

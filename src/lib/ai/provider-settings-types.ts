@@ -115,6 +115,10 @@ export type ApiProviderPublic = {
   lastImageTestStatus?: SycTestStatus;
   lastImageTestAt?: string;
   lastImageTestError?: string;
+  lastVisionTestStatus?: SycTestStatus;
+  lastVisionTestAt?: string;
+  lastVisionTestError?: string;
+  lastVisionTestLatencyMs?: number;
   lastTestLatencyMs?: number;
 };
 
@@ -148,6 +152,10 @@ export type SycConfigPublic = {
   lastImageTestStatus: SycTestStatus;
   lastImageTestAt?: string;
   lastImageTestError?: string;
+  lastVisionTestStatus: SycTestStatus;
+  lastVisionTestAt?: string;
+  lastVisionTestError?: string;
+  lastVisionTestLatencyMs?: number;
   lastTestLatencyMs?: number;
 };
 

@@ -2,9 +2,13 @@ import type {GenerateInput} from "./types";
 
 export const DEFAULT_SEEDREAM_MODEL="doubao-seedream-5-0-pro-260628";
 
-export function providerInputImageFilename(workflow:GenerateInput["workflow"],index:number,extension:string){
-  if(workflow==="tryon")return index===0?`01-model-reference-keep-person-pose-scene.${extension}`:`02-garment-product-use-clothing-only.${extension}`;
-  if(workflow==="pose")return index===0?`01-source-model-keep-garment.${extension}`:`02-pose-reference-use-pose-only.${extension}`;
+export function providerInputImageFilename(workflow:GenerateInput["workflow"],index:number,extension:string,totalImages=2){
+  if(workflow==="tryon")return index===0?`01-model-reference-keep-person-pose-scene.${extension}`:index===1?`02-garment-product-use-clothing-only.${extension}`:`${String(index+1).padStart(2,"0")}-garment-detail-reference.${extension}`;
+  if(workflow==="pose"){
+    if(index===0)return `01-source-model-keep-exact-person-and-scene.${extension}`;
+    if(totalImages>=3&&index===1)return `02-garment-product-use-clothing-only.${extension}`;
+    return `${String(index+1).padStart(2,"0")}-pose-reference-use-pose-only-discard-person.${extension}`;
+  }
   return index===0?`01-source-image-recolor-garment-only.${extension}`:`02-color-reference-use-color-only.${extension}`;
 }
 

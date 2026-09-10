@@ -420,7 +420,7 @@ export default function ProviderSettingsManager({
   }
   async function test(
     provider: ApiProviderPublic,
-    mode: "connection" | "image",
+    mode: "connection" | "image" | "vision",
   ) {
     if (
       mode === "image" &&
@@ -434,7 +434,15 @@ export default function ProviderSettingsManager({
     try {
       const data = await requestJson(
         `/api/settings/providers/${provider.id}/test`,
-        { method: "POST", body: JSON.stringify({ mode }) },
+        {
+          method: "POST",
+          body: JSON.stringify({
+            mode,
+            ...(mode === "vision"
+              ? { model: provider.visionModel || provider.defaultModel }
+              : {}),
+          }),
+        },
       );
       const next = await reload();
       const refreshed = next.find((item) => item.id === provider.id);
@@ -907,7 +915,7 @@ export default function ProviderSettingsManager({
                           DeepSeek 只用于文本理解与推理，不作为图片生成或图片编辑模型，无需图片能力测试。
                         </p>
                       </article>
-                    ) : (
+                    ) : (<>
                     <article>
                       <b>真实图片能力</b>
                       <span>
@@ -950,11 +958,41 @@ export default function ProviderSettingsManager({
                           : "测试图片生成"}
                       </button>
                     </article>
+                    {!['bfl', 'fashn'].includes(editingProvider.type) && (
+                      <article>
+                        <b>视觉模型</b>
+                        <span>
+                          {editingProvider.lastVisionTestStatus === "success"
+                            ? "视觉模型正常"
+                            : editingProvider.lastVisionTestStatus === "failed"
+                              ? "失败"
+                              : "未测试"}
+                        </span>
+                        <small>
+                          {editingProvider.lastVisionTestAt
+                            ? `${new Date(editingProvider.lastVisionTestAt).toLocaleString("zh-CN")}${editingProvider.lastVisionTestLatencyMs ? ` · ${editingProvider.lastVisionTestLatencyMs}ms` : ""}`
+                            : "真实发送一张测试图片并验证识别结果"}
+                        </small>
+                        {editingProvider.lastVisionTestError && (
+                          <p className="danger-text">{editingProvider.lastVisionTestError}</p>
+                        )}
+                        <button
+                          className="secondary"
+                          disabled={!!busy}
+                          onClick={() => void test(editingProvider, "vision")}
+                        >
+                          {busy === `${editingProvider.id}:vision`
+                            ? "识别中…"
+                            : "测试视觉模型"}
+                        </button>
+                      </article>
+                    )}
+                    </>
                     )}
                   </div>
                 ) : (
                   <div className="notice">
-                    请先保存当前 API 配置，再运行两项测试。
+                    请先保存当前 API 配置，再运行连接、图片和视觉测试。
                   </div>
                 )}
               </section>

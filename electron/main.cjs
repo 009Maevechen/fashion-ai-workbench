@@ -10,6 +10,7 @@ const path=require("node:path");
 
 app.setName("AI服装工作台");
 if(process.platform==="win32"){
+  app.setAppUserModelId("com.ai-fashion-workbench.desktop");
   // Windows 显卡驱动在同时解码大量高分辨率图片时可能拖垮整机。
   // 工作台不是 3D 应用，使用软件绘制更稳，缩略图仍由服务端生成。
   app.disableHardwareAcceleration();

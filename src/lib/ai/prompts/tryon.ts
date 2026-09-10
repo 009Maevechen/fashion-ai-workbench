@@ -1,9 +1,34 @@
-import {faceVisibilityPrompt} from "./face-visibility";
-import {PHOTOREAL_QUALITY_PROMPT,QUALITY_SELF_CHECK_PROMPT,NO_GARMENT_CROP_PROMPT} from "./image-quality";
+import { faceVisibilityPrompt } from "./face-visibility";
+import {
+  PHOTOREAL_QUALITY_PROMPT,
+  QUALITY_SELF_CHECK_PROMPT,
+  NO_GARMENT_CROP_PROMPT,
+} from "./image-quality";
+import type { GarmentDetailReference } from "@/lib/db";
+import {
+  tryOnEditTaskPrompt,
+  type TryOnEditTask,
+} from "@/lib/tryon-edit-pipeline";
 
-export const TRYON_PROMPT_VERSION="tryon-v12-erase-model-garment";
-export function tryonPrompt(productType:string,description:string,details:string,showFace=false){return `任务：真实服装商品换装。
+export const TRYON_PROMPT_VERSION = "tryon-v15-structured-edit-pipeline";
+export function tryonPrompt(
+  productType: string,
+  description: string,
+  details: string,
+  showFace = false,
+  detailReferences: GarmentDetailReference[] = [],
+  editTask?: TryOnEditTask,
+) {
+  const detailRoleText = detailReferences.length
+    ? `\n【细节参考图角色】第1张=模特参考图，只提供人物/姿势/景别/构图；第2张=服装产品主图，是整体服装最高依据；${detailReferences.map((reference, index) => `第${index + 3}张=${reference.label}，只增强${reference.role}局部事实`).join("；")}。对应特写对其局部的数量、位置、形状、纹理优先于主图模糊区域，但不得改变主图的商品类别与整体版型。`
+    : `\n【输入图角色】第1张=模特参考图，只提供人物/姿势/景别/构图；第2张=服装产品图，是全部服装设计的唯一依据。`;
+  if (editTask)
+    return `${tryOnEditTaskPrompt(editTask, description)}\n${detailRoleText}\n服装类型：${productType}\n补充保护规则：${details}\n${faceVisibilityPrompt(showFace)}${NO_GARMENT_CROP_PROMPT}${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`;
+  return `任务：真实服装商品换装。
 服装类型：${productType}。必须按照该类目的结构和穿着方式进行换装，不得改成其他服装类目。
+${detailRoleText}
+
+【多件/多色产品图单件隔离 · 最高强制规则】如果服装产品图中同时展示多件服装、同款多个颜色、色卡拼图或多人穿着不同颜色，只能先选定其中一件完整、清晰、与指定商品类目相符的服装，并把“这一件、这一个颜色款”绑定为本次换装唯一服装来源。若用户已经手动框选，则框选区域内的那一件拥有绝对优先级；若未框选，则只选择画面中最大、最完整、最清晰的一件。选定后，颜色、版型、面料、纹理、扣子、口袋、条纹、包边、拼接、印花、车线和全部结构都必须来自同一件服装，禁止从其他颜色款借颜色、借细节、补结构或拼成混合款。其他服装只允许作为必须忽略的背景干扰，不得进入生成结果。无法确认同一件完整服装时不得猜测或混合，结果必须进入失败/人工审核。
 
 【最高优先规则 · 换装主体必须是参考模特图】输出的整张画面，其人物、姿势、站位、构图、景别、镜头视角、场景、背景与光线，都必须来自“参考模特图”，而不是来自“服装产品图”。最终结果必须看起来是“参考模特图里的那个模特、用原来的姿势和景别，穿上了产品图的服装”——绝不是“把服装产品图重新生成为一张接近产品图的商品展示图”。这一条优先级最高，任何其他规则都不得违反它。
 
@@ -38,7 +63,8 @@ ${faceVisibilityPrompt(showFace)}
 
 禁止：更换模特或改变模特的脸部、发型、姿势、景别、构图、场景、背景或光线；把结果生成为接近产品图的商品展示图；沿用产品图的人物、构图、展示方式或整体画面；改变服装长度；增加或删除结构装饰；改变服装类型；参考或混入模特原服装的款式、颜色、图案、面料或细节；直接返回原模特图或产品图；生成多宫格、对比图、文字或水印；每次只输出一张独立换装图。
 
-换装结果强制验收：输出前逐项比较两张输入图并自检：①除服装替换区域外，人物、姿势、景别、构图、场景和背景必须与模特参考图一致；②模特原服装必须完全消失、零残留，结果服装不得带有任何模特原服装的颜色、版型、面料、纹理、领型、袖型或结构特征；③结果服装的类目、外轮廓、长度、尺寸比例、裁剪制版、颜色、面料、垂感和全部可见设计细节必须与服装产品图一致，且只能来源于产品图；④扣子、门襟、口袋、条纹、印花、拼接、包边、车线等小细节必须与产品图一比一一致，扣子数量/位置/大小/颜色/形状/排列/门襟结构任何一项不一致都判失败；⑤不得出现产品图中的人物或场景。任何一项不满足都视为失败，必须重新生成，禁止输出折中、猜测或混合后的结果。
+换装结果强制验收：输出前逐项比较两张输入图并自检：①除服装替换区域外，人物、姿势、景别、构图、场景和背景必须与模特参考图一致；②模特原服装必须完全消失、零残留，结果服装不得带有任何模特原服装的颜色、版型、面料、纹理、领型、袖型或结构特征；③结果服装的类目、外轮廓、长度、尺寸比例、裁剪制版、颜色、面料、垂感和全部可见设计细节必须与服装产品图中选定的同一件、同一颜色款一致；④扣子、门襟、口袋、条纹、印花、拼接、包边、车线等小细节必须与选定服装一比一一致，扣子数量/位置/大小/颜色/形状/排列/门襟结构任何一项不一致都判失败；⑤不得出现产品图中的人物或场景；⑥如果产品图含多件或多色，结果不得混入第二件服装的颜色、图案、面料或任何局部设计。任何一项不满足都视为失败，必须重新生成，禁止输出折中、猜测或混合后的结果。
 最终不可违背指令：只执行“把第二张服装产品图中的服装，穿到第一张模特参考图的原人物身上”。第一张图只删除原服装，其余全部保留；第二张图只保留服装，其余全部丢弃。保留模特，不保留模特原衣服；保留产品服装，不沿用产品原图构图。不得交换两张图的职责，不得以产品图人物作为输出主体，不得让模特原服装的任何特征出现在结果里。
-服装描述：${description||"未填写"}
-重点细节：${details}${NO_GARMENT_CROP_PROMPT}${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`}
+服装描述：${description || "未填写"}
+重点细节：${details}${NO_GARMENT_CROP_PROMPT}${PHOTOREAL_QUALITY_PROMPT}${QUALITY_SELF_CHECK_PROMPT}`;
+}

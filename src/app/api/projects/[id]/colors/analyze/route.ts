@@ -16,6 +16,7 @@ export async function POST(
   _: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const startedAt = Date.now();
   try {
     const project = await getProject((await params).id);
     if (!project) throw new Error("商品项目不存在");
@@ -24,7 +25,12 @@ export async function POST(
       project.assets.colorReferenceImage ||
       project.assets.garmentImage;
     if (!reference) throw new Error("请先上传颜色参考图或产品主图");
-    const result = await analyzeGarmentColors(reference);
+    const baseStyle =
+      project.confirmedPoseImages?.[0] ||
+      project.confirmedTryonImage ||
+      project.assets.garmentCropImage ||
+      project.assets.garmentImage;
+    const result = await analyzeGarmentColors(reference, baseStyle);
     if (!result.colors.length)
       throw new Error("没有从参考图中识别到有效颜色，请更换清晰的产品平铺图");
     const source = await localImage(reference);
@@ -32,7 +38,19 @@ export async function POST(
     const baseRegion = reference === project.assets.colorReferenceCropImage ? project.assets.colorReferenceCropRegion : undefined;
     const colors = await Promise.all(result.colors.map(async (color, index) => {
       const manualReference = (project.targetColors || []).find(existing => existing.cropImage && existing.hex && colorDistance(existing.hex, color.hex) < 12);
-      if (manualReference?.cropImage) return { ...color, cropImage: manualReference.cropImage, cropRegion: manualReference.cropRegion };
+      if (manualReference?.cropImage) return {
+        ...color,
+        cropImage: manualReference.cropImage,
+        cropRegion: manualReference.cropRegion,
+        ...(manualReference.manualReviewConfirmed ? {
+          styleRelation: manualReference.styleRelation,
+          structureMode: manualReference.structureMode,
+          structureDifferenceConfidence: manualReference.structureDifferenceConfidence,
+          structureDifferences: manualReference.structureDifferences,
+          needsReview: false,
+          manualReviewConfirmed: true,
+        } : {}),
+      };
       const region = color.boundingBox;
       if (!validVariantRegion(region)) return color;
       const padding = 0.012;
@@ -46,7 +64,7 @@ export async function POST(
       const width = Math.min(metadata.width - left, Math.max(10, Math.ceil(cropRegion.width * metadata.width)));
       const height = Math.min(metadata.height - top, Math.max(10, Math.ceil(cropRegion.height * metadata.height)));
       const buffer = await rotateAndExtract(source, { left, top, width, height }, 95);
-      const cropImage = await saveOutput(project.sku, "source/colors", `${safeSegment(color.name || `variant-${index + 1}`)}-design-${crypto.randomUUID()}.jpg`, buffer);
+      const cropImage = await saveOutput(project.sku, "source/colors", `${safeSegment(color.name || `variant-${index + 1}`)}-color-reference-${crypto.randomUUID()}.jpg`, buffer);
       const sourceRegion = baseRegion ? {
         x: baseRegion.x + cropRegion.x * baseRegion.width,
         y: baseRegion.y + cropRegion.y * baseRegion.height,
@@ -62,6 +80,7 @@ export async function POST(
       needsReview: result.needsReview || missingDesignReferences > 0,
       reviewReason: missingDesignReferences > 0 ? `${missingDesignReferences} 个颜色款未可靠定位，请手动框选整件服装` : result.reviewReason,
       analyzedAt: new Date().toISOString(),
+      analysisDurationMs: Date.now() - startedAt,
     });
   } catch (error) {
     return NextResponse.json(

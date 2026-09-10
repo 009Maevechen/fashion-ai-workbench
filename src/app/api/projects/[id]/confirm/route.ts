@@ -1,7 +1,7 @@
 import {NextResponse} from "next/server";
 import {getProject,listJobs,patchJob,updateProject} from "@/lib/db";
 import {duplicateColorNames,normalizedColorName} from "@/lib/color-sets";
-import {isSameTryonConfirmation} from "@/lib/tryon-confirmation";
+import {canManuallyConfirmTryonJob,isSameTryonConfirmation} from "@/lib/tryon-confirmation";
 import {z} from "zod";
 
 const schema=z.object({workflow:z.enum(["tryon","pose","recolor"]),images:z.array(z.string().startsWith("/api/files/")).min(1).max(3)});
@@ -17,8 +17,19 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     const allJobs=await listJobs({projectId:id}),jobs=allJobs.filter(job=>job.workflow===value.workflow);
     const selected=value.images.map(image=>jobs.find(job=>job.outputImages.includes(image)));
     if(selected.some(job=>!job))throw new Error("选择的图片不属于当前工作流任务");
-    if(selected.some(job=>!CONFIRMABLE.has(job!.status)||job!.dependencyStatus==="stale"))throw new Error("过期、失败或中断的结果不能确认，请重新生成");
-    for(const job of selected)await patchJob(job!.id,{status:"confirmed",dependencyStatus:"current"});
+    if(value.workflow==="tryon"){
+      if(selected.some((job,index)=>!canManuallyConfirmTryonJob(job,value.images[index])))throw new Error("只有已生成并保存、且未过期的换装图片可以人工确认");
+    }else if(selected.some(job=>!CONFIRMABLE.has(job!.status)||job!.dependencyStatus==="stale")){
+      throw new Error("过期、失败或中断的结果不能确认，请重新生成");
+    }
+    for(const job of selected){
+      const manuallyOverrodeAiReview=value.workflow==="tryon"&&!CONFIRMABLE.has(job!.status);
+      await patchJob(job!.id,{
+        status:"confirmed",
+        dependencyStatus:"current",
+        ...(manuallyOverrodeAiReview?{qualityIssues:[...new Set([...(job!.qualityIssues||[]),"用户已人工审核并确认；AI 质检结论仅作参考"])]}:{}),
+      });
+    }
 
     if(value.workflow==="tryon"){
       if(isSameTryonConfirmation(project.confirmedTryonImage,value.images[0])){

@@ -100,6 +100,30 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       .catch(() => setApiState("API异常"));
     fetch("/api/health",{cache:"no-store"}).then(response=>response.json()).then(data=>{if(data.persistence?.recovered)setRecoveryNotice("检测到上次工作台异常关闭，已恢复未完成项目；未完成任务已标记为中断，不会自动重复调用 API。")}).catch(()=>{});
   }, [projectId]);
+  useEffect(() => {
+    const desktop = (
+      window as typeof window & {
+        desktop?: { getAppInfo?: () => Promise<{ platform?: string }> };
+      }
+    ).desktop;
+    let active = true;
+
+    void desktop?.getAppInfo?.().then((info) => {
+      if (!active || !info?.platform) return;
+      const root = document.documentElement;
+      root.dataset.desktopPlatform = info.platform;
+      root.classList.toggle("desktop-platform-win32", info.platform === "win32");
+    }).catch(() => {
+      // 浏览器版本没有 Electron 桥接时继续使用默认网页样式。
+    });
+
+    return () => {
+      active = false;
+      const root = document.documentElement;
+      delete root.dataset.desktopPlatform;
+      root.classList.remove("desktop-platform-win32");
+    };
+  }, []);
   useEffect(()=>{const prepare=(root:ParentNode)=>root.querySelectorAll("img").forEach(image=>{image.loading="lazy";image.decoding="async"});prepare(document);const observer=new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(node=>{if(node instanceof Element){if(node.tagName==="IMG"){(node as HTMLImageElement).loading="lazy";(node as HTMLImageElement).decoding="async"}prepare(node)}})));observer.observe(document.body,{childList:true,subtree:true});return()=>observer.disconnect()},[]);
   function choose(value: string) {
     setProjectQuery(value);
@@ -294,6 +318,17 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
             >
               <span className="nav-icon"><IconEye /></span>
               <span className="nav-label">视觉参考</span>
+            </Link>
+            <Link
+              className={
+                pathname.startsWith("/libraries/product-skills")
+                  ? "nav-link active"
+                  : "nav-link"
+              }
+              href="/libraries/product-skills"
+            >
+              <span className="nav-icon"><IconShirt /></span>
+              <span className="nav-label">产品 Skill</span>
             </Link>
           </section>
           <section className="nav-section">

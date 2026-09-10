@@ -1,4 +1,6 @@
 import "server-only";
+import http from "node:http";
+import https from "node:https";
 import type { ProviderRuntimeConfig } from "./provider-settings-types";
 
 export function visionChatEndpoint(baseUrl: string) {
@@ -27,32 +29,125 @@ export function visionResponsesEndpoint(baseUrl: string) {
 
 type ApiError = { error?: { message?: string } | string; message?: string };
 
+function errorChain(error: unknown) {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current; depth += 1) {
+    if (current instanceof Error) {
+      const code = (current as Error & { code?: string }).code;
+      parts.push([code, current.message].filter(Boolean).join(": "));
+      current = current.cause;
+    } else {
+      parts.push(String(current));
+      break;
+    }
+  }
+  return parts.filter(Boolean).join(" → ") || "未知网络错误";
+}
+
+function isConnectTimeout(error: unknown) {
+  return /UND_ERR_CONNECT_TIMEOUT|Connect Timeout Error|connect(?:ion)? timed? ?out/i.test(
+    errorChain(error),
+  );
+}
+
+/**
+ * Node fetch/Undici 的默认 TCP 建连超时固定为 10 秒。在 Clash Fake-IP
+ * 路由偶发握手较慢时，请求还没到模型就会失败。这里只在明确的建连超时后
+ * 用独立、不可复用的原生 HTTP(S) 连接补一次，避免复用失效连接池。
+ */
+async function freshConnectionFetch(urlValue: string, init: RequestInit) {
+  const url = new URL(urlValue);
+  const transport = url.protocol === "https:" ? https : http;
+  if (!["https:", "http:"].includes(url.protocol))
+    throw new Error("模型服务只支持 HTTP 或 HTTPS 地址");
+  return new Promise<Response>((resolve, reject) => {
+    const request = transport.request(
+      url,
+      {
+        method: init.method || "GET",
+        headers: Object.fromEntries(new Headers(init.headers).entries()),
+        agent: false,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on("error", reject);
+        response.on("end", () => {
+          const status = response.statusCode || 500;
+          const headers = new Headers();
+          for (const [name, value] of Object.entries(response.headers)) {
+            if (Array.isArray(value))
+              value.forEach((item) => headers.append(name, item));
+            else if (value !== undefined) headers.set(name, String(value));
+          }
+          resolve(
+            new Response(
+              status === 204 || status === 304 ? null : Buffer.concat(chunks),
+              { status, statusText: response.statusMessage, headers },
+            ),
+          );
+        });
+      },
+    );
+    const connectTimer = setTimeout(
+      () => request.destroy(new Error("模型服务建立连接超过 30 秒")),
+      30_000,
+    );
+    request.once("socket", (socket) => {
+      const connected = () => clearTimeout(connectTimer);
+      socket.once(
+        url.protocol === "https:" ? "secureConnect" : "connect",
+        connected,
+      );
+    });
+    request.setTimeout(180_000, () =>
+      request.destroy(new Error("模型服务响应超过 180 秒")),
+    );
+    request.once("error", (error) => {
+      clearTimeout(connectTimer);
+      reject(error);
+    });
+    const body = init.body;
+    if (typeof body === "string" || Buffer.isBuffer(body)) request.write(body);
+    else if (body) {
+      request.destroy(new Error("模型请求包含不支持的请求体格式"));
+      return;
+    }
+    request.end();
+  });
+}
+
 async function providerFetch(
   url: string,
   init: RequestInit,
   model: string,
+  preferFreshConnection = false,
 ) {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       // A failed upstream connection can poison or abort its request signal.
       // Give every retry a fresh timeout signal and connection attempt.
+      if (preferFreshConnection) return await freshConnectionFetch(url, init);
       return await fetch(url, {
         ...init,
         signal: AbortSignal.timeout(180_000),
       });
     } catch (error) {
       lastError = error;
+      if (isConnectTimeout(error)) {
+        try {
+          return await freshConnectionFetch(url, init);
+        } catch (fallbackError) {
+          lastError = fallbackError;
+        }
+      }
       if (attempt < 3)
         await new Promise((resolve) => setTimeout(resolve, attempt * 800));
     }
   }
-  const detail =
-    lastError instanceof Error && lastError.cause instanceof Error
-      ? lastError.cause.message
-      : lastError instanceof Error
-        ? lastError.message
-        : "未知网络错误";
+  const detail = errorChain(lastError);
   throw new Error(
     `无法连接模型服务（${model}）：${detail}。已自动重试 3 次，请检查 Base URL、本机网络或中转站状态`,
   );
@@ -121,7 +216,7 @@ async function requestChatText(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ model: runtime.model, temperature: 0, messages }),
-  }, runtime.model);
+  }, runtime.model, runtime.type === "syc-openai-compatible");
   const data = (await response.json().catch(() => ({}))) as ApiError & {
     choices?: Array<{ message?: { content?: unknown } }>;
   };
@@ -144,6 +239,25 @@ export async function requestVisionText(
       content: [
         { type: "text", text: prompt },
         { type: "image_url", image_url: { url: imageDataUrl } },
+      ],
+    },
+  ]);
+}
+
+export async function requestMultiVisionText(
+  runtime: ProviderRuntimeConfig,
+  imageDataUrls: string[],
+  system: string,
+  prompt: string,
+) {
+  if (imageDataUrls.length < 2) throw new Error("多图识别至少需要两张图片");
+  return requestChatText(runtime, [
+    { role: "system", content: system },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: prompt },
+        ...imageDataUrls.map((url) => ({ type: "image_url", image_url: { url } })),
       ],
     },
   ]);
@@ -219,7 +333,7 @@ async function requestResponses(
       ],
       text: { format: { type: "json_object" } },
     }),
-  }, runtime.model);
+  }, runtime.model, runtime.type === "syc-openai-compatible");
   const data = (await response.json().catch(() => ({}))) as ApiError & {
     output_text?: string;
     output?: Array<{
@@ -258,9 +372,8 @@ export async function requestVisionJson(
   prompt: string,
   retried = false,
 ) {
-  const response = await fetch(visionChatEndpoint(runtime.baseUrl), {
+  const response = await providerFetch(visionChatEndpoint(runtime.baseUrl), {
     method: "POST",
-    signal: AbortSignal.timeout((runtime.syc?.timeoutSeconds || 600) * 1000),
     headers: {
       Authorization: `Bearer ${runtime.apiKey}`,
       "Content-Type": "application/json",
@@ -280,7 +393,7 @@ export async function requestVisionJson(
         },
       ],
     }),
-  });
+  }, runtime.model, runtime.type === "syc-openai-compatible");
   const data = (await response.json().catch(() => ({}))) as {
     choices?: Array<{ message?: { content?: unknown } }>;
     error?: { message?: string } | string;

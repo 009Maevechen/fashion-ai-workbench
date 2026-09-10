@@ -53,7 +53,11 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $name = "AI-Workbench-Windows-x64-v$version-Setup.exe"
           Copy-Item $exe.FullName $name
+          $checksum = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          "$checksum  $name" | Set-Content "$name.sha256" -Encoding ascii
           Write-Host "Publishing: $name"
-          gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 安装包，由 GitHub Actions 自动构建。" 2>$null
-          gh release upload latest $name --clobber
-
+          gh release view latest 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create latest --title "AI服装工作台（最新构建）" --notes "Windows 专用安装包，由 GitHub Actions 在 Windows 环境完成检查和构建。"
+          }
+          gh release upload latest $name "$name.sha256" --clobber

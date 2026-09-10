@@ -2,17 +2,19 @@ import "server-only";
 import { z } from "zod";
 import { resolveProductAnalysisModel } from "./provider-settings";
 import { localImage, toDataUrl } from "./storage";
-import { requestTextJson, requestVisionText } from "./vision-chat";
+import { requestMultiVisionJson, requestVisionJson } from "./vision-chat";
 import { readableColorName } from "../color-palette";
 import { extractStructuredColors } from "../structured-color";
 import { resizeToJpeg } from "../image-limits";
-import { chooseSpecificColorName, generationColorName, normalizeMaterialFeatures, normalizeTrimPart } from "./color-analysis-normalize";
+import { chooseSpecificColorName, generationColorName, isButtonColorPart, isComplexColorPart, normalizeColorAnalysisPayload, normalizeMaterialFeatures, normalizeTrimPart } from "./color-analysis-normalize";
+import {recolorStructureNeedsReview,resolveRecolorStructureMode} from "../recolor-structure";
+import {localColorFallbackResult,visualFailureReason} from "./color-analysis-fallback";
 
 const normalizedBox = z.object({
-  x: z.number().min(0).max(1),
-  y: z.number().min(0).max(1),
-  width: z.number().positive().max(1),
-  height: z.number().positive().max(1),
+  x: z.coerce.number().min(0).max(1),
+  y: z.coerce.number().min(0).max(1),
+  width: z.coerce.number().positive().max(1),
+  height: z.coerce.number().positive().max(1),
 }).refine((box) => box.x + box.width <= 1.01 && box.y + box.height <= 1.01, "颜色款区域越界");
 
 const shortName = z.string().min(1).max(200).transform((value) => value.trim().slice(0, 30));
@@ -40,22 +42,13 @@ const colorItem = z.object({
   uniformColorConfidence: z.number().min(0).max(1).optional().default(0.5),
   occlusion: z.enum(["none","partial","heavy"]).optional().default("none"),
   occlusionReason: z.string().max(400).optional().default("").transform((value) => value.trim().slice(0, 160)),
+  styleRelation: z.enum(["same","explicit_difference","uncertain"]).optional().default("uncertain"),
+  structureDifferenceConfidence: z.number().min(0).max(1).optional().default(0.5),
+  structureDifferences: z.array(shortDesignDetail).max(12).optional().default([]),
 });
 const schema = z.object({
   colors: z.array(colorItem).min(1).max(6),
 });
-
-/** 让视觉模型用标准色名描述每个候选色，区分相近颜色。 */
-async function nameColors(hexes: string[], runtime: Awaited<ReturnType<typeof resolveProductAnalysisModel>>) {
-  if (!hexes.length) return {};
-  const named = await requestTextJson(
-    runtime,
-    "你是服装颜色命名助手。依据每个 HEX 独立判断最贴切、可用于商品资料的标准中文颜色名。每个色款都必须单独命名，禁止使用“颜色1”“其他色”“同色系”“深色”等占位或含糊名称；必须重点区分相近颜色：黑色/深灰/炭灰、白色/米白/奶白/象牙白、棕色/深棕/咖色/巧克力棕、卡其/驼色/杏色/米色、蓝色/深蓝/藏蓝/牛仔蓝、绿色/军绿/墨绿/橄榄绿。只返回合法 JSON。",
-    `颜色列表：${hexes.join(", ")}\n\n返回 {"names": {"#HEX": "颜色名"}}，必须覆盖列表里的每个 HEX，并逐个输出最准确的具体颜色名；不得为了让名称不同而虚构差异，也不要笼统地都用“棕色”或“蓝色”。`,
-  );
-  const parsed = (named as { names?: Record<string, string> }) || {};
-  return parsed.names || {};
-}
 
 export type GarmentColorResult = {
   primaryColor: { name: string; hex: string; confidence: number } | null;
@@ -66,64 +59,84 @@ export type GarmentColorResult = {
   needsReview: boolean;
   reviewReason?: string;
   /** 兼容旧接口：复色流程使用的色卡列表 */
-  colors: Array<{ name: string; generationName:string; hex: string; trimColorName: string; trimHex: string; trimPart:string; confidence: number; boundingBox?: {x:number;y:number;width:number;height:number}; designDetails:string[]; materialFeatures:string; colorRegions:Array<{part:string;colorName:string;hex:string;confidence:number}>; isUniformColor:boolean; uniformColorConfidence:number; occlusion:"none"|"partial"|"heavy"; occlusionPolicy:"visible_only"|"extend_uniform"; occlusionReason:string; needsReview:boolean; reviewReason?:string }>;
+  colors: Array<{ name: string; generationName:string; hex: string; trimColorName: string; trimHex: string; trimPart:string; confidence: number; boundingBox?: {x:number;y:number;width:number;height:number}; designDetails:string[]; materialFeatures:string; colorRegions:Array<{part:string;colorName:string;hex:string;confidence:number}>; isUniformColor:boolean; uniformColorConfidence:number; occlusion:"none"|"partial"|"heavy"; occlusionPolicy:"visible_only"|"extend_uniform"; occlusionReason:string; styleRelation:"same"|"explicit_difference"|"uncertain"; structureMode:"same_style"|"explicit_variant"; structureDifferenceConfidence:number; structureDifferences:string[]; needsReview:boolean; reviewReason?:string }>;
 };
 
-export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentColorResult> {
-  const [visionRuntime, textRuntime, input] = await Promise.all([
+export async function analyzeGarmentColors(imageUrl: string, baseStyleImageUrl?:string): Promise<GarmentColorResult> {
+  const [visionRuntime, fallbackRuntime, input, baseInput] = await Promise.all([
     resolveProductAnalysisModel(),
-    resolveProductAnalysisModel("fallback"),
+    resolveProductAnalysisModel("fallback").catch(()=>undefined),
     localImage(imageUrl),
+    baseStyleImageUrl&&baseStyleImageUrl!==imageUrl?localImage(baseStyleImageUrl):Promise.resolve(undefined),
   ]);
-  const normalized = await resizeToJpeg(input, 1600, 90);
-
-  // 本地结构化聚类：白平衡 + 排除肤色/阴影/高光，得到主/辅/点缀色的真实 HEX 与占比
-  const structured = await extractStructuredColors(normalized);
-  const allHexes = [...new Set((structured.colorVariants || []).map((item) => item.hex))];
+  const [normalized,normalizedBase]=await Promise.all([
+    resizeToJpeg(input,1280,88),
+    baseInput?resizeToJpeg(baseInput,1280,88):Promise.resolve(undefined),
+  ]);
 
   try {
     // 视觉模型：定位服装区域并给出标准颜色名与边饰色
-    const observation = await requestVisionText(
-      visionRuntime,
-      toDataUrl(normalized, "image/jpeg"),
-      "你是电商服装图片颜色识别助手。先定位图片中的目标服装区域，只分析服装本体，彻底忽略人物、背景、皮肤、头发、鞋子、道具、衣架、文字、阴影和高光。必须区分相近颜色，不确定时明确说明，不要猜测。",
-      "观察服装的颜色构成：主色、辅色（面积较大的第二种颜色，如侧条纹、拼接）、点缀色（纽扣、印花、小面积边饰）。重点区分相近颜色：黑色/深灰/炭灰、白色/米白/奶白、棕色/深棕/咖色、卡其/驼色/杏色/米色、蓝色/深蓝/藏蓝/牛仔蓝、绿色/军绿/墨绿/橄榄绿。如果同一张图里有多个颜色款式，必须逐款分别说明：颜色和位置顺序；主体、包边、条纹、拼接、扣子、印花、面料分区等每个真实可见部位的独立颜色；口袋、条纹、拼接、扣子、印花、包边、车线、线条位置、面料分区等该色款独有设计；面料纹理、织法、光泽、厚薄和垂感；是否为整件统一单色；是否有折叠、遮挡或裁切。如果存在遮挡，只有在可见证据明确证明整件是统一单色时，才允许说明遮挡部分可延续可见主体色；只要存在拼色、撞色、条纹、包边、印花、分区色或无法判断，就必须说明不可推断。还要给出完整包含该颜色款整件可见服装的归一化外接框 boundingBox（x、y、width、height，范围0到1）。外接框必须包含领口、袖口、腰头、下摆、裤脚等全部可见服装，不能只框颜色小块，也不能混入相邻颜色款。",
-    );
-    const parsed = schema.parse(
-      await requestTextJson(
-        textRuntime,
-        "你是服装色卡资料整理助手。只能依据图片识别结果整理色卡，必须只返回合法 JSON。",
-        `图片识别结果：\n${observation}\n\n返回 {"colors": [...]}，最多6项；按图片中服装款式从左到右/从上到下给出顺序。每项包含 name（主体色的具体标准中文名称）、hex、trimColorName（真实可见的主要边饰/局部色名称，没有则为空字符串）、trimHex（没有边饰则为空字符串）、trimPart（辅色所在部位，只能是“包边、条纹、扣子、拼接、印花、撞色、线条、边”之一，没有则为空字符串）、confidence（0到1）、designDetails（该色款真实可见的口袋/条纹/拼接/扣子/印花/包边/车线/线条位置/面料分区数组）、materialFeatures（面料纹理、织法、光泽、厚薄和垂感）、colorRegions（真实可见的局部配色数组，每项为 part、colorName、hex、confidence）、isUniformColor（只有整件明确统一单色且没有不同色包边/条纹/拼接/扣子/印花/分区时才为 true）、uniformColorConfidence、occlusion（none/partial/heavy）、occlusionReason 和可选 boundingBox（完整色款服装的归一化 x、y、width、height）。名称必须具体、稳定，重点区分黑色/炭黑/深灰、白色/米白/奶油白/象牙白、棕色/焦糖棕/栗棕/巧克力棕/深咖啡、卡其/黄褐卡其/深卡其/驼色/杏色、蓝色/藏青/牛仔蓝/雾霾蓝、绿色/军绿/墨绿/橄榄绿；禁止使用“颜色1、深色、浅色、其他色、同色系”等含糊名称。materialFeatures 必须是一段字符串，例如“细密针织纹理，哑光，中等厚度，垂感自然”，不得返回对象或数组。主色必须按服装主体面积判断，不能被小面积条纹/印花取代；每个局部颜色必须来自参考图真实可见证据，名称或标题不得替代看图判断。若有遮挡：只有 isUniformColor=true 且 uniformColorConfidence>=0.75 时，才表示遮挡部分可延续可见主体色；存在拼色、包边、条纹、印花、面料分区或无法判断时必须 isUniformColor=false。边饰色和部位必须来自真实可见内容，没有就留空，禁止为了凑字段而猜测；boundingBox 必须完整包含该颜色款服装，不能只框颜色小块或混入相邻款；只依据服装区域，背景、皮肤、头发、鞋子、道具、阴影和高光不得参与。所有非空 HEX 必须为 #RRGGBB。`,
-      ),
-    );
+    const system="你是电商服装颜色款识别助手。普通款只识别每一款服装的主体颜色；扣子和统一五金从原款继承，不参与颜色名称或复色映射。只有清晰可见的条纹、包边、拼接、撞色、印花等复杂多色设计才逐部位分析。必须忽略人物、背景、皮肤、头发、鞋子、道具、衣架、文字、阴影和高光。默认所有颜色款都是同款不同色，只有直接、清晰、可复核的视觉证据才能认定结构差异；不确定时保持原款结构并标记不确定，禁止猜测。";
+    const observationPrompt=`${normalizedBase?"图片顺序：第1张是三姿势已确认图/原款结构基准，第2张是多颜色参考图。第1张负责版型、结构、扣子等五金和布局，第2张主要提供每一颜色款的主体颜色；只有复杂多色款才提供条纹、包边、拼接、撞色、印花等局部颜色。":"当前只有颜色参考图，无法与原款直接比对，因此所有颜色款默认按同款结构处理。"}\n优先快速识别每个颜色款的主体色。重点区分相近颜色：黑色/深灰/炭灰、白色/米白/奶白、棕色/深棕/咖色、卡其/驼色/杏色/米色、蓝色/深蓝/藏蓝/牛仔蓝、绿色/军绿/墨绿/橄榄绿。如果参考图里有多个颜色款，逐款识别并按从左到右/从上到下排序。扣子、纽扣及统一五金不得写入 name、trimColorName、trimPart、generationName 或 colorRegions；扣子数量和结构只作为设计观察保留。普通单色款的 trimColorName、trimHex、trimPart 和 colorRegions 必须为空。只有条纹、包边、拼接、撞色、印花等复杂多色款才填写这些局部颜色。不得把小面积五金、阴影或高光当成服装配色。\n只返回 {"colors":[...]}，最多6项。每项字段类型必须严格为：name:string，hex:"#RRGGBB"，trimColorName:string，trimHex:"#RRGGBB"或""，trimPart:string，confidence:0到1数字，boundingBox:{x,y,width,height}（0到1），designDetails:string[]，materialFeatures:string，colorRegions:[{part:string,colorName:string,hex:"#RRGGBB"或"",confidence:0到1数字}]，isUniformColor:boolean，uniformColorConfidence:0到1数字，occlusion:"none"|"partial"|"heavy"，occlusionReason:string，styleRelation:"same"|"explicit_difference"|"uncertain"，structureDifferenceConfidence:0到1数字，structureDifferences:string[]。数组和枚举类型必须严格遵守。styleRelation 默认 same；只有清晰、直接且不是遮挡、折叠或视角造成的差异才可为 explicit_difference。${normalizedBase?"必须以第1张原款图作为版型和设计布局基准。":"没有原款对比图时禁止判定 explicit_difference。"}无法确认时降低置信度，不得猜测。`;
+    const requestAnalysis=(runtime:typeof visionRuntime)=>normalizedBase
+      ?requestMultiVisionJson(runtime,[toDataUrl(normalizedBase,"image/jpeg"),toDataUrl(normalized,"image/jpeg")],system,observationPrompt)
+      :requestVisionJson(runtime,toDataUrl(normalized,"image/jpeg"),system,observationPrompt);
+    const distinctFallback=fallbackRuntime&&(
+      fallbackRuntime.id!==visionRuntime.id||fallbackRuntime.model!==visionRuntime.model
+    )?fallbackRuntime:undefined;
+    const visionRequest=requestAnalysis(visionRuntime).catch(async primaryError=>{
+      if(!distinctFallback)throw primaryError;
+      try{return await requestAnalysis(distinctFallback)}catch(fallbackError){
+        throw new Error(`主视觉模型失败：${visualFailureReason(primaryError)}；备用视觉模型失败：${visualFailureReason(fallbackError)}`);
+      }
+    });
+    // 本地白平衡/聚类与远程视觉识别并行，减少一次识别的总等待时间。
+    const [structured,remoteAnalysis]=await Promise.all([
+      extractStructuredColors(normalized),
+      visionRequest.then(raw=>({ok:true as const,raw})).catch(error=>({ok:false as const,error})),
+    ]);
+    if(!remoteAnalysis.ok)return localColorFallbackResult(structured,remoteAnalysis.error);
+    const rawAnalysis=remoteAnalysis.raw;
+    const parsed = schema.parse(normalizeColorAnalysisPayload(rawAnalysis));
 
-    // 将视觉语义、真实 HEX 和相近色命名表交叉校准；每个色款都必须得到独立、具体的名称。
-    const variantHexes = parsed.colors.map((item) => item.hex.toUpperCase());
-    const visionNames = await nameColors([...new Set([...allHexes, ...variantHexes])], textRuntime);
+    // 视觉语义与本地 Lab 感知色差表交叉校准，不再额外调用一次颜色命名模型。
+    const detectedNames=new Map(parsed.colors.map(item=>[item.hex.toUpperCase(),item.name]));
     const resolvedColors = parsed.colors.map((item) => {
       const upper = item.hex.toUpperCase();
-      const hexName=visionNames[upper]?.trim()||readableColorName(upper,[]);
+      const hexName=readableColorName(upper,[]);
       const name=chooseSpecificColorName(item.name,hexName);
-      const trimPart=normalizeTrimPart(item.trimPart,item.designDetails);
-      const colorRegions=item.colorRegions.map(region=>({...region,hex:region.hex.toUpperCase()}));
+      const detectedTrimPart=normalizeTrimPart(item.trimPart,item.designDetails);
+      const colorRegions=item.colorRegions
+        .filter(region=>!isButtonColorPart(region.part))
+        .map(region=>({...region,hex:region.hex.toUpperCase()}));
+      const complexColorway=isComplexColorPart(detectedTrimPart)||colorRegions.some(region=>isComplexColorPart(region.part));
+      const trimPart=complexColorway?detectedTrimPart:"";
+      const trimColorName=complexColorway?item.trimColorName:"";
+      const trimHex=complexColorway?item.trimHex.toUpperCase():"";
       const occlusionPolicy:"visible_only"|"extend_uniform"=item.occlusion!=="none"&&item.isUniformColor&&item.uniformColorConfidence>=0.75?"extend_uniform":"visible_only";
       const occlusionNeedsReview=item.occlusion!=="none"&&occlusionPolicy!=="extend_uniform";
-      const reviewReason=occlusionNeedsReview
+      const structureMode=resolveRecolorStructureMode(item.styleRelation,item.structureDifferenceConfidence,item.structureDifferences);
+      const structureNeedsReview=recolorStructureNeedsReview(item.styleRelation,item.structureDifferenceConfidence,item.structureDifferences,item.occlusion);
+      const reviewReason=structureNeedsReview
+        ?"颜色款结构差异证据不足或被遮挡，请确认；未确认前必须沿用原款布局"
+        :occlusionNeedsReview
         ?item.occlusionReason||"参考图存在遮挡，且无法确认整件服装为统一颜色，禁止自动推断遮挡区域"
         :undefined;
-      return {...item,hex:upper,trimHex:item.trimHex.toUpperCase(),name,trimPart,colorRegions,generationName:generationColorName(name,item.trimColorName,trimPart),occlusionPolicy,needsReview:occlusionNeedsReview,reviewReason};
+      return {...item,hex:upper,trimColorName,trimHex,name,trimPart,colorRegions,generationName:generationColorName(name,trimColorName,trimPart),occlusionPolicy,structureMode,needsReview:occlusionNeedsReview||structureNeedsReview,reviewReason};
     });
     const nameOf = (hex: string) => {
       const upper = hex.toUpperCase();
-      if (visionNames[upper]) return visionNames[upper];
-      return readableColorName(upper, []);
+      return chooseSpecificColorName(detectedNames.get(upper),readableColorName(upper, []));
     };
 
     const primaryHex = structured.primaryColor?.hex.toUpperCase();
     const visionPrimary = resolvedColors[0];
     const primaryColor = primaryHex
       ? {
-          name: visionNames[primaryHex] || visionPrimary?.name || readableColorName(primaryHex, []),
+          name: chooseSpecificColorName(
+            detectedNames.get(primaryHex) || visionPrimary?.name,
+            readableColorName(primaryHex, []),
+          ),
           hex: primaryHex,
           confidence: structured.primaryColor!.confidence,
         }
@@ -149,13 +162,18 @@ export async function analyzeGarmentColors(imageUrl: string): Promise<GarmentCol
     // 多色款：如果视觉模型识别到多个颜色，且本地聚类也确认了多种主色，合并为变体列表
     const missingVariantBox = resolvedColors.some((item) => !item.boundingBox);
     const missingTrimPart = resolvedColors.some((item) => Boolean(item.trimColorName) && !item.trimPart);
-    const needsReview = structured.needsReview || resolvedColors.some((item) => item.needsReview || (item.confidence ?? 0.5) < 0.65) || resolvedColors.length > 4 || missingVariantBox || missingTrimPart;
+    const missingRegionColorName = resolvedColors.some((item) =>
+      item.colorRegions.some((region) => region.colorName === "待人工确认"),
+    );
+    const needsReview = structured.needsReview || resolvedColors.some((item) => item.needsReview || (item.confidence ?? 0.5) < 0.65) || resolvedColors.length > 4 || missingVariantBox || missingTrimPart || missingRegionColorName;
     const reviewReason = structured.needsReview
       ? structured.reviewReason
       : missingVariantBox
         ? "部分颜色款未可靠定位，需要人工框选该颜色款的整件服装"
       : missingTrimPart
         ? "识别到了辅色，但未能确认辅色位于包边、条纹或其他部位，需要人工确认"
+      : missingRegionColorName
+        ? "部分局部颜色名称无法从参考图可靠确认，需要人工检查"
       : resolvedColors.some((item) => item.needsReview)
         ? resolvedColors.find((item) => item.needsReview)?.reviewReason || "部分颜色款存在遮挡或不可见区域，需要人工确认"
       : resolvedColors.some((item) => (item.confidence ?? 0.5) < 0.65)

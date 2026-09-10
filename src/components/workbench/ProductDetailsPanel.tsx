@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import type {
   Job,
+  NormalizedCropRegion,
+  ProductAssetEvidence,
   ProductAttributes,
+  ProductDetailAssetKey,
   ProductProfile,
   ProductType,
   Project,
@@ -16,6 +19,7 @@ import type { Runner } from "./types";
 import { hasClearableSourceAssets } from "@/lib/asset-cleanup";
 import { DEFAULT_PROTECTION_ITEMS } from "@/lib/product-structure";
 import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
+import ColorCropper from "./ColorCropper";
 
 const TYPES: ProductType[] = ["上衣", "裤装", "连衣裙", "半身裙", "套装"];
 const ATTRIBUTE_OPTIONS: Record<keyof ProductAttributes, string[]> = {
@@ -150,6 +154,11 @@ type SingleAssetKey =
   | "productDetailImage"
   | "printCloseupImage"
   | "buttonCloseupImage"
+  | "pocketCloseupImage"
+  | "necklineCloseupImage"
+  | "sleeveCloseupImage"
+  | "hemCloseupImage"
+  | "stitchingCloseupImage"
   | "modelReferenceImage"
   | "fabricTextureImage"
   | "colorReferenceImage";
@@ -194,8 +203,38 @@ const ASSET_FIELDS: {
   {
     key: "buttonCloseupImage",
     label: "纽扣特写",
-    description: "纽扣数量、颜色与形状参考",
+    description: "纽扣数量、位置、颜色与形状参考",
     name: "button-closeup",
+  },
+  {
+    key: "pocketCloseupImage",
+    label: "口袋特写",
+    description: "口袋数量、位置、开口和形状参考",
+    name: "pocket-closeup",
+  },
+  {
+    key: "necklineCloseupImage",
+    label: "领口特写",
+    description: "领型、门襟、包边与结构参考",
+    name: "neckline-closeup",
+  },
+  {
+    key: "sleeveCloseupImage",
+    label: "袖口特写",
+    description: "袖型、袖口和车线结构参考",
+    name: "sleeve-closeup",
+  },
+  {
+    key: "hemCloseupImage",
+    label: "下摆 / 裤脚特写",
+    description: "下摆、裤脚、开叉与包边参考",
+    name: "hem-closeup",
+  },
+  {
+    key: "stitchingCloseupImage",
+    label: "车线 / 拼接特写",
+    description: "车线走向、拼接边界和针距参考",
+    name: "stitching-closeup",
   },
   {
     key: "modelReferenceImage",
@@ -219,6 +258,20 @@ const ASSET_FIELDS: {
 const PRIMARY_ASSET_KEYS: SingleAssetKey[] = ["garmentImage", "modelReferenceImage"];
 const primaryAssetFields = ASSET_FIELDS.filter((field) => PRIMARY_ASSET_KEYS.includes(field.key));
 const supplementalAssetFields = ASSET_FIELDS.filter((field) => !PRIMARY_ASSET_KEYS.includes(field.key));
+const PRODUCT_DETAIL_ASSET_KEYS = new Set<ProductDetailAssetKey>([
+  "productFrontImage", "productBackImage", "productDetailImage", "printCloseupImage",
+  "buttonCloseupImage", "pocketCloseupImage", "necklineCloseupImage", "sleeveCloseupImage",
+  "hemCloseupImage", "stitchingCloseupImage", "modelReferenceImage", "fabricTextureImage",
+  "colorReferenceImage",
+]);
+const DETAIL_CROP_KEYS = new Set<ProductDetailAssetKey>([
+  "productFrontImage", "productBackImage", "productDetailImage", "printCloseupImage",
+  "buttonCloseupImage", "pocketCloseupImage", "necklineCloseupImage", "sleeveCloseupImage",
+  "hemCloseupImage", "stitchingCloseupImage", "fabricTextureImage", "colorReferenceImage",
+]);
+function isProductDetailAssetKey(key: keyof ProjectAssets): key is ProductDetailAssetKey {
+  return PRODUCT_DETAIL_ASSET_KEYS.has(key as ProductDetailAssetKey);
+}
 type ProductTab = "basic" | "attributes" | "assets" | "description" | "tags";
 const PRODUCT_TABS: { id: ProductTab; label: string; description: string }[] = [
   { id: "basic", label: "基础信息", description: "SKU、名称与项目安排" },
@@ -274,17 +327,14 @@ export default function ProductDetailsPanel({
     [analysisNotice, setAnalysisNotice] = useState("");
   const [visualAnalyzing, setVisualAnalyzing] = useState(false);
   const [visualNotice, setVisualNotice] = useState("");
-  const [aiFilled, setAiFilled] = useState<Record<string, { confidence: number; needsReview: boolean }>>(
-    () =>
-      Object.fromEntries(
-        Object.entries(p.assetEvidence || {})
-          .filter(([, evidence]) => evidence.source === "ai_crop")
-          .map(([key, evidence]) => [
-            key,
-            { confidence: evidence.confidence ?? 0, needsReview: evidence.needsReview ?? false },
-          ]),
-      ),
-  );
+  const [assetEvidence, setAssetEvidence] = useState<Project["assetEvidence"]>(() => ({ ...(p.assetEvidence || {}) }));
+  const [cropTarget, setCropTarget] = useState<{key: ProductDetailAssetKey; label: string} | null>(null);
+  const [cropDraft, setCropDraft] = useState<NormalizedCropRegion | undefined>();
+  const aiFilled = useMemo(() => Object.fromEntries(
+    Object.entries(assetEvidence || {})
+      .filter(([, evidence]) => evidence.source === "ai_crop")
+      .map(([key, evidence]) => [key, evidence]),
+  ) as Record<string, ProductAssetEvidence>, [assetEvidence]);
   const [assets, setAssets] = useState<Record<string, LocalAsset>>(() =>
     Object.fromEntries([
       ...ASSET_FIELDS.map((field) => [
@@ -346,6 +396,9 @@ export default function ProductDetailsPanel({
   const previewImages = Object.values(assets).flatMap((asset) =>
     asset.url ? [asset.url] : [],
   );
+  const pendingAiReviewCount = Object.values(assetEvidence || {}).filter(
+    (evidence) => evidence.source === "ai_crop" && !evidence.confirmed,
+  ).length;
 
   async function saveAsset(
     asset: LocalAsset,
@@ -364,6 +417,22 @@ export default function ProductDetailsPanel({
         ...value,
         [stateKey]: { ...asset, url, file: undefined, status: "saved" },
       }));
+      if (isProductDetailAssetKey(key)) {
+        const now = new Date().toISOString();
+        setAssetEvidence((value) => ({
+          ...(value || {}),
+          [key]: {
+            source: "manual",
+            sourceImage: url,
+            confidence: 1,
+            needsReview: false,
+            confirmed: true,
+            reason: "用户人工上传并确认",
+            createdAt: now,
+            reviewedAt: now,
+          },
+        }));
+      }
       setSaved(false);
     } catch (error) {
       setAssets((value) => ({
@@ -381,6 +450,13 @@ export default function ProductDetailsPanel({
     await deleteAsset(key, index);
     const stateKey = key === "otherMaterialImages" ? "otherMaterial" : key;
     setAssets((value) => ({ ...value, [stateKey]: { status: "idle" } }));
+    if (isProductDetailAssetKey(key)) {
+      setAssetEvidence((value) => {
+        const next = { ...(value || {}) };
+        delete next[key];
+        return next;
+      });
+    }
     setSaved(false);
   }
   async function clearAllAssets() {
@@ -391,6 +467,7 @@ export default function ProductDetailsPanel({
         ["otherMaterial", { status: "idle" }],
       ]),
     );
+    setAssetEvidence({});
     setPreview(null);
   }
   function addTag() {
@@ -464,6 +541,7 @@ export default function ProductDetailsPanel({
         method: "POST",
       });
       const data = (await response.json()) as {
+        project?: Project;
         regions?: Array<{
           assetKey: string;
           label: string;
@@ -478,7 +556,7 @@ export default function ProductDetailsPanel({
         throw new Error(data.error || "产品细节识别失败");
       const filledKeys = new Set(data.regions.map((region) => region.assetKey));
       const next = { ...assets };
-      const evidence: Record<string, { confidence: number; needsReview: boolean }> = {};
+      const evidence: Record<string, ProductAssetEvidence> = {};
       for (const region of data.regions) {
         const stateKey = region.assetKey as keyof typeof assets;
         if (!(stateKey in next)) continue;
@@ -488,18 +566,21 @@ export default function ProductDetailsPanel({
           status: "saved",
         };
         evidence[region.assetKey] = {
+          source: "ai_crop",
           confidence: region.confidence,
-          needsReview: region.needsReview,
+          needsReview: true,
+          confirmed: false,
+          reason: "AI建议裁图，等待用户人工确认",
+          createdAt: new Date().toISOString(),
         };
       }
       setAssets(next);
-      setAiFilled(evidence);
+      setAssetEvidence(data.project?.assetEvidence || { ...(assetEvidence || {}), ...evidence });
       setSaved(false);
-      const reviewCount = data.regions.filter((region) => region.needsReview).length;
       const filled = Array.from(filledKeys).length;
       const missing = (data.missing || []).map((item) => item.label).join("、");
       setVisualNotice(
-        `已自动裁剪并高清放大 ${filled} 个细节图${reviewCount ? `，其中 ${reviewCount} 个建议人工确认` : ""}${missing ? `；未识别到：${missing}` : ""}。请检查后保存。`,
+        `步骤1完成：AI已从产品主图裁剪并高清放大 ${filled} 个补充素材参考${missing ? `；未识别到：${missing}` : ""}。请逐张确认、重新框选或人工上传。`,
       );
     } finally {
       setVisualAnalyzing(false);
@@ -513,12 +594,11 @@ export default function ProductDetailsPanel({
     ) as SingleAssetKey[];
     for (const key of assetKeys) await deleteAsset(key);
     const remainingEvidence = Object.fromEntries(
-      Object.entries(p.assetEvidence || {}).filter(
+      Object.entries(assetEvidence || {}).filter(
         ([key]) => !assetKeys.includes(key as SingleAssetKey),
       ),
     );
-    await saveProject({ assetEvidence: remainingEvidence });
-    setAiFilled({});
+    setAssetEvidence(remainingEvidence);
     setAssets((value) => {
       const next = { ...value };
       for (const key of assetKeys) next[key] = { status: "idle" };
@@ -526,6 +606,39 @@ export default function ProductDetailsPanel({
     });
     setSaved(false);
     setVisualNotice("已撤销 AI 自动填充的细节图，对应槽位已清空，可重新手动上传或再次识别。");
+  }
+  function openDetailCrop(key: ProductDetailAssetKey, label: string) {
+    if (!assets.garmentImage?.url) throw new Error("请先上传并保存产品主图");
+    setCropTarget({ key, label });
+    setCropDraft(assetEvidence?.[key]?.boundingBox || { x: 0.2, y: 0.2, width: 0.6, height: 0.6 });
+  }
+  async function saveDetailCrop() {
+    if (!cropTarget || !cropDraft) throw new Error("请先在产品主图上框选参考区域");
+    const target = cropTarget;
+    const response = await fetch(`/api/projects/${p.id}/detail-assets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetKey: target.key, boundingBox: cropDraft }),
+    });
+    const data = await response.json() as {url?: string; evidence?: ProductAssetEvidence; error?: string};
+    if (!response.ok || !data.url || !data.evidence) throw new Error(data.error || "保存人工细节裁图失败");
+    setAssets((value) => ({ ...value, [target.key]: { url: data.url, name: `${target.label} · 人工框选`, status: "saved" } }));
+    setAssetEvidence((value) => ({ ...(value || {}), [target.key]: data.evidence! }));
+    setCropTarget(null);
+    setCropDraft(undefined);
+    setSaved(false);
+    setVisualNotice(`${target.label}已按你指定的产品主图位置裁剪并确认，换装时会作为高优先级细节参考。`);
+  }
+  async function confirmAiDetail(assetKey: ProductDetailAssetKey) {
+    const response = await fetch(`/api/projects/${p.id}/detail-assets`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetKey }),
+    });
+    const data = await response.json() as {evidence?: ProductAssetEvidence; error?: string};
+    if (!response.ok || !data.evidence) throw new Error(data.error || "确认补充素材失败");
+    setAssetEvidence((value) => ({ ...(value || {}), [assetKey]: data.evidence! }));
+    setSaved(false);
   }
   const successful = jobs.filter(
     (job) =>
@@ -810,7 +923,7 @@ export default function ProductDetailsPanel({
                   disabled={busy || visualAnalyzing || !assets.garmentImage?.url}
                   onClick={() => run(analyzeVisual)}
                 >
-                  {visualAnalyzing ? "正在识别细节…" : "▶ AI自动识别并填充细节图"}
+                  {visualAnalyzing ? "正在生成补充素材参考…" : "步骤1：AI参考生成补充素材"}
                 </button>
                 {Object.keys(aiFilled).length > 0 && (
                   <button
@@ -830,6 +943,11 @@ export default function ProductDetailsPanel({
               </div>
             </div>
             {visualNotice && <div className="notice">{visualNotice}</div>}
+            <div className="product-detail-material-flow">
+              <div><b>1</b><span><strong>AI先生成参考</strong><small>只从产品主图真实可见区域定位、裁剪和放大，不补造图片中不存在的细节。</small></span></div>
+              <div><b>2</b><span><strong>你来人工检查与补充</strong><small>逐张确认；不准确时从产品主图重新框选，或直接上传替换。</small></span></div>
+              <div><b>3</b><span><strong>确认后进入换装</strong><small>只有人工上传、人工框选或经你确认的 AI 裁图，才作为高优先级细节参考。</small></span></div>
+            </div>
             <div className="product-assets-priority">
               <div><h3>主要素材</h3><small>换装最常用，优先上传和查看</small></div>
               <div className="product-assets-grid primary-assets-grid">
@@ -854,7 +972,7 @@ export default function ProductDetailsPanel({
                   />
                   {aiFilled[field.key] && (
                     <span className={`ai-fill-badge ${aiFilled[field.key].needsReview ? "review" : ""}`}>
-                      AI裁剪 · 置信度 {Math.round(aiFilled[field.key].confidence * 100)}%
+                      AI裁剪 · 置信度 {Math.round((aiFilled[field.key].confidence ?? 0) * 100)}%
                       {aiFilled[field.key].needsReview ? " · 建议确认" : ""}
                     </span>
                   )}
@@ -862,20 +980,35 @@ export default function ProductDetailsPanel({
               ))}
               </div>
             </div>
-            <details className="product-supplemental-assets">
-              <summary>补充素材 <span>{supplementalAssetFields.filter(field=>assets[field.key]?.url).length + (assets.otherMaterial?.url ? 1 : 0)} 张已上传</span></summary>
+            <details className="product-supplemental-assets" open>
+              <summary>步骤2：人工检查与补充素材 <span>{supplementalAssetFields.filter(field=>assets[field.key]?.url).length + (assets.otherMaterial?.url ? 1 : 0)} 张已上传{pendingAiReviewCount ? ` · ${pendingAiReviewCount} 张待确认` : " · 已确认素材可用于换装"}</span></summary>
               <div className="product-assets-grid">
-              {supplementalAssetFields.map((field) => (
-                <div className="product-asset-card" key={field.key}>
+              {supplementalAssetFields.map((field) => {
+                const detailKey = isProductDetailAssetKey(field.key) ? field.key : undefined;
+                const evidence = detailKey ? assetEvidence?.[detailKey] : undefined;
+                const aiPending = evidence?.source === "ai_crop" && !evidence.confirmed;
+                const statusText = evidence?.source === "manual_crop"
+                  ? "人工框选 · 已确认"
+                  : evidence?.source === "manual"
+                    ? "人工上传 · 已确认"
+                    : evidence?.source === "ai_crop" && evidence.confirmed
+                      ? "AI参考 · 已人工确认"
+                      : aiPending
+                        ? `AI参考 · 待人工检查${evidence.confidence !== undefined ? ` · ${Math.round(evidence.confidence * 100)}%` : ""}`
+                        : assets[field.key]?.url
+                          ? "历史素材 · 可检查或重新框选"
+                          : "未补充";
+                return <div className="product-asset-card" key={field.key}>
                   <AssetUploadCard label={field.label} description={field.description} value={assets[field.key] || { status: "idle" }} onChange={(asset)=>run(()=>saveAsset(asset,field.key,field.name))} onDelete={assets[field.key]?.url?()=>run(()=>removeAsset(field.key)):undefined} onPreview={()=>assets[field.key]?.url&&setPreview(assets[field.key].url!)}/>
-                  {aiFilled[field.key] && (
-                    <span className={`ai-fill-badge ${aiFilled[field.key].needsReview ? "review" : ""}`}>
-                      AI裁剪 · 置信度 {Math.round(aiFilled[field.key].confidence * 100)}%
-                      {aiFilled[field.key].needsReview ? " · 建议确认" : ""}
-                    </span>
-                  )}
-                </div>
-              ))}
+                  <div className="detail-evidence-review">
+                    <span className={`ai-fill-badge ${aiPending ? "review" : evidence?.confirmed ? "confirmed" : ""}`}>{statusText}</span>
+                    <div>
+                      {detailKey && aiPending && <button type="button" className="text-button" disabled={busy} onClick={()=>run(()=>confirmAiDetail(detailKey))}>确认这个细节</button>}
+                      {detailKey && DETAIL_CROP_KEYS.has(detailKey) && <button type="button" className="text-button" disabled={busy || !assets.garmentImage?.url} onClick={()=>openDetailCrop(detailKey,field.label)}>{evidence?.boundingBox ? "查看位置 / 重新裁剪" : "从产品主图裁剪"}</button>}
+                    </div>
+                  </div>
+                </div>;
+              })}
               <div className="product-asset-card">
                 <AssetUploadCard
                   label="其他素材"
@@ -1043,6 +1176,21 @@ export default function ProductDetailsPanel({
           保存并进入换装
         </button>
       </div>
+      {cropTarget && assets.garmentImage?.url && (
+        <div className="reference-crop-dialog-backdrop">
+          <section className="reference-crop-dialog" role="dialog" aria-modal="true" aria-label={`从产品主图裁剪${cropTarget.label}`}>
+            <div className="panel-head">
+              <div><h2>从产品主图裁剪：{cropTarget.label}</h2><small>请只框住要重点参考的真实细节。保存后会高清放大，并作为人工确认的高优先级证据。</small></div>
+              <button type="button" className="settings-dialog-close compact-close" onClick={()=>{setCropTarget(null);setCropDraft(undefined)}}>×</button>
+            </div>
+            <ColorCropper key={cropTarget.key} src={assets.garmentImage.url} region={cropDraft} onChange={setCropDraft} label={`产品主图中的${cropTarget.label}参考区域`}/>
+            <div className="reference-crop-actions">
+              <button type="button" className="secondary" onClick={()=>{setCropTarget(null);setCropDraft(undefined)}}>取消</button>
+              <button type="button" className="primary" disabled={busy || !cropDraft} onClick={()=>run(saveDetailCrop)}>保存为重点细节参考</button>
+            </div>
+          </section>
+        </div>
+      )}
       {preview && (
         <ImagePreviewDialog
           images={previewImages}
