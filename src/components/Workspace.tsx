@@ -56,7 +56,7 @@ export default function Workspace({initial,initialJobs,health,modelRouting,initi
     {step===2&&<TryonPanel {...common} jobs={latest("tryon")} historyJobs={jobs.filter(job=>resultWorkflow(job)==="tryon")}/>}
     {step===3&&<PosePanel {...common} jobs={latest("pose")} historyJobs={jobs.filter(job=>resultWorkflow(job)==="pose")}/>}
     {step===4&&<RecolorPanel {...common} jobs={latest("recolor",true)} historyJobs={jobs.filter(job=>resultWorkflow(job)==="recolor")}/>}
-    {step===5&&<FinalPanel p={p} jobs={jobs} onStep={goStep} onComplete={complete} enqueue={enqueue}/>}
+    {step===5&&<FinalPanel p={p} jobs={jobs} onStep={goStep} onComplete={complete} post={post}/>}
     <RecentTaskList jobs={jobs}/>
   </>;
 }

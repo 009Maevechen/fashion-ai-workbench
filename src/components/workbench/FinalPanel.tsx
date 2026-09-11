@@ -14,7 +14,7 @@ type GalleryImage={url?:string;label:string;status:"passed"|"review"|"failed";jo
 type GalleryGroup={title:string;swatch?:string;images:GalleryImage[]};
 const ACTIVE_STATUSES=["queued","generating","uploading","submitting","waiting_provider","downloading","validating","saving"];
 
-export default function FinalPanel({p,jobs,onStep,onComplete,enqueue}:{p:Project;jobs:Job[];onStep:(step:number)=>void;onComplete:()=>Promise<void>;enqueue:(url:string,body:unknown)=>Promise<unknown>}){
+export default function FinalPanel({p,jobs,onStep,onComplete,post}:{p:Project;jobs:Job[];onStep:(step:number)=>void;onComplete:()=>Promise<void>;post:(url:string,body:unknown)=>Promise<unknown>}){
   const [busy,setBusy]=useState(false),[error,setError]=useState(""),[folderOpen,setFolderOpen]=useState(false),[preview,setPreview]=useState<{images:string[];index:number}|null>(null);
   const colors=recolorColorsWithSavedJobs(p,jobs),recolorJobs=jobs.filter(job=>resultWorkflow(job)==="recolor"),failedJobs=recolorJobs.filter(job=>job.status==="failed"||job.status==="interrupted");
   const jobFor=(url?:string,colorId?:string,slot?:number)=>recolorJobs.find(job=>(url&&job.outputImages.includes(url))||(colorId&&job.targetColorId===colorId&&job.slot===slot));
@@ -26,7 +26,7 @@ export default function FinalPanel({p,jobs,onStep,onComplete,enqueue}:{p:Project
   const galleryImages=groups.flatMap(group=>group.images),available=galleryImages.filter(image=>image.url),passed=galleryImages.filter(image=>image.status==="passed"&&image.url).length,review=galleryImages.filter(image=>image.status==="review").length,failed=galleryImages.filter(image=>image.status==="failed").length,previewImages=available.flatMap(image=>image.url?[image.url]:[]);
   function downloadArchive(){const link=document.createElement("a");link.href=`/api/projects/${p.id}/download`;link.download=`${p.sku}_results.zip`;document.body.appendChild(link);link.click();link.remove()}
   async function completeProject(){setBusy(true);setError("");try{await onComplete()}catch(e){setError(e instanceof Error?e.message:"无法标记项目完成")}finally{setBusy(false)}}
-  const inpaint=useInpaint({project:p,sourceStep:"recolor",enqueue});
+  const inpaint=useInpaint({project:p,sourceStep:"recolor",submit:post});
   return <div className="stack final-qc-page">
     <section className="card final-qc-toolbar">
       <div className="final-qc-title"><div><span className="eyebrow">图片交付画廊</span><h2>{p.sku} · {p.productName}</h2></div><span className={`badge ${p.status==="已完成"?"success":"wait"}`}>{p.status}</span></div>

@@ -74,7 +74,6 @@ export default function PosePanel({
   clearWorkflowErrors,
   saveProject,
   post,
-  enqueue,
   confirmFlow,
 }: PanelProps & { historyJobs: Job[] }) {
   const saved = p.settings.pose,
@@ -208,11 +207,8 @@ export default function PosePanel({
       referenceAnalyses.every(
         (analysis, index) => analysis.referenceImage === referenceUrls[index],
       );
-  const historyItems = historyJobs.filter(
-      (job) =>
-        job.outputImages[0] &&
-        job.status !== "failed" &&
-        job.status !== "interrupted",
+  const historyItems = historyJobs.filter((job) =>
+      canManuallyConfirmJob(job),
     ),
     historyJob = historyItems.find((job) => job.id === historyJobId),
     historyBatch = relatedPoseHistoryJobs(historyJob, historyItems),
@@ -525,7 +521,7 @@ export default function PosePanel({
     setSaveLibrary(false);
   }
 
-  const inpaint = useInpaint({ project: p, sourceStep: "pose", enqueue });
+  const inpaint = useInpaint({ project: p, sourceStep: "pose", submit: post });
   return (
     <>
       <div className="workbench-grid">

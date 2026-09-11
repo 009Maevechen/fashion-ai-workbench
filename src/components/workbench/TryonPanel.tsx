@@ -46,7 +46,6 @@ export default function TryonPanel({
   clearWorkflowErrors,
   saveProject,
   post,
-  enqueue,
   confirmFlow,
 }: PanelProps & { historyJobs: Job[] }) {
   const saved = p.settings.tryon;
@@ -341,7 +340,7 @@ export default function TryonPanel({
   async function checkConsistency(jobId: string) {
     await post(`/api/projects/${p.id}/consistency-check`, { jobId });
   }
-  const inpaint = useInpaint({ project: p, sourceStep: "tryon", enqueue });
+  const inpaint = useInpaint({ project: p, sourceStep: "tryon", submit: post });
 
   return (
     <>

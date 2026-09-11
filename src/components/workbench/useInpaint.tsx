@@ -10,12 +10,12 @@ import InpaintDialog,{type InpaintRequest} from "./InpaintDialog";
 export function useInpaint({
   project,
   sourceStep,
-  enqueue,
+  submit,
   onResult,
 }: {
   project: Project;
   sourceStep: Job["workflow"];
-  enqueue: (url: string, body: unknown) => Promise<unknown>;
+  submit: (url: string, body: unknown) => Promise<unknown>;
   onResult?: (job: Job) => void;
 }) {
   const [inpaintJob, setInpaintJob] = useState<Job | null>(null);
@@ -31,10 +31,10 @@ export function useInpaint({
   async function submitInpaint(request: InpaintRequest) {
     setInpaintBusy(true);
     try {
-      const result = await enqueue("/api/inpaint", {
+      const result = await submit("/api/inpaint", {
         projectId: project.id,
         ...request,
-        mode: "standard",
+        mode: "quality",
       });
       onResult?.(result as Job);
       closeInpaint();

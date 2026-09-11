@@ -76,7 +76,6 @@ export default function RecolorPanel({
   clearWorkflowErrors,
   saveProject,
   post,
-  enqueue,
   confirmFlow,
 }: PanelProps & { historyJobs: Job[] }) {
   const saved = p.settings.recolor;
@@ -207,11 +206,8 @@ export default function RecolorPanel({
       (!active?.generationStartedAt ||
         j.startedAt >= active.generationStartedAt),
   );
-  const historyItems = historyJobs.filter(
-      (job) =>
-        job.outputImages[0] &&
-        job.status !== "failed" &&
-        job.status !== "interrupted",
+  const historyItems = historyJobs.filter((job) =>
+      canManuallyConfirmJob(job),
     ),
     historyJob = historyItems.find((job) => job.id === historyJobId);
   const route = modelRouting.recolor,
@@ -1136,7 +1132,7 @@ export default function RecolorPanel({
       </div>
     </section>
   );
-  const inpaint = useInpaint({ project: p, sourceStep: "recolor", enqueue });
+  const inpaint = useInpaint({ project: p, sourceStep: "recolor", submit: post });
   return (
     <>
       <div className="notice" role="status">
