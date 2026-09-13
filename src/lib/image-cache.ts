@@ -21,12 +21,19 @@ export async function cachedPrepare(
   prepare: (buffer: Buffer) => Promise<{ buffer: Buffer; mime: string }>,
 ): Promise<{ buffer: Buffer; mime: string; cached: boolean; hash: string }> {
   const hash = contentHash(buffer);
-  const target = path.join(cacheRoot(), `${hash}.jpg`);
+  const target = path.join(cacheRoot(), `${hash}.bin`);
+  const metaTarget = path.join(cacheRoot(), `${hash}.json`);
   try {
-    const cached = await fs.readFile(target);
-    return { buffer: cached, mime: "image/jpeg", cached: true, hash };
+    const [cached,meta] = await Promise.all([fs.readFile(target),fs.readFile(metaTarget,"utf8")]);
+    const mime=JSON.parse(meta).mime;
+    if(!["image/jpeg","image/png","image/webp"].includes(mime))throw new Error("invalid cache mime");
+    return { buffer: cached, mime, cached: true, hash };
   } catch {
-    // 未命中，执行真实预处理并写入缓存
+    // 兼容旧 JPEG 缓存；新缓存同时保存 MIME，避免把 PNG/WebP 错标为 JPEG。
+    try{
+      const legacy=await fs.readFile(path.join(cacheRoot(),`${hash}.jpg`));
+      return {buffer:legacy,mime:"image/jpeg",cached:true,hash};
+    }catch{}
   }
   // 同一批并行姿势/复色任务可能同时命中同一输入图；共享进行中的预处理，避免重复压缩。
   const pending = inflight.get(hash) || prepare(buffer);
@@ -39,7 +46,7 @@ export async function cachedPrepare(
   }
   try {
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, prepared.buffer);
+    await Promise.all([fs.writeFile(target, prepared.buffer),fs.writeFile(metaTarget,JSON.stringify({mime:prepared.mime}))]);
   } catch {
     // 缓存写入失败不影响主流程
   }

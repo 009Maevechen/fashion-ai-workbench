@@ -26,7 +26,7 @@ export function prepareResultCleanup(project:Project,jobs:Job[],workflow:Workflo
     if((project.targetColors||[]).some(color=>color.poseResults?.length)){stepStatuses["4"]="stale";stepStatuses["5"]="stale";patch.status="需要重新审核";patch.dependencyStatus="needs_review"}else patch.status="未开始";
   }else{
     urls.push(...(project.confirmedRecolorImages||[]));
-    const targetColors=(project.targetColors||[]).map(color=>{urls.push(...(color.poseResults||[]));const next:TargetColor={...color};delete next.poseResults;next.status=color.cropImage||color.hex?"ready":"draft";return next});
+    const targetColors=(project.targetColors||[]).map(color=>{urls.push(...(color.poseResults||[]),...(color.confirmedPoseResults||[]));const next:TargetColor={...color};delete next.poseResults;delete next.confirmedPoseResults;next.status=color.cropImage||color.hex?"ready":"draft";return next});
     patch.confirmedRecolorImages=undefined;
     patch.targetColors=targetColors;
     patch.currentStep=Math.min(project.currentStep,4);

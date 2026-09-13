@@ -26,11 +26,18 @@ export async function validateUpload(file:File){
 export async function prepareProviderInput(buffer:Buffer){
   const metadata=await sharp(buffer,{failOn:"error",limitInputPixels:MAX_INPUT_PIXELS}).metadata().catch(()=>{throw new Error("输入图片无法解析或文件已损坏，请重新上传原始 JPG、PNG 或 WebP 图片")});
   if(!metadata.width||!metadata.height)throw new Error("输入图片缺少有效尺寸，请重新上传图片");
+  const format=metadata.format;
+  const mime=format==="png"?"image/png":format==="webp"?"image/webp":format==="jpeg"?"image/jpeg":undefined;
+  // 正式文件已经在安全尺寸内时直接把原始字节交给模型，不再为了提交任务重复
+  // JPEG 编码。缩略图/预览图会在进入这里之前被正式源图守卫拒绝。
+  if(mime&&Math.max(metadata.width,metadata.height)<=MAX_INPUT_DIMENSION){
+    return {buffer,mime};
+  }
   // Older Windows builds could save valid PNG/WebP bytes with a .jpg suffix.
   // Re-encoding here makes the declared MIME and actual bytes identical before
   // they are sent to OpenAI-compatible relays and other image providers.
   // 大图先按长边上限降采样，避免全图解码耗尽内存。
-  const normalized=await resizeToJpeg(buffer,MAX_INPUT_DIMENSION,95).catch(()=>{throw new Error("输入图片转换失败，请重新上传原始图片")});
+  const normalized=await resizeToJpeg(buffer,MAX_INPUT_DIMENSION,96).catch(()=>{throw new Error("输入图片转换失败，请重新上传原始图片")});
   return {buffer:normalized,mime:"image/jpeg" as const};
 }
 async function gridLineRisk(buffer:Buffer){const {data,info}=await sharp(buffer).resize(120,160,{fit:"fill"}).greyscale().raw().toBuffer({resolveWithObject:true});const columns=[Math.floor(info.width/3),Math.floor(info.width/2),Math.floor(info.width*2/3)],rows=[Math.floor(info.height/3),Math.floor(info.height/2),Math.floor(info.height*2/3)];for(const x of columns){let hits=0;for(let y=0;y<info.height;y++){const p=data[y*info.width+x],left=data[y*info.width+Math.max(0,x-2)],right=data[y*info.width+Math.min(info.width-1,x+2)];if(Math.abs(p-(left+right)/2)>55)hits++}if(hits/info.height>.72)return true}for(const y of rows){let hits=0;for(let x=0;x<info.width;x++){const p=data[y*info.width+x],top=data[Math.max(0,y-2)*info.width+x],bottom=data[Math.min(info.height-1,y+2)*info.width+x];if(Math.abs(p-(top+bottom)/2)>55)hits++}if(hits/info.width>.72)return true}return false}

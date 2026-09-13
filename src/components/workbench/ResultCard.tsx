@@ -4,6 +4,7 @@ import type { Job } from "@/lib/db";
 import type { CorrectionCommandPlan } from "@/lib/correction-command";
 import { thumbnailUrl } from "@/lib/image-url";
 import CopyImageButton from "./CopyImageButton";
+import LazyThumbnail from "./LazyThumbnail";
 
 const LABELS: Record<string, string> = {
   queued: "等待模型",
@@ -105,7 +106,7 @@ export default function ResultCard({
           onClick={onPreview}
           aria-label={`查看${label}大图`}
         >
-          <img
+          <LazyThumbnail
             className="result-image"
             src={thumbnailUrl(url, 720)}
             alt={label}

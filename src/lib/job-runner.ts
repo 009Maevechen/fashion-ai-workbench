@@ -90,12 +90,9 @@ export async function retryJob(id:string,modelPreference:ModelSlot="primary",cor
     }else if(job.workflow==="pose"){
       payload.sourceImage=job.outputImages[0];
     }else{
-      const sources=Array.isArray(payload.poseImages)?[...payload.poseImages as string[]]:[];
-      if(job.slot&&job.outputImages[0])sources[job.slot-1]=job.outputImages[0];
-      if(sources.length)payload.poseImages=sources;
-      // 纠正单张复色结果时，允许使用该次结果作为对应姿势的临时输入；
-      // 普通复色仍由 executeRecolor 强制读取项目中已确认的姿势图。
-      payload.sourceOverride="correction";
+      // 复色纠正仍从同一张已确认姿势 master 独立生成，禁止把上一张
+      // 复色候选继续当源图，避免颜色和画质逐代累积偏移。
+      delete payload.sourceOverride;
     }
   }
   return enqueueWorkflow(job.workflow,payload as unknown as {projectId:string});

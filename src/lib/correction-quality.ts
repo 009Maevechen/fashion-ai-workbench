@@ -8,6 +8,12 @@ export type CorrectionQualityCheck = {
   outputHeight: number;
   baselineSharpness: number;
   outputSharpness: number;
+  baselineLuminance?:number;
+  outputLuminance?:number;
+  baselineContrast?:number;
+  outputContrast?:number;
+  baselineSaturation?:number;
+  outputSaturation?:number;
   issues: string[];
 };
 
@@ -31,6 +37,12 @@ export function resolveCorrectionQualityCheck(
   }
   if (output.blurry) issues.push("生成结果存在明显模糊或涂抹感");
   if (output.lowResolution) issues.push("生成结果分辨率不足");
+  const baselineLuminance=baseline.meanLuminance,outputLuminance=output.meanLuminance;
+  if(baselineLuminance!==undefined&&outputLuminance!==undefined&&baselineLuminance-outputLuminance>18&&outputLuminance<baselineLuminance*.82)issues.push(`生成结果明显变暗：亮度 ${baselineLuminance.toFixed(1)} → ${outputLuminance.toFixed(1)}`);
+  const baselineContrast=baseline.luminanceContrast,outputContrast=output.luminanceContrast;
+  if(baselineContrast!==undefined&&outputContrast!==undefined&&baselineContrast-outputContrast>8&&outputContrast<baselineContrast*.72)issues.push(`生成结果层次明显下降、存在发灰发闷风险：对比度 ${baselineContrast.toFixed(1)} → ${outputContrast.toFixed(1)}`);
+  const baselineSaturation=baseline.meanSaturation,outputSaturation=output.meanSaturation;
+  if(baselineSaturation!==undefined&&outputSaturation!==undefined&&baselineSaturation>20&&baselineSaturation-outputSaturation>8&&outputSaturation<baselineSaturation*.7)issues.push(`生成结果色彩活力明显下降、存在灰色污染风险：色彩度 ${baselineSaturation.toFixed(1)} → ${outputSaturation.toFixed(1)}`);
   return {
     passed: issues.length === 0,
     baselineWidth: baseline.width,
@@ -39,6 +51,12 @@ export function resolveCorrectionQualityCheck(
     outputHeight: output.height,
     baselineSharpness: baseline.sharpnessScore,
     outputSharpness: output.sharpnessScore,
+    baselineLuminance,
+    outputLuminance,
+    baselineContrast,
+    outputContrast,
+    baselineSaturation,
+    outputSaturation,
     issues: [...new Set(issues)],
   };
 }

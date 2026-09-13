@@ -9,6 +9,7 @@ import {safeSegment} from "./validators";
 import {isSafeStoredPath,outputSegments} from "./storage-paths";
 import {runtimeOutputSearchDirs,runtimeOutputsDir} from "../runtime-paths";
 import {durableWriteFile} from "../durable-json";
+import {createThumbnail} from "../image-limits";
 
 let root=runtimeOutputsDir();
 export function updateOutputRoot(next:string){root=path.resolve(next)}
@@ -17,6 +18,17 @@ export async function saveOutput(sku:string,folder:string,file:string,data:Buffe
 export async function saveProductAnalysisTemporary(projectId:string,file:string,data:Buffer){const segments=[".cache","product-analysis",safeSegment(projectId),safeSegment(file)],p=path.resolve(root,...segments);if(!p.startsWith(root+path.sep))throw new Error("非法临时文件路径");await fs.mkdir(path.dirname(p),{recursive:true});await durableWriteFile(p,data);return `/api/files/${segments.map(encodeURIComponent).join("/")}`}
 export async function clearProductAnalysisTemporary(projectId:string){const target=path.resolve(root,".cache","product-analysis",safeSegment(projectId));if(!target.startsWith(root+path.sep))throw new Error("非法临时文件路径");await fs.rm(target,{recursive:true,force:true})}
 export async function readOutput(parts:string[]){if(!isSafeStoredPath(parts))throw new Error("非法文件路径");for(const directory of runtimeOutputSearchDirs()){const p=path.resolve(directory,...parts);if(!p.startsWith(directory+path.sep))throw new Error("非法文件路径");try{const data=await fs.readFile(p);if(path.resolve(directory)!==path.resolve(root)){const migrated=path.resolve(root,...parts);if(migrated.startsWith(root+path.sep))await durableWriteFile(migrated,data).catch(()=>{})}return data}catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error}}throw new Error("图片文件不存在或保存位置已失效")}
+export async function readImageDerivative(parts:string[],kind:"preview"|"thumbnail",width:number){
+  const safeWidth=Math.round(width),hash=crypto.createHash("sha256").update(parts.join("/")).digest("hex");
+  const target=path.resolve(root,".cache","derivatives",`${hash}-${kind}-${safeWidth}.jpg`);
+  if(!target.startsWith(root+path.sep))throw new Error("非法图片缓存路径");
+  try{return await fs.readFile(target)}catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error}
+  const source=await readOutput(parts);
+  const generated=await createThumbnail(source,safeWidth,kind==="preview"?86:76);
+  await fs.mkdir(path.dirname(target),{recursive:true});
+  await durableWriteFile(target,generated).catch(()=>{});
+  return generated;
+}
 const MAX_DOWNLOAD_BYTES=30*1024*1024;
 async function assertPublicRemoteUrl(raw:string){
   const url=validateRemoteImageUrl(raw),hostname=url.hostname.replace(/^\[|\]$/g,"");

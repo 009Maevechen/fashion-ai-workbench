@@ -54,3 +54,12 @@ test("生成母图按原始字节持久化，连续编辑不引入本地压缩",
   assert.deepEqual(second.buffer,input);
   assert.equal(second.optimized,false);
 });
+
+test("画面明显变暗、发灰和层次下降时必须标记重做",()=>{
+  const baseline={...quality(1536,2048,420),meanLuminance:150,luminanceContrast:55,meanSaturation:48};
+  const output={...quality(1536,2048,410),meanLuminance:90,luminanceContrast:28,meanSaturation:20};
+  const result=resolveCorrectionQualityCheck(baseline,output);
+  assert.equal(result.passed,false);
+  assert.match(result.issues.join("；"),/变暗/);
+  assert.match(result.issues.join("；"),/发灰|色彩活力/);
+});

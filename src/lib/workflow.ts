@@ -54,6 +54,7 @@ import { isGenerationCancelled } from "./generation-cancel";
 import {
   correctionCommandText,
   correctionPlanFromText,
+  deterministicCorrectionCommandPlan,
   type CorrectionCommandPlan,
 } from "./correction-command";
 import { checkCorrectionCommand } from "./ai/correction-check";
@@ -76,6 +77,8 @@ import {
 import { randomGenerationSeed } from "./generation-seed";
 import { isRetryableGenerationError } from "./generation-retry";
 import { checkCorrectionQuality } from "./correction-quality";
+import {assertFormalImageSource,imageSourceVersions} from "./image-sources";
+import {checkInpaintProtectedRegion} from "./inpaint-qc";
 export const DEFAULT_DETAILS =
   "保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
 export async function persistUpload(file: File, sku: string, name: string) {
@@ -245,6 +248,7 @@ async function runOne(args: {
 }) {
   const project = await getProject(args.projectId);
   if (!project) throw new Error("项目不存在");
+  args.images=args.images.map((url,index)=>assertFormalImageSource(url,`AI任务第${index+1}张源图`));
   const correctionPlan =
       args.correctionPlan || correctionPlanFromText(args.prompt),
     choice = await resolveWorkflowModel(
@@ -264,8 +268,15 @@ async function runOne(args: {
     );
     args.correctionQualityBaseline = sourceJob?.correctionQualityBaseline || args.images[0];
   }
+  assertFormalImageSource(args.correctionQualityBaseline,"永久画质基线");
   if (isGenerationCancelled(project.id, args.workflow))
     throw new Error("任务已被用户取消");
+  const approvedSources=new Set<string>([
+    ...Object.values(project.assets).flatMap(value=>Array.isArray(value)?value:typeof value==="string"?[value]:[]),
+    project.confirmedTryonImage||"",
+    ...(project.confirmedPoseImages||[]),
+    ...(project.confirmedRecolorImages||[]),
+  ].filter(Boolean));
   await addJob({
     id,
     projectId: project.id,
@@ -279,6 +290,7 @@ async function runOne(args: {
     mode: args.mode,
     inputImages: args.images,
     outputImages: [],
+    inputImageVersions: args.images.map(source=>imageSourceVersions(source,approvedSources.has(source)?source:null)),
     promptVersion: args.promptVersion,
     status: "queued",
     requestStatus: "queued",
@@ -414,6 +426,11 @@ async function runOne(args: {
         optimized.buffer,
       );
     }
+    let inpaintBoundaryCheck;
+    if(args.workflow==="inpaint"&&args.mask){
+      const encoded=args.mask.slice(args.mask.indexOf(",")+1);
+      inpaintBoundaryCheck=await checkInpaintProtectedRegion(sourceBuffers[0],optimized.buffer,Buffer.from(encoded,"base64"));
+    }
     const localMs = Date.now() - localStart;
     await patchJob(id, { phase: "saving" });
     const url = await saveOutput(
@@ -434,6 +451,7 @@ async function runOne(args: {
       /* QC模型未配置时保留结果并交给人工审核 */
     }
     const commandFailed = Boolean(correctionCheck && !correctionCheck.passed),
+      boundaryFailed=Boolean(inpaintBoundaryCheck&&!inpaintBoundaryCheck.passed),
       qualityRegressed = Boolean(
         correctionQualityCheck && !correctionQualityCheck.passed,
       ),
@@ -445,7 +463,7 @@ async function runOne(args: {
           : [],
       review =
         checks.needsReview || Boolean(args.correctionPlan && !correctionCheck),
-      finalStatus = commandFailed || qualityRegressed
+      finalStatus = commandFailed || qualityRegressed || boundaryFailed
         ? ("needs_redo" as const)
         : review
           ? ("needs_review" as const)
@@ -465,6 +483,7 @@ async function runOne(args: {
         ...checks.warnings,
         ...commandIssues,
         ...(correctionQualityCheck?.issues || []),
+        ...(inpaintBoundaryCheck?.issues || []),
         ...(args.correctionPlan && !correctionCheck
           ? ["咒语命中检查暂不可用，需要人工审核"]
           : []),
@@ -474,9 +493,12 @@ async function runOne(args: {
       requestStatus: finalStatus,
       phase: "success",
       outputImages: [url],
+      outputImageVersions: [imageSourceVersions(url)],
       error: undefined,
       errorMessage: commandFailed
         ? `咒语强制命令未完全命中：${correctionCheck?.summary || "请查看未命中项"}`
+        : boundaryFailed
+          ? "局部重绘越过 Mask 修改了受保护区域，已标记 repair_fail；原图与候选均已保留"
         : qualityRegressed
           ? "图片修改后画质降低，已标记重做；原图和结果均已保留供人工审核"
           : undefined,
@@ -489,7 +511,10 @@ async function runOne(args: {
         correctionQualityCheck?.outputSharpness || checks.sharpnessScore,
       correctionCheck,
       correctionQualityCheck,
+      inpaintBoundaryCheck,
       correctionQualityBaseline: args.correctionQualityBaseline,
+      qcStatus: commandFailed || qualityRegressed || boundaryFailed ? "FAIL" : review ? "NEEDS_REVIEW" : "PASS",
+      errorCode: (commandFailed || boundaryFailed) && args.workflow==="inpaint" ? "repair_fail" : qualityRegressed ? "quality_fail" : undefined,
     });
     await appendModelRunRecord({
       workflowType: args.workflow,
@@ -499,10 +524,10 @@ async function runOne(args: {
       startedAt,
       completedAt: finishedAt,
       durationMs,
-      success: !commandFailed && !qualityRegressed,
+      success: !commandFailed && !qualityRegressed && !boundaryFailed,
       retryCount,
       qcResult:
-        commandFailed || qualityRegressed
+        commandFailed || qualityRegressed || boundaryFailed
           ? "failed"
           : review
             ? "needs_review"
@@ -539,6 +564,7 @@ async function runOne(args: {
       durationMs = Date.now() - new Date(startedAt).getTime();
     await patchJob(id, {
       status: "failed",
+      qcStatus: "FAIL",
       requestStatus: "failed",
       phase: "failed",
       error,
@@ -863,7 +889,7 @@ async function checkTryonCandidate(
       consistencyCheck: garment,
       tryonConsistency: report,
       ...(subject.status === "failed"
-        ? { ...tryonSubjectFidelityFailurePatch(), phase: "success" as const }
+        ? { ...tryonSubjectFidelityFailurePatch(), phase: "success" as const,qcStatus:"FAIL" as const }
         : report.status === "needs_redo"
           ? {
               status: "needs_redo",
@@ -871,6 +897,7 @@ async function checkTryonCandidate(
               phase: "success",
               errorMessage: `换装一致性未通过：${report.summary}`,
               qualityIssues: issues,
+              qcStatus:"FAIL",
             }
           : report.status === "needs_review"
             ? {
@@ -878,12 +905,14 @@ async function checkTryonCandidate(
                 requestStatus: "needs_review",
                 phase: "success",
                 qualityIssues: issues,
+                qcStatus:"NEEDS_REVIEW",
               }
             : {
                 status: generatedStatus,
                 requestStatus: generatedStatus,
                 phase: "success",
                 qualityIssues: issues.length ? issues : undefined,
+                qcStatus:job.qcStatus||"PASS",
               }),
     });
     return { report };
@@ -896,6 +925,7 @@ async function checkTryonCandidate(
         ...(job.qualityIssues || []),
         `换装一致性自动校验不可用：${error instanceof Error ? error.message : "未知错误"}`,
       ],
+      qcStatus:"NEEDS_REVIEW",
     });
     return { report: undefined };
   }
@@ -925,26 +955,39 @@ async function autoCheckRecolorConsistency(
             ];
       await patchJob(job.id, {
         consistencyCheck: check,
-        ...(check.status === "failed"
+        ...(["failed","needs_redo"].includes(check.status)
           ? {
-              status: "failed",
-              requestStatus: "failed",
-              phase: "failed",
+              status: "needs_redo",
+              requestStatus: "needs_redo",
+              phase: "success",
               error: `自动复色校验失败：${check.summary}`,
               errorMessage: `自动复色校验失败：${check.summary}`,
               qualityIssues: issues,
+              qcStatus:"FAIL",
             }
           : check.status === "needs_review"
             ? {
                 status: "needs_review",
                 requestStatus: "needs_review",
                 qualityIssues: issues,
+                qcStatus:"NEEDS_REVIEW",
               }
-            : {}),
+            : {qcStatus:job.qcStatus||"PASS"}),
       });
-    } catch {
-      /* QC 模型未配置时保留生成结果，页面仍允许人工逐款质检 */
+    } catch(error) {
+      await patchJob(job.id,{status:"needs_review",requestStatus:"needs_review",qcStatus:"NEEDS_REVIEW",qualityIssues:[...(job.qualityIssues||[]),`复色一致性自动校验不可用：${error instanceof Error?error.message:"未知错误"}`]});
     }
+  });
+}
+
+async function autoCheckPoseConsistency(projectId:string,results:Array<{id?:string;url?:string;status?:string}>){
+  const project=await getProject(projectId);if(!project)return;
+  await runInOrder(results.filter(item=>item.id&&item.url&&item.status!=="failed"),async candidate=>{
+    const job=await getJob(candidate.id!);if(!job)return;
+    try{
+      const check=await checkGarmentConsistency(project,job),failed=["failed","needs_redo"].includes(check.status),issues=check.status==="passed"?job.qualityIssues:[...(job.qualityIssues||[]),...check.issues.map(issue=>`三姿势校验：${issue}`)];
+      await patchJob(job.id,{consistencyCheck:check,status:failed?"needs_redo":check.status==="needs_review"?"needs_review":job.status,requestStatus:failed?"needs_redo":check.status==="needs_review"?"needs_review":job.requestStatus,qcStatus:failed?"FAIL":check.status==="needs_review"?"NEEDS_REVIEW":job.qcStatus||"PASS",qualityIssues:issues});
+    }catch(error){await patchJob(job.id,{status:"needs_review",requestStatus:"needs_review",qcStatus:"NEEDS_REVIEW",qualityIssues:[...(job.qualityIssues||[]),`三姿势一致性自动校验不可用：${error instanceof Error?error.message:"未知错误"}`]})}
   });
 }
 
@@ -1069,6 +1112,7 @@ export async function executePose(v: {
       }
     }),
   );
+  await autoCheckPoseConsistency(p.id,results);
   const status = slotState(await latestSlotJobs(p.id, "pose"), 3);
   await updateProject(p.id, {
     status: status === "failed" ? "生成失败" : "等待人工确认",
@@ -1178,6 +1222,9 @@ export async function executeRecolor(v: {
     name: v.colorName,
     hex: v.hexColor || undefined,
     cropImage: v.colorReferenceCrop,
+    colorRegions:v.variantColorRegions,
+    isUniformColor:v.variantUniformColor,
+    uniformColorConfidence:v.variantUniformColorConfidence,
     status: "generating",
     generationStartedAt,
     sourceCount: sources.length,
@@ -1327,10 +1374,12 @@ export async function executeInpaint(v: {
 }) {
   const p = await getProject(v.projectId);
   if (!p) throw new Error("项目不存在");
+  assertFormalImageSource(v.sourceUrl,"局部重绘正式源图");
   const sourceJob = await getJob(v.sourceImageId);
   if (!sourceJob || sourceJob.projectId !== p.id || !sourceJob.outputImages.includes(v.sourceUrl))
     throw new Error("局部重绘原图不属于当前项目的已保存结果");
-  const sourceStep = resultWorkflow(sourceJob);
+  const sourceStep = resultWorkflow(sourceJob),
+    correctionPlan=v.correctionPlan||deterministicCorrectionCommandPlan(v.editPrompt);
   const storedMask = v.maskUrl,
     mask = storedMask
       ? toDataUrl(await localImage(storedMask), "image/png")
@@ -1342,6 +1391,13 @@ export async function executeInpaint(v: {
     sourceUrl: v.sourceUrl,
     maskUrl: storedMask || "旧版任务内嵌蒙版",
     editPrompt: v.editPrompt,
+    requiredChanges: correctionPlan.mustChange,
+    editableRegion: `仅限用户 Mask 白色区域（${storedMask||"旧版内嵌蒙版"}）`,
+    protectedRegion: "Mask 外整张图片全部锁定",
+    protectedDetails: correctionPlan.mustKeep,
+    forbiddenChanges: correctionPlan.forbiddenChanges,
+    acceptanceCriteria: correctionPlan.acceptanceCriteria,
+    decision:"pending",
   };
   const slot = sourceJob.slot || v.slot || 1,
     filename = `${safeSegment(p.sku)}_inpaint_${String(slot).padStart(2, "0")}_${crypto.randomUUID().slice(0, 8)}.jpg`;
@@ -1353,7 +1409,7 @@ export async function executeInpaint(v: {
     images: [v.sourceUrl],
     mask,
     prompt: inpaintPrompt(
-      v.correctionPlan ? correctionCommandText(v.correctionPlan) : v.editPrompt,
+      correctionCommandText(correctionPlan),
       v.contextHint || contextHintForStep(sourceStep),
     ),
     promptVersion: INPAINT_PROMPT_VERSION,
@@ -1363,7 +1419,7 @@ export async function executeInpaint(v: {
     inpaint: inpaintMeta,
     targetColorId: sourceJob.targetColorId,
     colorName: sourceJob.colorName,
-    correctionPlan: v.correctionPlan,
+    correctionPlan,
     correctionQualityBaseline: v.correctionQualityBaseline || sourceJob.correctionQualityBaseline,
     enforceSourceQuality: true,
   });

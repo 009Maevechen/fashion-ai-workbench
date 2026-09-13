@@ -81,10 +81,10 @@ export async function rotateAndExtract(
 }
 
 /** 列表缩略图只等比例缩小并压缩画质，绝不裁剪原图。 */
-export async function createThumbnail(buffer:Buffer,width:number):Promise<Buffer>{
+export async function createThumbnail(buffer:Buffer,width:number,quality=76):Promise<Buffer>{
   return sharp(buffer,{failOn:"error",animated:false,limitInputPixels:MAX_THUMBNAIL_PIXELS})
     .rotate()
     .resize({width:Math.max(120,Math.min(960,Math.round(width))),height:1280,fit:"inside",withoutEnlargement:true})
-    .jpeg({quality:76,mozjpeg:true})
+    .jpeg({quality:Math.max(60,Math.min(90,quality)),mozjpeg:true})
     .toBuffer();
 }

@@ -1,10 +1,11 @@
 import type {Project} from "./db";
 import {duplicateColorNames} from "./color-sets";
+import {confirmedColorResults} from "./recolor-collection";
 
 export function finalPackageIssues(project:Project){
   const colors=project.targetColors||[];
   const poseCount=new Set((project.confirmedPoseImages||[]).filter(Boolean)).size;
-  const emptyColors=colors.filter(color=>!color.poseResults?.some(Boolean));
+  const emptyColors=colors.filter(color=>!confirmedColorResults(color).some(Boolean));
   const staleColors=colors.filter(color=>color.status==="stale");
   return [
     !project.confirmedTryonImage&&"尚未确认换装结果",
@@ -21,7 +22,7 @@ export function finalPackagePhotoCount(project:Project){
   const urls=[
     project.confirmedTryonImage,
     ...(project.confirmedPoseImages||[]),
-    ...(project.targetColors||[]).flatMap(color=>color.poseResults||[]),
+    ...(project.targetColors||[]).flatMap(confirmedColorResults),
     ...(project.confirmedRecolorImages||[]),
   ].filter(Boolean) as string[];
   return new Set(urls).size;

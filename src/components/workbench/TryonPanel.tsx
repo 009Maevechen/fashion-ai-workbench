@@ -26,6 +26,7 @@ import { thumbnailUrl } from "@/lib/image-url";
 import type { Job } from "@/lib/db";
 import ColorCropper, { type CropRegion } from "./ColorCropper";
 import GenerationControls from "./GenerationControls";
+import LazyThumbnail from "./LazyThumbnail";
 
 const DETAILS =
   "保持服装领口、袖口、肩部、下摆、纽扣数量、印花位置、白色包边、面料纹理和服装长度，不得增加或删除口袋、腰带、纽扣、印花或装饰。";
@@ -579,7 +580,7 @@ export default function TryonPanel({
                       title={`查看 ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
                       aria-label={`查看历史生成图 ${index + 1}`}
                     >
-                      <img
+                      <LazyThumbnail
                         src={thumbnailUrl(url)}
                         alt={`历史生成图 ${index + 1}`}
                       />

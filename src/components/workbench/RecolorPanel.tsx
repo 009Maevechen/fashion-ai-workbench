@@ -1,6 +1,7 @@
 "use client";
 
 import { canManuallyConfirmJob } from "@/lib/tryon-confirmation";
+import { confirmedColorResults } from "@/lib/recolor-collection";
 import {
   useEffect,
   useMemo,
@@ -22,8 +23,9 @@ import ColorAdjustmentPanel from "./ColorAdjustmentPanel";
 import ReferenceColorSampler from "./ReferenceColorSampler";
 import { useProjectDraftAutosave } from "./useProjectDraftAutosave";
 import { hasClearableSourceAssets } from "@/lib/asset-cleanup";
-import { thumbnailUrl } from "@/lib/image-url";
+import { previewUrl,thumbnailUrl } from "@/lib/image-url";
 import GenerationControls from "./GenerationControls";
+import LazyThumbnail from "./LazyThumbnail";
 import { hasWorkflowResults } from "@/lib/result-cleanup";
 import {
   analyzedColorName,
@@ -76,7 +78,6 @@ export default function RecolorPanel({
   clearWorkflowErrors,
   saveProject,
   post,
-  confirmFlow,
 }: PanelProps & { historyJobs: Job[] }) {
   const saved = p.settings.recolor;
   const lockedArea = recolorAreaForProductType(p.productType);
@@ -691,6 +692,13 @@ export default function RecolorPanel({
     if (failed.length)
       throw new Error(`部分图片重新生成提交失败：${failed.join("；")}`);
   }
+  async function confirmOne(job: Job, url: string) {
+    await post(`/api/projects/${p.id}/confirm`, {
+      workflow: "recolor",
+      images: [url],
+    });
+    setHistoryJobId("");
+  }
   async function startBatch() {
     const targets = colors.filter((color) => batchColorIds.includes(color.id));
     if (!targets.length) throw new Error("请至少勾选一款需要复色的颜色");
@@ -1031,7 +1039,7 @@ export default function RecolorPanel({
                 完整包含该色款可见主体、包边、条纹、拼接等配色信息；框外人物和背景不参与复色。框选参考不会自动授权改变款式。
               </div>
               <ColorCropper
-                src={referenceSourceUrl || reference.url}
+                src={previewUrl(referenceSourceUrl || reference.url,960)}
                 region={active.cropRegion}
                 onChange={(region) => run(() => crop(region))}
               />
@@ -1297,7 +1305,7 @@ export default function RecolorPanel({
                       onClick={() => setPreview({ images: sources, index })}
                     >
                       <span>复色专用</span>
-                      <img
+                      <LazyThumbnail
                         src={thumbnailUrl(url, 480)}
                         alt={`模特原图${index + 1}`}
                       />
@@ -1361,7 +1369,7 @@ export default function RecolorPanel({
                 </button>
               </div>
               <ColorCropper
-                src={referenceSourceUrl}
+                src={previewUrl(referenceSourceUrl,960)}
                 region={referenceCropDraft}
                 onChange={setReferenceCropDraft}
               />
@@ -1389,7 +1397,7 @@ export default function RecolorPanel({
           <div className="recolor-sampler-settings-grid">
             <div className="recolor-sampler-left">
               <ReferenceColorSampler
-                src={reference.url}
+                src={previewUrl(reference.url,960)}
                 existingNames={colors.map((color) => color.name)}
                 disabled={busy}
                 extracting={analyzing}
@@ -1935,17 +1943,22 @@ export default function RecolorPanel({
             )}
           </div>
           {active && (
-            <div className="confirm-block">
-              <p>AI 质检仅供参考。人工检查本套图片无误后，可确认结果进入下一阶段。</p>
-              <button
-                className="primary"
-                disabled={busy || Array.from({length: expectedCount}, (_, index) => index + 1).some(slot => !canManuallyConfirmJob(historyJob?.targetColorId === activeId && historyJob.slot === slot ? historyJob : colorJobs.find(job => job.slot === slot)))}
-                onClick={() => run(() => confirmFlow("recolor", Array.from({length: expectedCount}, (_, index) => {
-                  const slot = index + 1;
-                  const job = historyJob?.targetColorId === activeId && historyJob.slot === slot ? historyJob : colorJobs.find(item => item.slot === slot);
-                  return job!.outputImages[0];
-                })))}
-              >人工确认本套结果并继续</button>
+            <div className="recolor-review-guide" role="status">
+              <div>
+                <b>逐张人工验收</b>
+                <span>确认一张就保留一张；AI 判定失败但图片可用时也能确认。</span>
+              </div>
+              <strong>
+                {confirmedColorResults(active).filter(Boolean).length}/{expectedCount} 已确认
+              </strong>
+              <a
+                className={`button primary ${confirmedColorResults(active).some(Boolean) ? "" : "disabled"}`}
+                href={confirmedColorResults(active).some(Boolean) ? `/projects/${p.id}/final` : "#"}
+                aria-disabled={!confirmedColorResults(active).some(Boolean)}
+                onClick={(event) => {
+                  if (!confirmedColorResults(active).some(Boolean)) event.preventDefault();
+                }}
+              >查看最终结果</a>
             </div>
           )}
           {active ? (
@@ -1963,26 +1976,48 @@ export default function RecolorPanel({
                     ? historyJob
                     : colorJobs.find((item) => item.slot === slot),
                   url = job?.outputImages[0],
-                  selected = retrySlots.includes(slot);
+                  selected = retrySlots.includes(slot),
+                  confirmedUrl = confirmedColorResults(active)[slot - 1],
+                  currentConfirmed = Boolean(url && confirmedUrl === url),
+                  previousConfirmed = Boolean(confirmedUrl && !currentConfirmed);
                 return (
                   <div
                     className={`recolor-result-pair selectable ${selected ? "selected" : ""}`}
                     key={`${slot}:${job?.id || "empty"}`}
                   >
-                    <label className="recolor-result-select">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() =>
-                          setRetrySlots((current) =>
-                            selected
-                              ? current.filter((item) => item !== slot)
-                              : [...current, slot],
-                          )
+                    <div className="recolor-card-review-bar">
+                      <label className="recolor-result-select">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() =>
+                            setRetrySlots((current) =>
+                              selected
+                                ? current.filter((item) => item !== slot)
+                                : [...current, slot],
+                            )
+                          }
+                        />
+                        <span>{selected ? "已选重试" : "选择重试"}</span>
+                      </label>
+                      <button
+                        type="button"
+                        className={`recolor-confirm-one ${currentConfirmed ? "confirmed" : ""}`}
+                        disabled={busy || currentConfirmed || !canManuallyConfirmJob(job, url)}
+                        title={
+                          currentConfirmed
+                            ? "当前图片已人工确认"
+                            : previousConfirmed
+                              ? "确认当前图片后，只替换这个姿势的旧确认图"
+                              : !canManuallyConfirmJob(job, url)
+                                ? "图片需已生成并保存后才能确认"
+                                : "人工确认当前单张图片"
                         }
-                      />
-                      <span>{selected ? "已选择" : "选择图片"}</span>
-                    </label>
+                        onClick={() => job && url && run(() => confirmOne(job, url))}
+                      >
+                        {currentConfirmed ? "✓ 已确认" : previousConfirmed ? "替换此张" : "确认此张"}
+                      </button>
+                    </div>
                     <ResultCard
                       job={job}
                       pending={active.status === "generating"}
@@ -2075,7 +2110,7 @@ export default function RecolorPanel({
                       })
                     }
                   >
-                    <img
+                    <LazyThumbnail
                       src={thumbnailUrl(url, 480)}
                       alt={`${normalizedColorName(color) || "未命名颜色"}姿势${index + 1}`}
                     />
@@ -2151,7 +2186,7 @@ export default function RecolorPanel({
                 }}
                 title={`${job.colorName || "复色"} · 姿势 ${job.slot || 1} · ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
               >
-                <img
+                <LazyThumbnail
                   src={thumbnailUrl(job.outputImages[0])}
                   alt={`复色历史生成图 ${index + 1}`}
                 />

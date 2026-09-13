@@ -1,11 +1,12 @@
 import {NextResponse} from "next/server";
 import {z} from "zod";
 import {enqueueWorkflow} from "@/lib/job-runner";
-import {getProject} from "@/lib/db";
+import {getJob,getProject} from "@/lib/db";
 import {localImage,saveOutput} from "@/lib/ai/storage";
 import {prepareProviderInput,safeSegment} from "@/lib/ai/validators";
 import {serializeImageWork} from "@/lib/image-limits";
 import sharp from "sharp";
+import {assertFormalImageSource} from "@/lib/image-sources";
 
 const maskSchema = z.string().max(16*1024*1024).refine(
   (value) => /^data:image\/png;base64,/.test(value),
@@ -31,6 +32,9 @@ export async function POST(request: Request) {
     const input = schema.parse(await request.json());
     const project=await getProject(input.projectId);
     if(!project)throw new Error("商品项目不存在");
+    assertFormalImageSource(input.sourceUrl,"局部重绘正式源图");
+    const sourceJob=await getJob(input.sourceImageId);
+    if(!sourceJob||sourceJob.projectId!==project.id||!sourceJob.outputImages.includes(input.sourceUrl))throw new Error("局部重绘必须通过 imageId 读取当前项目已持久化的 masterSource / approvedSource");
     const encoded=input.maskDataUrl.slice(input.maskDataUrl.indexOf(",")+1);
     if(encoded.length>16*1024*1024)throw new Error("局部重绘选区过大，请缩小选区后重试");
     const mask=Buffer.from(encoded,"base64");

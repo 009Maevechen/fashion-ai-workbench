@@ -37,10 +37,14 @@ export function useInpaint({
         mode: "quality",
       });
       onResult?.(result as Job);
-      closeInpaint();
+      return result as Job;
     } finally {
       setInpaintBusy(false);
     }
+  }
+  async function decide(candidate:Job,action:"accept"|"keep_source"){
+    setInpaintBusy(true);
+    try{await submit(`/api/inpaint/${candidate.id}/decision`,{action});window.dispatchEvent(new Event("workbench:refresh"));setInpaintJob(null)}finally{setInpaintBusy(false)}
   }
 
   const dialog = inpaintJob ? (
@@ -48,7 +52,8 @@ export function useInpaint({
       job={inpaintJob}
       sourceStep={sourceStep}
       busy={inpaintBusy}
-      onSubmit={(request) => void submitInpaint(request)}
+      onSubmit={submitInpaint}
+      onDecision={decide}
       onClose={closeInpaint}
     />
   ) : null;

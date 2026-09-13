@@ -11,6 +11,8 @@ import type { ApiProviderType, ModelSlot } from "./ai/provider-settings-types";
 import type { ColorAdjustment } from "./color-adjustment";
 import type { CorrectionCommandPlan } from "./correction-command";
 import type { CorrectionQualityCheck } from "./correction-quality";
+import type { ImageSourceVersions } from "./image-sources";
+import type { InpaintBoundaryCheck } from "./inpaint-qc";
 import type {
   RecolorStructureMode,
   RecolorStyleRelation,
@@ -363,6 +365,8 @@ export type TargetColor = {
     | "stale";
   generationStartedAt?: string;
   poseResults?: string[];
+  /** 按姿势槽位保存人工确认结果；空字符串表示该槽位尚未确认。 */
+  confirmedPoseResults?: string[];
   sourceCount?: number;
   protectedAreas?: string[];
 };
@@ -430,6 +434,7 @@ export type Project = {
   confirmedPoseImages?: string[];
   confirmedRecolorImages?: string[];
   assets: ProjectAssets;
+  assetImageVersions?: Record<string,ImageSourceVersions|ImageSourceVersions[]>;
   assetEvidence?: Partial<
     Record<ProductDetailAssetKey | "garmentImage", ProductAssetEvidence>
   >;
@@ -532,6 +537,8 @@ export type Job = {
   mode: GenerationMode;
   inputImages: string[];
   outputImages: string[];
+  inputImageVersions?: ImageSourceVersions[];
+  outputImageVersions?: ImageSourceVersions[];
   promptVersion: string;
   status: GenerationStatus;
   requestStatus?: GenerationStatus;
@@ -565,8 +572,11 @@ export type Job = {
   correctionQualityBaseline?: string;
   correctionQualityCheck?: CorrectionQualityCheck;
   qualityIssues?: string[];
+  qcStatus?: "PASS" | "NEEDS_REVIEW" | "FAIL";
+  errorCode?: "repair_fail" | "quality_fail";
   sharpnessScore?: number;
   inpaint?: InpaintMeta;
+  inpaintBoundaryCheck?: InpaintBoundaryCheck;
   timing?: JobTiming;
 };
 export type JobTiming = {
@@ -583,6 +593,13 @@ export type InpaintMeta = {
   sourceUrl: string;
   maskUrl: string;
   editPrompt: string;
+  requiredChanges?: string[];
+  editableRegion?: string;
+  protectedRegion?: string;
+  protectedDetails?: string[];
+  forbiddenChanges?: string[];
+  acceptanceCriteria?: string[];
+  decision?: "pending" | "accepted" | "kept_source";
 };
 export type OperationStatus =
   "queued" | "running" | "success" | "failed" | "interrupted";

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {recolorColorsWithSavedJobs,removeRecolorCollectionImage} from "../src/lib/recolor-collection";
+import {confirmedColorResults,confirmedRecolorImagesFor,mergeConfirmedColorResults,recolorColorsWithSavedJobs,removeRecolorCollectionImage} from "../src/lib/recolor-collection";
 import type {Job,Project} from "../src/lib/db";
 
 const project:Project={id:"p",sku:"SKU",productName:"上衣",productType:"上衣",currentStep:5,status:"等待最终确认",createdAt:"2026-01-01",updatedAt:"2026-01-01",assets:{},settings:{},targetColors:[{id:"black",name:"黑色",hex:"#000000",status:"success",poseResults:["/api/files/SKU/recolor/black/01.jpg","/api/files/SKU/recolor/black/02.jpg"]}]};
@@ -32,4 +32,25 @@ test("复色 AI 质检失败仍进入人工结果集合，过期结果不替换�
   const base={id:"qc",projectId:"p",sku:"SKU",workflow:"recolor",provider:"test",model:"image",mode:"standard",inputImages:[],promptVersion:"v1",startedAt:"2026-01-01",outputImages:["/api/files/review.png"],status:"needs_redo",slot:1,targetColorId:"black"} satisfies Job;
   const stale:Job={...base,id:"stale",startedAt:"2026-01-02",dependencyStatus:"stale",outputImages:["/api/files/stale.png"]};
   assert.equal(recolorColorsWithSavedJobs(project,[base,stale])[0].poseResults?.[0],"/api/files/review.png");
+});
+
+test("单张重新确认只替换对应姿势并保留同色其他人工确认图",()=>{
+  const color={...project.targetColors![0],sourceCount:3,confirmedPoseResults:["/confirmed/one.jpg","/confirmed/two.jpg","/confirmed/three.jpg"]};
+  const confirmed=mergeConfirmedColorResults(color,[{slot:2,url:"/confirmed/two-retry.jpg"}]);
+  assert.deepEqual(confirmed,["/confirmed/one.jpg","/confirmed/two-retry.jpg","/confirmed/three.jpg"]);
+});
+
+test("最终复色清单只收录人工确认结果并兼容旧版整套确认",()=>{
+  const colors=[
+    {...project.targetColors![0],status:"confirmed" as const},
+    {id:"white",name:"白色",status:"partial_success" as const,confirmedPoseResults:["","/confirmed/white-two.jpg",""]},
+    {id:"red",name:"红色",status:"success" as const,poseResults:["/generated/red-one.jpg"]},
+  ];
+  assert.deepEqual(confirmedColorResults(colors[0]),project.targetColors![0].poseResults);
+  assert.deepEqual(confirmedColorResults(colors[2]),[]);
+  assert.deepEqual(confirmedRecolorImagesFor(colors),[
+    "/api/files/SKU/recolor/black/01.jpg",
+    "/api/files/SKU/recolor/black/02.jpg",
+    "/confirmed/white-two.jpg",
+  ]);
 });

@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 
-export type InpaintMask = { dataUrl: string; hasMask: boolean };
+export type InpaintMask = { blob: Blob | null; hasMask: boolean };
 
 /**
  * 局部重绘编辑器：在图片上用手绘涂抹出需要修改的区域，输出蒙版 PNG。
@@ -28,8 +28,7 @@ export default function InpaintEditor({
   function emit() {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dataUrl = canvas.toDataURL("image/png");
-    onChange({ dataUrl, hasMask: hasMask.current });
+    canvas.toBlob(blob=>onChange({blob,hasMask:hasMask.current}),"image/png");
   }
 
   useEffect(() => {
@@ -53,10 +52,11 @@ export default function InpaintEditor({
         maskImage.src = initialMask;
       } else {
         hasMask.current = false;
-        onChange({dataUrl:"",hasMask:false});
+        onChange({blob:null,hasMask:false});
       }
     };
     image.src = src;
+    return()=>{image.src="";imageRef.current=null};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
@@ -120,7 +120,7 @@ export default function InpaintEditor({
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasMask.current = false;
-    onChange({dataUrl:"",hasMask:false});
+    onChange({blob:null,hasMask:false});
   }
 
   return (

@@ -2,7 +2,9 @@ import {NextResponse} from "next/server";
 import {getProject,listJobs,patchJob,updateProject} from "@/lib/db";
 import {duplicateColorNames,normalizedColorName} from "@/lib/color-sets";
 import {canManuallyConfirmJob,isSameTryonConfirmation,resultWorkflow} from "@/lib/tryon-confirmation";
+import {confirmedRecolorImagesFor,mergeConfirmedColorResults} from "@/lib/recolor-collection";
 import {z} from "zod";
+import {assertFormalImageSource,imageSourceVersions} from "@/lib/image-sources";
 
 const schema=z.object({workflow:z.enum(["tryon","pose","recolor"]),images:z.array(z.string().startsWith("/api/files/")).min(1).max(4)});
 const CONFIRMABLE=new Set(["success","needs_review","awaiting_confirmation","confirmed"]);
@@ -10,6 +12,7 @@ const CONFIRMABLE=new Set(["success","needs_review","awaiting_confirmation","con
 export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){
   try{
     const id=(await params).id,value=schema.parse(await request.json()),project=await getProject(id);
+    value.images.forEach((url,index)=>assertFormalImageSource(url,`第${index+1}张确认图片`));
     if(!project)throw new Error("项目不存在");
     if(value.workflow==="tryon"&&value.images.length!==1)throw new Error("换装只能确认一张候选图");
     if(value.workflow==="pose"&&(value.images.length<2||value.images.length>3))throw new Error("必须确认两张或三张不同的结果图");
@@ -19,11 +22,13 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     if(selected.some(job=>!job))throw new Error("选择的图片不属于当前工作流任务");
     if(selected.some((job,index)=>!canManuallyConfirmJob(job,value.images[index])))throw new Error("只有已生成并保存、且未过期的图片可以人工确认");
     async function confirmSelected(){
-      for(const job of selected){
+      for(const [index,job] of selected.entries()){
         const manuallyOverrodeAiReview=!CONFIRMABLE.has(job!.status);
+        const approved=value.images[index];
         await patchJob(job!.id,{
           status:"confirmed",
           dependencyStatus:"current",
+          outputImageVersions:job!.outputImages.map(url=>imageSourceVersions(url,url===approved?approved:null)),
           ...(manuallyOverrodeAiReview?{qualityIssues:[...new Set([...(job!.qualityIssues||[]),"用户已人工审核并确认；AI 质检结论仅作参考"])]}:{}),
         });
       }
@@ -47,15 +52,30 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
       return NextResponse.json(await updateProject(id,{confirmedPoseImages:value.images,currentStep:Math.max(project.currentStep,4),status:hasRecolor?"需要重新审核":"已确认",dependencyStatus:hasRecolor?"needs_review":"current",stepStatuses:{...project.stepStatuses,"3":"confirmed","4":hasRecolor?"stale":"ready","5":hasRecolor?"stale":"not_started"}}));
     }
     const targetIds=[...new Set(selected.map(job=>job!.targetColorId))];
-    if(targetIds.length!==1||!targetIds[0])throw new Error("三张复色图必须属于同一个目标颜色");
+    if(targetIds.length!==1||!targetIds[0])throw new Error("一次确认的复色图必须属于同一个目标颜色");
     const targetColor=(project.targetColors||[]).find(color=>color.id===targetIds[0]);
     if(!targetColor||!normalizedColorName(targetColor))throw new Error("请先为当前颜色命名，再确认这一套复色结果");
     const expected=targetColor.sourceCount||3;
-    if(value.images.length!==expected)throw new Error(`当前颜色套装需要确认 ${expected} 张复色结果`);
-    if(new Set(selected.map(job=>job!.slot)).size!==expected)throw new Error("每个姿势位置只能确认一张复色结果");
+    const selectedSlots=selected.map(job=>job!.slot).filter((slot):slot is number=>Boolean(slot));
+    if(selectedSlots.length!==value.images.length||new Set(selectedSlots).size!==value.images.length)throw new Error("每个姿势位置只能确认一张复色结果");
+    if(selectedSlots.some(slot=>slot<1||slot>expected))throw new Error("选中的复色图不属于当前颜色套装的姿势位置");
     if(duplicateColorNames(project.targetColors||[]).has(normalizedColorName(targetColor).toLocaleLowerCase("zh-CN")))throw new Error("颜色名称不能重复，请先修改名称");
     await confirmSelected();
-    const colors=(project.targetColors||[]).map(color=>color.id===targetIds[0]?{...color,status:"confirmed" as const,poseResults:value.images}:color);
-    return NextResponse.json(await updateProject(id,{confirmedRecolorImages:value.images,currentStep:5,status:"等待最终确认",dependencyStatus:"current",targetColors:colors,stepStatuses:{...project.stepStatuses,"4":"confirmed","5":"ready"}}));
+    const selections=selected.map((job,index)=>({slot:job!.slot!,url:value.images[index]}));
+    const confirmedPoseResults=mergeConfirmedColorResults(targetColor,selections);
+    const confirmedCount=confirmedPoseResults.filter(Boolean).length;
+    const colors=(project.targetColors||[]).map(color=>color.id===targetIds[0]?{
+      ...color,
+      status:confirmedCount>=expected?"confirmed" as const:"partial_success" as const,
+      confirmedPoseResults,
+    }:color);
+    return NextResponse.json(await updateProject(id,{
+      confirmedRecolorImages:confirmedRecolorImagesFor(colors),
+      currentStep:5,
+      status:"等待最终确认",
+      dependencyStatus:"current",
+      targetColors:colors,
+      stepStatuses:{...project.stepStatuses,"4":confirmedCount>=expected?"confirmed":"partial_success","5":"ready"},
+    }));
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"确认失败"},{status:400})}
 }

@@ -6,8 +6,22 @@ export type ImageQualityAssessment = {
   height: number;
   blurry: boolean;
   lowResolution: boolean;
+  meanLuminance?: number;
+  luminanceContrast?: number;
+  meanSaturation?: number;
   issues: string[];
 };
+
+async function visualToneStats(buffer:Buffer){
+  const {data,info}=await sharp(buffer).resize(160,213,{fit:"fill"}).removeAlpha().raw().toBuffer({resolveWithObject:true});
+  let lumaSum=0,lumaSquare=0,saturationSum=0,pixels=0;
+  for(let at=0;at<data.length;at+=info.channels){
+    const r=data[at],g=data[at+1],b=data[at+2],luma=.2126*r+.7152*g+.0722*b,max=Math.max(r,g,b),min=Math.min(r,g,b),saturation=max?((max-min)/max)*255:0;
+    lumaSum+=luma;lumaSquare+=luma*luma;saturationSum+=saturation;pixels++;
+  }
+  const meanLuminance=lumaSum/pixels;
+  return {meanLuminance,luminanceContrast:Math.sqrt(Math.max(0,lumaSquare/pixels-meanLuminance*meanLuminance)),meanSaturation:saturationSum/pixels};
+}
 
 /**
  * 用拉普拉斯方差估算图像清晰度。纯本地计算，不调用任何模型。
@@ -83,5 +97,12 @@ export async function assessImageQuality(
     // 清晰度计算失败时不算质量问题，交由其他检查判断
   }
 
-  return { sharpnessScore, width, height, blurry, lowResolution, issues };
+  let tone:Awaited<ReturnType<typeof visualToneStats>>|undefined;
+  try{
+    tone=await visualToneStats(buffer);
+    if(tone.meanLuminance<32&&tone.luminanceContrast<28)issues.push("画面明显发暗、发闷，曝光与层次需要人工审核");
+    if(tone.luminanceContrast<18)issues.push("画面层次和对比度偏低，存在发灰或脏感风险");
+  }catch{}
+
+  return { sharpnessScore, width, height, blurry, lowResolution, ...tone, issues };
 }

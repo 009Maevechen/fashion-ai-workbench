@@ -2519,6 +2519,9 @@ button.danger:hover {
 .desktop-platform-win32 .app-shell {
   background: #f3f3f3;
 }
+.desktop-platform-win32 .app-main {
+  padding: calc(var(--header) + 16px) 18px 22px;
+}
 .desktop-platform-win32 .global-header {
   height: var(--header);
   padding-inline: 18px;
@@ -2566,6 +2569,30 @@ button.danger:hover {
 .desktop-platform-win32 .project-top,
 .desktop-platform-win32 .usage-card {
   border-color: #d8d8d8;
+}
+.desktop-platform-win32 .card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .045);
+}
+.desktop-platform-win32 .recolor-flow-card,
+.desktop-platform-win32 .recolor-results-card {
+  padding: 14px;
+}
+.desktop-platform-win32 .recolor-source-gallery,
+.desktop-platform-win32 .recolor-upload-gallery,
+.desktop-platform-win32 .recolor-results-card .result-grid {
+  gap: 10px;
+}
+.desktop-platform-win32 .recolor-batch-bar {
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.desktop-platform-win32 .recolor-review-guide {
+  border-radius: 7px;
+  background: #f6f4fc;
+}
+.desktop-platform-win32 .recolor-result-pair.selectable {
+  border-radius: 7px;
 }
 .desktop-platform-win32 .app-main :focus-visible,
 .desktop-platform-win32 .global-header :focus-visible,

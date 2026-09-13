@@ -20,6 +20,7 @@ import { useProjectDraftAutosave } from "./useProjectDraftAutosave";
 import { buildProductProtectionPrompt } from "@/lib/product-structure";
 import { thumbnailUrl } from "@/lib/image-url";
 import GenerationControls from "./GenerationControls";
+import LazyThumbnail from "./LazyThumbnail";
 
 const DETAILS =
   "保持服装领口、袖口、肩部、下摆、纽扣、印花、面料纹理和服装长度，不得改变商品设计。";
@@ -559,7 +560,7 @@ export default function PosePanel({
                 setPreview({ images: [p.confirmedTryonImage!], index: 0 })
               }
             >
-              <img
+              <LazyThumbnail
                 className="result-image"
                 src={thumbnailUrl(p.confirmedTryonImage, 720)}
                 alt="已确认换装图"
@@ -728,7 +729,7 @@ export default function PosePanel({
                     onClick={() => setHistoryJobId(job.id)}
                     title={`姿势 ${String(job.slot || 1).padStart(2, "0")} · ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
                   >
-                    <img
+                    <LazyThumbnail
                       src={thumbnailUrl(job.outputImages[0])}
                       alt={`姿势历史生成图 ${index + 1}`}
                     />
@@ -801,7 +802,7 @@ export default function PosePanel({
                 >
                   <div className="pose-reference-pair">
                     {referenceUrl ? (
-                      <img
+                      <LazyThumbnail
                         src={thumbnailUrl(referenceUrl, 480)}
                         alt={`姿势${slot}参考图`}
                       />

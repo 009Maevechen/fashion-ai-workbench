@@ -6,7 +6,7 @@ import type { Job, Project } from "./db";
 import { localImage } from "./ai/storage";
 import { runtimeFinalDir } from "./runtime-paths";
 import { imageSha256, upsertManifestImage, type ManifestImage } from "./manifest";
-import { recolorColorsWithSavedJobs } from "./recolor-collection";
+import { confirmedColorResults } from "./recolor-collection";
 import { normalizedColorName } from "./color-sets";
 import {durableWriteFile} from "./durable-json";
 
@@ -39,13 +39,13 @@ type ArchiveEntry = {
 
 export function collectFinalEntries(project: Project, jobs: Job[]): ArchiveEntry[] {
   const entries: ArchiveEntry[] = [];
-  const colors = recolorColorsWithSavedJobs(project, jobs);
+  const colors = project.targetColors || [];
   const productName = readableSegment(project.productName || project.sku);
   const dirName = `${readableSegment(project.sku)}_${productName}`;
   if (colors.length) {
     for (const color of colors) {
       const colorName = normalizedColorName(color) || "未命名颜色";
-      for (const [index, url] of (color.poseResults || []).entries()) {
+      for (const [index, url] of confirmedColorResults(color).entries()) {
         if (!url) continue;
         entries.push({ url, color: readableSegment(colorName), poseIndex: index + 1 });
       }
@@ -61,6 +61,7 @@ export function collectFinalEntries(project: Project, jobs: Job[]): ArchiveEntry
       entries.push({ url, color: "原色", poseIndex: index + 1 });
     }
   }
+  void jobs;
   void dirName;
   return entries;
 }
