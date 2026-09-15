@@ -5,7 +5,7 @@ import {assertFormalImageSource} from "@/lib/image-sources";
 import {z} from "zod";
 
 const image=z.string().startsWith("/api/files/");
-const schema=z.object({projectId:z.string().uuid(),sourceImage:image,poseReferenceImages:z.array(image).length(3),referenceMode:z.enum(["library","upload"]),mode:z.enum(["fast","standard","quality"]),shotType:z.enum(["上半身","下半身","全身"]),face:z.boolean(),background:z.boolean(),detailRequirements:z.string().min(1).max(2000),poseInstructions:z.array(z.string().min(1).max(500)).length(3).optional(),focus:z.enum(["upper","lower"]).optional(),slot:z.number().int().min(1).max(3).optional(),modelPreference:z.enum(["primary","fallback"]).optional(),idempotencyKey:z.string().max(200).optional()});
+const schema=z.object({projectId:z.string().uuid(),sourceImage:image,poseReferenceImages:z.array(image).length(3),referenceMode:z.enum(["library","upload"]),mode:z.enum(["fast","standard","quality"]),shotType:z.enum(["上半身","下半身","全身"]),face:z.boolean(),faces:z.array(z.boolean()).length(3).optional(),background:z.boolean(),detailRequirements:z.string().min(1).max(2000),poseInstructions:z.array(z.string().min(1).max(500)).length(3).optional(),focus:z.enum(["upper","lower"]).optional(),slot:z.number().int().min(1).max(3).optional(),modelPreference:z.enum(["primary","fallback"]).optional(),idempotencyKey:z.string().max(200).optional()});
 
 export async function POST(request:Request){try{
   const input=schema.parse(await request.json()),project=await getProject(input.projectId);if(!project)throw new Error("项目不存在");

@@ -88,7 +88,10 @@ export default function PosePanel({
     ),
     [shot, setShot] = useState(saved?.shotType || "全身"),
     [focus, setFocus] = useState<"" | "upper" | "lower">(saved?.focus || ""),
-    [face, setFace] = useState(saved?.face || false),
+    [face] = useState(saved?.face || false),
+    [faceSlots, setFaceSlots] = useState<boolean[]>(
+      saved?.faces?.length ? saved.faces : [],
+    ),
     [background, setBackground] = useState(saved?.background ?? true),
     [details, setDetails] = useState(saved?.detailRequirements || DETAILS),
     [instructions, setInstructions] = useState(preset),
@@ -283,6 +286,7 @@ export default function PosePanel({
           productType: p.productType,
           shotType: shot,
           face,
+          faces: faceSlots.length ? faceSlots : undefined,
           background,
           detailRequirements: details,
           poseInstructions: instructions,
@@ -298,6 +302,7 @@ export default function PosePanel({
       background,
       details,
       face,
+      faceSlots,
       focus,
       instructions,
       mode,
@@ -447,6 +452,7 @@ export default function PosePanel({
       mode,
       shotType: shot,
       face,
+      faces: faceSlots.length ? faceSlots : undefined,
       background,
       detailRequirements: details,
       poseInstructions: recognized.instructions,
@@ -1061,28 +1067,50 @@ export default function PosePanel({
                 </label>
               </div>
               <div className="pose-preserve-row">
-                <div className="protection-grid">
-                  <label className="check-item face-visibility-toggle">
-                    <input
-                      type="checkbox"
-                      checked={face}
-                      onChange={(e) => setFace(e.target.checked)}
-                    />
-                    露出脸部
-                  </label>
-                  <label className="check-item">
-                    <input
-                      type="checkbox"
-                      checked={background}
-                      onChange={(e) => setBackground(e.target.checked)}
-                    />
-                    保持背景
-                  </label>
+                <div className="face-slot-list">
+                  {[1, 2, 3].map((slot) => (
+                    <label className="check-item" key={`pose-face-${slot}`}>
+                      <input
+                        type="checkbox"
+                        checked={faceSlots[slot - 1] ?? face}
+                        onChange={(e) =>
+                          setFaceSlots((current) => {
+                            const next = [...current];
+                            next[slot - 1] = e.target.checked;
+                            return next;
+                          })
+                        }
+                      />
+                      姿势{slot} 露出脸部
+                    </label>
+                  ))}
                 </div>
+                <div className="face-slot-bulk">
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setFaceSlots([true, true, true])}
+                  >
+                    全选露脸
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setFaceSlots([false, false, false])}
+                  >
+                    全选不露脸
+                  </button>
+                </div>
+                <label className="check-item">
+                  <input
+                    type="checkbox"
+                    checked={background}
+                    onChange={(e) => setBackground(e.target.checked)}
+                  />
+                  保持背景
+                </label>
                 <small className="setting-help">
-                  {face
-                    ? "已开启：允许露出并保持原模特脸部。"
-                    : "默认关闭：生成结果不得露出或补画脸部。"}
+                  每张姿势图可单独设置露脸或不露脸；不露脸时结果不得露出或补画脸部。
                 </small>
               </div>
             </div>

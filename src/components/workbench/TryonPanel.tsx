@@ -78,7 +78,10 @@ export default function TryonPanel({
   const [mode, setMode] = useState<"fast" | "standard" | "quality">(
     saved?.mode || "standard",
   );
-  const [face, setFace] = useState(saved?.face ?? false);
+  const [face] = useState(saved?.face ?? false);
+  const [faceSlots, setFaceSlots] = useState<boolean[]>(
+    saved?.faces?.length ? saved.faces : [],
+  );
   const [count, setCount] = useState(saved?.candidateCount || 2);
   const [selected, setSelected] = useState(
     p.confirmedTryonImage || saved?.selectedCandidateImage || "",
@@ -225,6 +228,7 @@ export default function TryonPanel({
           extraRequirements: extra,
           protectedItems,
           face,
+          faces: faceSlots.length ? faceSlots : undefined,
           selectedCandidateImage: selected || undefined,
           activeCandidateSlot: candidateSlot,
         },
@@ -236,6 +240,7 @@ export default function TryonPanel({
       description,
       extra,
       face,
+      faceSlots,
       mode,
       p.productType,
       p.settings,
@@ -332,6 +337,7 @@ export default function TryonPanel({
       ),
       extraRequirements: extra,
       face,
+      faces: faceSlots.length ? faceSlots : undefined,
       mode,
       candidateCount: slot ? 1 : count,
       modelPreference,
@@ -782,19 +788,52 @@ export default function TryonPanel({
                   </div>
                 </div>
                 <div className="tryon-setting-group">
-                  <h3 className="section-label">人物显示</h3>
-                  <label className="check-item face-visibility-toggle">
-                    <input
-                      type="checkbox"
-                      checked={face}
-                      onChange={(event) => setFace(event.target.checked)}
-                    />
-                    露出脸部
-                  </label>
+                  <h3 className="section-label">人物显示（每张候选单独设置）</h3>
+                  <div className="face-slot-list">
+                    {Array.from({ length: count }, (_, index) => index + 1).map(
+                      (slot) => (
+                        <label
+                          className="check-item"
+                          key={`tryon-face-${slot}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={faceSlots[slot - 1] ?? face}
+                            onChange={(event) =>
+                              setFaceSlots((current) => {
+                                const next = [...current];
+                                next[slot - 1] = event.target.checked;
+                                return next;
+                              })
+                            }
+                          />
+                          候选{slot} 露出脸部
+                        </label>
+                      ),
+                    )}
+                  </div>
+                  <div className="face-slot-bulk">
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() =>
+                        setFaceSlots(Array.from({ length: count }, () => true))
+                      }
+                    >
+                      全选露脸
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() =>
+                        setFaceSlots(Array.from({ length: count }, () => false))
+                      }
+                    >
+                      全选不露脸
+                    </button>
+                  </div>
                   <small className="setting-help">
-                    {face
-                      ? "已开启：允许露出并保持原模特脸部。"
-                      : "默认关闭：生成结果不得露出或补画脸部。"}
+                    露脸：允许露出并保持原模特脸部；不露脸：结果不得露出或补画脸部。每张候选可单独设置。
                   </small>
                 </div>
                 <div className="tryon-setting-group">

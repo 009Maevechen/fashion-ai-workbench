@@ -23,9 +23,10 @@ import ColorAdjustmentPanel from "./ColorAdjustmentPanel";
 import ReferenceColorSampler from "./ReferenceColorSampler";
 import { useProjectDraftAutosave } from "./useProjectDraftAutosave";
 import { hasClearableSourceAssets } from "@/lib/asset-cleanup";
-import { previewUrl,thumbnailUrl } from "@/lib/image-url";
+import { previewUrl, thumbnailUrl } from "@/lib/image-url";
 import GenerationControls from "./GenerationControls";
 import LazyThumbnail from "./LazyThumbnail";
+import ColorVariantReferences from "./ColorVariantReferences";
 import { hasWorkflowResults } from "@/lib/result-cleanup";
 import {
   analyzedColorName,
@@ -134,8 +135,9 @@ export default function RecolorPanel({
   );
   const [extra, setExtra] = useState(saved?.extraRequirements || EXTRA);
   const [batchColorIds, setBatchColorIds] = useState<string[]>(
-    saved?.selectedBatchColorIds ||
-      (p.targetColors || []).map((color) => color.id),
+    saved?.selectedBatchColorIds?.length
+      ? saved.selectedBatchColorIds
+      : (p.targetColors || []).map((color) => color.id),
   );
   const [colorsLocked, setColorsLocked] = useState(
     saved?.colorsLocked ?? false,
@@ -159,6 +161,15 @@ export default function RecolorPanel({
   } | null>(null);
   const [historyJobId, setHistoryJobId] = useState("");
   useEffect(() => setColors(p.targetColors || []), [p.targetColors]);
+  // 新增颜色款自动纳入批量选择，删除的颜色款自动移除，同时保留用户已手动取消勾选的状态。
+  useEffect(() => {
+    const colorIds = (p.targetColors || []).map((color) => color.id);
+    setBatchColorIds((ids) => {
+      const kept = ids.filter((id) => colorIds.includes(id));
+      const added = colorIds.filter((id) => !kept.includes(id));
+      return added.length ? [...kept, ...added] : kept;
+    });
+  }, [p.targetColors]);
   useEffect(() => setArea(lockedArea), [lockedArea]);
   useEffect(() => setRetrySlots([]), [activeId]);
   const generatingKey = colors
@@ -173,6 +184,12 @@ export default function RecolorPanel({
     return () => window.clearInterval(timer);
   }, [generatingKey, refreshProject]);
   const active = colors.find((c) => c.id === activeId);
+  // 框选该颜色款颜色参考时，优先显示/使用该颜色款独立上传的参考图（主参考图优先）。
+  const activePrimaryRef =
+    (active?.referenceImages || []).find((img) => img.isPrimary) ||
+    (active?.referenceImages || [])[0];
+  const cropSource =
+    activePrimaryRef?.path || referenceSourceUrl || reference.url;
   const duplicateNames = duplicateColorNames(colors),
     activeName = active ? normalizedColorName(active) : "",
     activeNameDuplicate = Boolean(
@@ -181,7 +198,8 @@ export default function RecolorPanel({
   const generatedColors = colors.filter((color) =>
     color.poseResults?.some(Boolean),
   ).length;
-  const hasTargetColor = (color?: TargetColor) => Boolean(color?.cropImage);
+  const hasTargetColor = (color?: TargetColor) =>
+    Boolean(color?.cropImage || (color?.referenceImages?.length || 0) > 0);
   const sources =
     sourceMode === "confirmed"
       ? [
@@ -207,9 +225,7 @@ export default function RecolorPanel({
       (!active?.generationStartedAt ||
         j.startedAt >= active.generationStartedAt),
   );
-  const historyItems = historyJobs.filter((job) =>
-      canManuallyConfirmJob(job),
-    ),
+  const historyItems = historyJobs.filter((job) => canManuallyConfirmJob(job)),
     historyJob = historyItems.find((job) => job.id === historyJobId);
   const route = modelRouting.recolor,
     routed = route.primary.source === "stored";
@@ -437,9 +453,10 @@ export default function RecolorPanel({
       setBatchColorIds(next.map((color) => color.id));
       setActiveId(nextActive);
       await persistColors(next, nextActive, false);
-      const durationText = data.analysisDurationMs !== undefined
-        ? `，用时 ${(data.analysisDurationMs / 1000).toFixed(1)} 秒`
-        : "";
+      const durationText =
+        data.analysisDurationMs !== undefined
+          ? `，用时 ${(data.analysisDurationMs / 1000).toFixed(1)} 秒`
+          : "";
       if (data.needsReview)
         setAnalysisNotice(
           `颜色识别置信度 ${data.confidence ?? "?"}%${durationText}：${data.reviewReason || "部分颜色需要人工确认"}，请检查并修改后再锁定。`,
@@ -500,6 +517,7 @@ export default function RecolorPanel({
         ? {
             ...color,
             ...patch,
+            userConfirmedHex: patch.hex,
             status: stale
               ? ("stale" as const)
               : hasOldResults
@@ -563,6 +581,8 @@ export default function RecolorPanel({
     await updateColorById(color.id, {
       manualReviewConfirmed: true,
       designNeedsReview: false,
+      userConfirmedName: color.userConfirmedName || color.name,
+      userConfirmedHex: color.userConfirmedHex || color.hex || color.baseHex,
     });
   }
   async function submitColor(
@@ -834,6 +854,11 @@ export default function RecolorPanel({
     setBatchColorIds((ids) => ids.filter((id) => id !== target.id));
     setActiveId(next[0]?.id || "");
   }
+  async function removeVariant(colorId: string) {
+    const color = colors.find((c) => c.id === colorId);
+    if (!color) return;
+    await removeColor(color);
+  }
   async function removeCollectionImage(color: TargetColor, url: string) {
     if (
       !confirm(
@@ -896,7 +921,10 @@ export default function RecolorPanel({
     );
     if (!panel) return;
     const margin = 12;
-    const maxLeft = Math.max(margin, window.innerWidth - panel.offsetWidth - margin);
+    const maxLeft = Math.max(
+      margin,
+      window.innerWidth - panel.offsetWidth - margin,
+    );
     const maxTop = Math.max(margin, window.innerHeight - 64);
     setPalettePosition({
       left: Math.min(maxLeft, Math.max(margin, event.clientX - drag.offsetX)),
@@ -950,7 +978,9 @@ export default function RecolorPanel({
         <div>
           <h2>当前颜色调整</h2>
           <small>{activeName || "点击色块开始调整"}</small>
-          {paletteVisible && <span className="recolor-drag-hint">拖动此处移动 · 双击居中</span>}
+          {paletteVisible && (
+            <span className="recolor-drag-hint">拖动此处移动 · 双击居中</span>
+          )}
         </div>
         <button
           className="settings-dialog-close compact-close"
@@ -1039,7 +1069,7 @@ export default function RecolorPanel({
                 完整包含该色款可见主体、包边、条纹、拼接等配色信息；框外人物和背景不参与复色。框选参考不会自动授权改变款式。
               </div>
               <ColorCropper
-                src={previewUrl(referenceSourceUrl || reference.url,960)}
+                src={previewUrl(cropSource, 960)}
                 region={active.cropRegion}
                 onChange={(region) => run(() => crop(region))}
               />
@@ -1140,7 +1170,11 @@ export default function RecolorPanel({
       </div>
     </section>
   );
-  const inpaint = useInpaint({ project: p, sourceStep: "recolor", submit: post });
+  const inpaint = useInpaint({
+    project: p,
+    sourceStep: "recolor",
+    submit: post,
+  });
   return (
     <>
       <div className="notice" role="status">
@@ -1248,9 +1282,23 @@ export default function RecolorPanel({
                 <small>原款负责结构布局，颜色参考图负责对应部位颜色</small>
               </div>
               <small className="setting-help">
-                默认锁定三姿势底图的版型、口袋、条纹、包边、扣子和面料；只有明确可见并经确认的差异才允许局部改变。
+                单独上传某个颜色款后，该款只使用自己的参考图并忽略上方共享颜色图；未单独上传时仍锁定三姿势底图的同款设计进行复色。
               </small>
             </div>
+            <ColorVariantReferences
+              projectId={p.id}
+              colors={colors}
+              activeId={activeId}
+              busy={busy}
+              run={run}
+              refreshProject={refreshProject}
+              onSelectColor={(id) => {
+                setHistoryJobId("");
+                setActiveId(id);
+              }}
+              onRemoveColor={removeVariant}
+              onPreview={(url) => setPreview({ images: [url], index: 0 })}
+            />
             <div className="recolor-reference-note">
               <b>识别原则</b>
               <span>
@@ -1369,7 +1417,7 @@ export default function RecolorPanel({
                 </button>
               </div>
               <ColorCropper
-                src={previewUrl(referenceSourceUrl,960)}
+                src={previewUrl(referenceSourceUrl, 960)}
                 region={referenceCropDraft}
                 onChange={setReferenceCropDraft}
               />
@@ -1397,7 +1445,7 @@ export default function RecolorPanel({
           <div className="recolor-sampler-settings-grid">
             <div className="recolor-sampler-left">
               <ReferenceColorSampler
-                src={previewUrl(reference.url,960)}
+                src={previewUrl(reference.url, 960)}
                 existingNames={colors.map((color) => color.name)}
                 disabled={busy}
                 extracting={analyzing}
@@ -1489,7 +1537,7 @@ export default function RecolorPanel({
                           />
                           <div className="recolor-color-fields">
                             <label>
-                              主体颜色
+                              基本色（主体强制）
                               <input
                                 disabled={colorsLocked}
                                 defaultValue={color.name}
@@ -1498,13 +1546,15 @@ export default function RecolorPanel({
                                   run(() =>
                                     updateColorById(color.id, {
                                       name: event.target.value,
+                                      userConfirmedName:
+                                        event.target.value.trim() || undefined,
                                     }),
                                   )
                                 }
                               />
                             </label>
                             <label>
-                              主色HEX
+                              基本色 HEX（主体强制）
                               <input
                                 disabled={colorsLocked}
                                 defaultValue={color.hex || ""}
@@ -1514,11 +1564,16 @@ export default function RecolorPanel({
                                     updateColorById(color.id, {
                                       baseHex: event.target.value.toUpperCase(),
                                       hex: event.target.value.toUpperCase(),
+                                      userConfirmedHex:
+                                        event.target.value.toUpperCase(),
                                     }),
                                   )
                                 }
                               />
                             </label>
+                            <small className="recolor-main-color-lock">
+                              你选择的基本色优先于照片色差；参考图只补充局部配色与位置。
+                            </small>
                             {complexColorway && (
                               <>
                                 <label>
@@ -1546,7 +1601,8 @@ export default function RecolorPanel({
                                     onBlur={(event) =>
                                       run(() =>
                                         updateColorById(color.id, {
-                                          trimHex: event.target.value.toUpperCase(),
+                                          trimHex:
+                                            event.target.value.toUpperCase(),
                                         }),
                                       )
                                     }
@@ -1560,7 +1616,11 @@ export default function RecolorPanel({
                                 key={`${color.id}-${recolorColorName(color)}`}
                                 disabled={colorsLocked}
                                 defaultValue={recolorColorName(color)}
-                                placeholder={complexColorway?"例如：黑色白条纹":"例如：米白色"}
+                                placeholder={
+                                  complexColorway
+                                    ? "例如：黑色白条纹"
+                                    : "例如：米白色"
+                                }
                                 onBlur={(event) =>
                                   run(() => {
                                     const outputName =
@@ -1643,7 +1703,9 @@ export default function RecolorPanel({
                                 </small>
                               </>
                             ) : (
-                              <small>普通颜色款：只按主体颜色复色，扣子与细节沿用原款</small>
+                              <small>
+                                普通颜色款：只按主体颜色复色，扣子与细节沿用原款
+                              </small>
                             )}
                             {color.occlusion && color.occlusion !== "none" && (
                               <small
@@ -1690,7 +1752,9 @@ export default function RecolorPanel({
                               setPaletteVisible(true);
                             }}
                           >
-                            {complexColorway ? "复杂款颜色与设计" : "调整主体颜色"}
+                            {complexColorway
+                              ? "复杂款颜色与设计"
+                              : "调整主体颜色"}
                           </button>
                           <button
                             type="button"
@@ -1946,19 +2010,29 @@ export default function RecolorPanel({
             <div className="recolor-review-guide" role="status">
               <div>
                 <b>逐张人工验收</b>
-                <span>确认一张就保留一张；AI 判定失败但图片可用时也能确认。</span>
+                <span>
+                  确认一张就保留一张；AI 判定失败但图片可用时也能确认。
+                </span>
               </div>
               <strong>
-                {confirmedColorResults(active).filter(Boolean).length}/{expectedCount} 已确认
+                {confirmedColorResults(active).filter(Boolean).length}/
+                {expectedCount} 已确认
               </strong>
               <a
                 className={`button primary ${confirmedColorResults(active).some(Boolean) ? "" : "disabled"}`}
-                href={confirmedColorResults(active).some(Boolean) ? `/projects/${p.id}/final` : "#"}
+                href={
+                  confirmedColorResults(active).some(Boolean)
+                    ? `/projects/${p.id}/final`
+                    : "#"
+                }
                 aria-disabled={!confirmedColorResults(active).some(Boolean)}
                 onClick={(event) => {
-                  if (!confirmedColorResults(active).some(Boolean)) event.preventDefault();
+                  if (!confirmedColorResults(active).some(Boolean))
+                    event.preventDefault();
                 }}
-              >查看最终结果</a>
+              >
+                查看最终结果
+              </a>
             </div>
           )}
           {active ? (
@@ -1979,7 +2053,9 @@ export default function RecolorPanel({
                   selected = retrySlots.includes(slot),
                   confirmedUrl = confirmedColorResults(active)[slot - 1],
                   currentConfirmed = Boolean(url && confirmedUrl === url),
-                  previousConfirmed = Boolean(confirmedUrl && !currentConfirmed);
+                  previousConfirmed = Boolean(
+                    confirmedUrl && !currentConfirmed,
+                  );
                 return (
                   <div
                     className={`recolor-result-pair selectable ${selected ? "selected" : ""}`}
@@ -2003,7 +2079,11 @@ export default function RecolorPanel({
                       <button
                         type="button"
                         className={`recolor-confirm-one ${currentConfirmed ? "confirmed" : ""}`}
-                        disabled={busy || currentConfirmed || !canManuallyConfirmJob(job, url)}
+                        disabled={
+                          busy ||
+                          currentConfirmed ||
+                          !canManuallyConfirmJob(job, url)
+                        }
                         title={
                           currentConfirmed
                             ? "当前图片已人工确认"
@@ -2013,9 +2093,15 @@ export default function RecolorPanel({
                                 ? "图片需已生成并保存后才能确认"
                                 : "人工确认当前单张图片"
                         }
-                        onClick={() => job && url && run(() => confirmOne(job, url))}
+                        onClick={() =>
+                          job && url && run(() => confirmOne(job, url))
+                        }
                       >
-                        {currentConfirmed ? "✓ 已确认" : previousConfirmed ? "替换此张" : "确认此张"}
+                        {currentConfirmed
+                          ? "✓ 已确认"
+                          : previousConfirmed
+                            ? "替换此张"
+                            : "确认此张"}
                       </button>
                     </div>
                     <ResultCard

@@ -327,9 +327,53 @@ export type VariantColorRegion = {
   hex?: string;
   confidence: number;
 };
+export type ColorReferenceImage = {
+  id: string;
+  /** 高清原图（AI 分析与复色必须使用此图，绝不使用缩略图）。 */
+  path: string;
+  previewPath?: string;
+  thumbnailPath?: string;
+  /** 图片内容哈希，用于跳过未变化的重复分析。 */
+  hash: string;
+  role: "primary" | "supporting";
+  isPrimary: boolean;
+  fileName?: string;
+  uploadedAt: string;
+};
+export type ColorVariantColorProfile = {
+  primaryColor?: string;
+  primaryHex?: string;
+  secondaryColors?: Array<{ part: string; colorName: string; hex?: string }>;
+  trimColors?: Array<{ part: string; colorName: string; hex?: string }>;
+  buttonColors?: Array<{ part: string; colorName: string; hex?: string }>;
+  printColors?: Array<{ part: string; colorName: string; hex?: string }>;
+  fabricAppearance?: string;
+  designDifferences?: string[];
+  /** 多张参考图之间出现冲突时的说明，存在即 needsReview。 */
+  conflicts?: string[];
+  confidence?: number;
+};
 export type TargetColor = {
   id: string;
   name: string;
+  /** 用户人工确认后的颜色名称；AI 建议名称为 name，用户改后写入此处并优先使用。 */
+  userConfirmedName?: string;
+  /** 用户通过 HEX/色差板确认的主体色；优先于参考照片受光线影响的像素颜色。 */
+  userConfirmedHex?: string;
+  primaryReferenceId?: string;
+  /** 该颜色款独立的一组参考图（主参考图 + 补充图），不同颜色款之间绝不混用。 */
+  referenceImages?: ColorReferenceImage[];
+  /** 识别得到的部位颜色映射，例如 { mainBody, piping, buttons, sideStripe }。 */
+  colorMap?: Record<string, string>;
+  /** 来自当前颜色参考图真实可见、由用户确认的设计差异。 */
+  designOverrides?: string[];
+  colorProfile?: ColorVariantColorProfile;
+  /** 该颜色款综合置信度。 */
+  variantConfidence?: number;
+  /** 多图冲突或识别不可靠时置 true，要求人工确认。 */
+  referenceNeedsReview?: boolean;
+  /** 参考图集合签名（各图 id+hash），未变化时跳过重复分析。 */
+  referenceAnalysisSignature?: string;
   outputName?: string;
   baseHex?: string;
   hex?: string;
@@ -387,6 +431,8 @@ export type WorkflowSettings = {
     extraRequirements?: string;
     protectedItems: string[];
     face?: boolean;
+    /** 每张候选图各自的露脸开关（长度对应候选数量），缺省时回退到 face。 */
+    faces?: boolean[];
     selectedCandidateImage?: string;
     activeCandidateSlot?: number;
     revisionRequest?: string;
@@ -397,6 +443,8 @@ export type WorkflowSettings = {
     productType?: ProductType;
     shotType: string;
     face: boolean;
+    /** 三张姿势图各自的露脸开关（长度3），缺省时回退到 face。 */
+    faces?: boolean[];
     background: boolean;
     detailRequirements: string;
     poseInstructions: string[];
@@ -434,7 +482,10 @@ export type Project = {
   confirmedPoseImages?: string[];
   confirmedRecolorImages?: string[];
   assets: ProjectAssets;
-  assetImageVersions?: Record<string,ImageSourceVersions|ImageSourceVersions[]>;
+  assetImageVersions?: Record<
+    string,
+    ImageSourceVersions | ImageSourceVersions[]
+  >;
   assetEvidence?: Partial<
     Record<ProductDetailAssetKey | "garmentImage", ProductAssetEvidence>
   >;

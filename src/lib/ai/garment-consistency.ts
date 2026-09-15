@@ -8,6 +8,7 @@ import { garmentConsistencyPrompt } from "./prompts/consistency";
 import { resizeToJpeg } from "../image-limits";
 import { resolveRecolorConsistencyStatus } from "../recolor-structure";
 import { resolveTryonDetailStatus } from "../garment-detail-lock";
+import { resolveRecolorReferenceEvidence } from "../recolor-reference-source";
 
 const checkSchema = z.object({
   consistent: z.boolean(),
@@ -98,7 +99,9 @@ export async function checkGarmentConsistency(
   if (!output) throw new Error("该任务还没有可检测的生成结果");
   const posePersonSource =
     job.workflow === "pose"
-      ? job.sourceModelImage || job.inputImages[0] || project.confirmedTryonImage
+      ? job.sourceModelImage ||
+        job.inputImages[0] ||
+        project.confirmedTryonImage
       : undefined;
   const poseGarmentSource =
     job.workflow === "pose" ? project.assets.garmentImage : undefined;
@@ -117,12 +120,16 @@ export async function checkGarmentConsistency(
     throw new Error("找不到原产品服装基准图，请先保留产品图或输入图");
   if (job.workflow === "pose" && !posePersonSource)
     throw new Error("找不到三姿势使用的人物底图，无法检查模特身份");
-  const variantReference =
+  const variantReferences =
     job.workflow === "recolor"
-      ? project.targetColors?.find((color) => color.id === job.targetColorId)
-          ?.cropImage
-      : undefined;
-  if (job.workflow === "recolor" && !variantReference)
+      ? (() => {
+          const color = project.targetColors?.find(
+            (item) => item.id === job.targetColorId,
+          );
+          return resolveRecolorReferenceEvidence(color).images;
+        })()
+      : [];
+  if (job.workflow === "recolor" && !variantReferences.length)
     throw new Error(
       "找不到当前颜色款的整件服装设计参考，无法进行一对一复色质检",
     );
@@ -135,7 +142,7 @@ export async function checkGarmentConsistency(
       : [];
   const inputs =
     job.workflow === "recolor"
-      ? [source, variantReference!, output]
+      ? [source, ...variantReferences, output]
       : job.workflow === "tryon"
         ? [
             source,
@@ -144,7 +151,7 @@ export async function checkGarmentConsistency(
           ]
         : job.workflow === "pose" && poseGarmentSource
           ? [poseGarmentSource, posePersonSource!, output]
-        : [source, output];
+          : [source, output];
   const parsed = checkSchema.parse(
     await requestMultiVisionJson(
       runtime,
@@ -196,7 +203,9 @@ export async function checkGarmentConsistency(
           })
         : parsed.checks.person === false
           ? "failed"
-          : parsed.consistent && parsed.checks.person === true && parsed.score >= 85
+          : parsed.consistent &&
+              parsed.checks.person === true &&
+              parsed.score >= 85
             ? "passed"
             : "needs_review";
   return {
