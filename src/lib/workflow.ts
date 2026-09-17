@@ -22,6 +22,7 @@ import {
   prepareProviderInput,
   sha,
   validateOutput,
+  validateProductUpload,
   validateUpload,
   safeSegment,
 } from "./ai/validators";
@@ -82,7 +83,12 @@ import {
 import { randomGenerationSeed } from "./generation-seed";
 import { isRetryableGenerationError } from "./generation-retry";
 import { checkCorrectionQuality } from "./correction-quality";
-import { checkRecolorColorMatch } from "./recolor-color-check";
+import {
+  buildRecolorColorRetryInstruction,
+  checkRecolorColorMatch,
+  resolveRecolorGroupColorConsistency,
+  shouldAutoRetryRecolorColor,
+} from "./recolor-color-check";
 import { assertFormalImageSource, imageSourceVersions } from "./image-sources";
 import { checkInpaintProtectedRegion } from "./inpaint-qc";
 export const DEFAULT_DETAILS =
@@ -96,6 +102,15 @@ export async function persistUpload(file: File, sku: string, name: string) {
     data,
   );
 }
+export async function persistProductUpload(file:File,sku:string,name:string){
+  const images=await validateProductUpload(file);
+  const id=crypto.randomUUID();
+  const [url,enhancedUrl]=await Promise.all([
+    saveOutput(sku,"source",`${safeSegment(name)}-${id}.jpg`,images.standard),
+    saveOutput(sku,"source/product-detail-master",`${safeSegment(name)}-${id}-detail-master.jpg`,images.detailSource),
+  ]);
+  return {url,enhancedUrl,sourceWidth:images.sourceWidth,sourceHeight:images.sourceHeight,enhancedWidth:images.detailWidth,enhancedHeight:images.detailHeight,enhancement:images.enhancement};
+}
 async function resolveExistingGarmentSource(
   project: Project,
   requested: string,
@@ -108,6 +123,17 @@ async function resolveExistingGarmentSource(
     } catch {
       /* 裁图损坏时继续验证请求图并保留真实错误 */
     }
+  }
+  // 用户没有框选单件服装时，换装优先使用上传阶段生成的高清忠实副本。
+  // 只有请求的仍是当前产品主图时才替换来源，避免覆盖调用方明确传入的其他图片。
+  if(
+    project.assets.garmentEnhancedImage&&
+    (requested===project.assets.garmentImage||requested===project.assets.garmentEnhancedImage)
+  ){
+    try{
+      await localImage(project.assets.garmentEnhancedImage);
+      return project.assets.garmentEnhancedImage;
+    }catch{/* 高清副本损坏时继续使用原始请求图 */}
   }
   try {
     await localImage(requested);
@@ -456,9 +482,12 @@ async function runOne(args: {
       );
     }
     let recolorColorCheck;
-    if (args.workflow === "recolor" && sourceBuffers.length >= 2) {
+    if (
+      args.workflow === "recolor" &&
+      (sourceBuffers.length >= 2 || args.recolorExpectedMainHex)
+    ) {
       recolorColorCheck = await checkRecolorColorMatch(
-        sourceBuffers[1],
+        sourceBuffers[1] || sourceBuffers[0],
         optimized.buffer,
         args.recolorExpectedMainHex,
       );
@@ -562,10 +591,11 @@ async function runOne(args: {
         correctionQualityCheck?.outputSharpness || checks.sharpnessScore,
       correctionCheck,
       correctionQualityCheck,
+      recolorColorCheck,
       inpaintBoundaryCheck,
       correctionQualityBaseline: args.correctionQualityBaseline,
       qcStatus:
-        commandFailed || qualityRegressed || boundaryFailed
+        commandFailed || qualityRegressed || boundaryFailed || recolorColorFailed
           ? "FAIL"
           : review
             ? "NEEDS_REVIEW"
@@ -585,10 +615,17 @@ async function runOne(args: {
       startedAt,
       completedAt: finishedAt,
       durationMs,
-      success: !commandFailed && !qualityRegressed && !boundaryFailed,
+      success:
+        !commandFailed &&
+        !qualityRegressed &&
+        !boundaryFailed &&
+        !recolorColorFailed,
       retryCount,
       qcResult:
-        commandFailed || qualityRegressed || boundaryFailed
+        commandFailed ||
+        qualityRegressed ||
+        boundaryFailed ||
+        recolorColorFailed
           ? "failed"
           : review
             ? "needs_review"
@@ -1057,6 +1094,50 @@ async function autoCheckRecolorConsistency(
   });
 }
 
+async function autoCheckRecolorGroupColor(
+  projectId: string,
+  targetColorId: string,
+) {
+  const jobs = Array.from(
+    (await latestSlotJobs(projectId, "recolor", targetColorId)).values(),
+  ).filter(
+    (job) =>
+      job.outputImages.length > 0 &&
+      !["failed", "stale", "interrupted"].includes(job.status),
+  );
+  const groupCheck = resolveRecolorGroupColorConsistency(
+    jobs.map((job) => ({
+      slot: job.slot || 0,
+      // 单张目标色检查已失败的候选不能成为整组颜色基准。
+      outputHex: job.recolorColorCheck?.passed
+        ? job.recolorColorCheck.outputHex
+        : undefined,
+    })),
+  );
+  if (groupCheck.passed) return;
+  await Promise.all(
+    jobs
+      .filter((job) => groupCheck.outlierSlots.includes(job.slot || 0))
+      .map(async (job) => {
+        const warning = groupCheck.issues[0];
+        await patchJob(job.id, {
+          // 跨姿势色差可能来自自然光线差异，保留结果交给人工确认；
+          // 已被更严格单张检查判重做的结果不降级为人工审核。
+          status: job.status === "needs_redo" ? "needs_redo" : "needs_review",
+          requestStatus:
+            job.requestStatus === "needs_redo"
+              ? "needs_redo"
+              : "needs_review",
+          qcStatus: job.qcStatus === "FAIL" ? "FAIL" : "NEEDS_REVIEW",
+          qualityIssues: uniqueStrings([
+            ...(job.qualityIssues || []),
+            `跨姿势颜色校验：${warning}`,
+          ]),
+        });
+      }),
+  );
+}
+
 async function autoCheckPoseConsistency(
   projectId: string,
   results: Array<{ id?: string; url?: string; status?: string }>,
@@ -1192,7 +1273,7 @@ export async function executePose(v: {
   });
   const slotKey = `${choice.id}:${choice.model}`;
   const maxConcurrency = generationProviderConcurrency(choice.type, v.mode);
-  const garmentSource = p.assets.garmentImage;
+  const garmentSource = p.assets.garmentCropImage || p.assets.garmentEnhancedImage || p.assets.garmentImage;
   const hasGarmentSource = Boolean(garmentSource);
   const batchId = crypto.randomUUID();
   const results = await Promise.all(
@@ -1278,7 +1359,7 @@ export async function executeRecolor(v: {
   variantStructureMode?: RecolorStructureMode;
   variantStructureDifferences?: string[];
   variantStructureDifferenceConfidence?: number;
-  variantReferenceMode?: "independent" | "shared";
+  variantReferenceMode?: "independent" | "shared" | "selected";
   variantPromptColorName?: string;
   variantPromptHex?: string;
   variantMainColorAuthority?: "selected" | "reference";
@@ -1309,7 +1390,15 @@ export async function executeRecolor(v: {
       (p.confirmedPoseImages?.length ? "confirmed" : "standalone"),
     protectedDetails = [
       normalizeTryonDetailRequirements(
-        `${buildProductProtectionPrompt(p.productType, p.profile)}\n${extraRequirements}`,
+        [
+          buildProductProtectionPrompt(p.productType, p.profile),
+          p.garmentDetailLock
+            ? buildGarmentDetailProtectedDetails(p.garmentDetailLock)
+            : "",
+          extraRequirements,
+        ]
+          .filter(Boolean)
+          .join("\n"),
         3000,
       ),
       correctionText,
@@ -1345,7 +1434,10 @@ export async function executeRecolor(v: {
         ? previousColor.generationStartedAt
         : new Date().toISOString(),
     colorSemantics = parseColorName(v.colorName),
-    colorNameRule = colorNameRuleText(colorSemantics);
+    colorNameRule =
+      v.variantReferenceMode === "selected"
+        ? colorNameRuleText(colorSemantics)
+        : "";
   const color: TargetColor = {
     id: targetId,
     name: v.colorName,
@@ -1386,6 +1478,7 @@ export async function executeRecolor(v: {
   });
   const slotKey = `${choice.id}:${choice.model}`;
   const maxConcurrency = generationProviderConcurrency(choice.type, v.mode);
+  const batchId = crypto.randomUUID();
   const results = await Promise.all(
     slots.map(async (slot) => {
       const source = sources[slot - 1];
@@ -1398,56 +1491,86 @@ export async function executeRecolor(v: {
           ? [source, colorSample]
           : [source];
       const trim = v as typeof v & { trimColorName?: string; trimHex?: string };
-      const release = await acquireProviderSlot(slotKey, maxConcurrency);
-      try {
-        return await runOne({
+      const expectedMainHexCandidate = (
+        v.variantPromptHex || v.hexColor || ""
+      )
+        .trim()
+        .toUpperCase();
+      const expectedMainHex = /^#[0-9A-F]{6}$/.test(
+        expectedMainHexCandidate,
+      )
+        ? expectedMainHexCandidate
+        : undefined;
+      const basePrompt = recolorPrompt(
+        v.garmentArea,
+        v.variantPromptColorName || v.colorName,
+        v.variantPromptHex || v.hexColor,
+        v.protectedAreas,
+        protectedDetails,
+        v.face,
+        trim.trimColorName,
+        trim.trimHex,
+        v.variantDesignDetails,
+        v.variantMaterialFeatures,
+        colorNameRule,
+        "perVariant",
+        v.variantColorRegions,
+        v.variantUniformColor,
+        v.variantUniformColorConfidence,
+        v.variantOcclusion,
+        v.variantOcclusionPolicy,
+        v.variantOcclusionReason,
+        v.variantStructureMode,
+        v.variantStructureDifferences,
+        v.variantStructureDifferenceConfidence,
+        v.variantColorMap || {},
+        v.variantReferenceMode || "shared",
+        v.variantMainColorAuthority || "reference",
+        p.productType,
+      );
+      const runAttempt = (prompt: string, promptVersion: string) =>
+        runOne({
           projectId: p.id,
           workflow: "recolor",
           mode: v.mode,
           modelSlot: v.modelPreference,
           images: refs,
-          prompt: recolorPrompt(
-            v.garmentArea,
-            v.variantPromptColorName || v.colorName,
-            v.variantPromptHex || v.hexColor,
-            v.protectedAreas,
-            protectedDetails,
-            v.face,
-            trim.trimColorName,
-            trim.trimHex,
-            v.variantDesignDetails,
-            v.variantMaterialFeatures,
-            colorNameRule,
-            "perVariant",
-            v.variantColorRegions,
-            v.variantUniformColor,
-            v.variantUniformColorConfidence,
-            v.variantOcclusion,
-            v.variantOcclusionPolicy,
-            v.variantOcclusionReason,
-            v.variantStructureMode,
-            v.variantStructureDifferences,
-            v.variantStructureDifferenceConfidence,
-            v.variantColorMap || {},
-            v.variantReferenceMode || "shared",
-            v.variantMainColorAuthority || "reference",
-          ),
-          promptVersion: RECOLOR_PROMPT_VERSION,
+          prompt,
+          promptVersion,
           folder: `recolor/${safeSegment(v.colorName)}`,
           filename: `${safeSegment(p.sku)}_${safeSegment(v.colorName)}_pose${String(slot).padStart(2, "0")}.jpg`,
           slot,
           otherHashes: hashes,
           targetColorId: targetId,
           colorName: v.colorName,
+          sourceModelImage: source,
+          batchId,
           correctionPlan: v.correctionPlan,
           correctionQualityBaseline: v.correctionQualityBaseline,
+          enforceSourceQuality: true,
+          // 无论是独立图、共享裁图还是人工色卡，只要当前色款已有
+          // 可用 HEX，就必须用同一目标做本地 Lab 验收；不再从包含邻衣与
+          // 背景的裁图里重新猜主色。
+          recolorExpectedMainHex: expectedMainHex,
         });
+      const release = await acquireProviderSlot(slotKey, maxConcurrency);
+      try {
+        let result = await runAttempt(basePrompt, RECOLOR_PROMPT_VERSION);
+        const firstJob = result.id ? await getJob(result.id) : undefined;
+        if (shouldAutoRetryRecolorColor(firstJob?.recolorColorCheck, 0)) {
+          result = await runAttempt(
+            `${basePrompt}\n${buildRecolorColorRetryInstruction(firstJob!.recolorColorCheck!)}`,
+            `${RECOLOR_PROMPT_VERSION}-auto-color-retry-1`,
+          );
+        }
+        return result;
       } finally {
         release();
       }
     }),
   );
   await autoCheckRecolorConsistency(p.id, results);
+  await autoCheckRecolorGroupColor(p.id, targetId);
   const latestBySlot = await latestSlotJobs(p.id, "recolor", targetId),
     urls = Array.from({ length: sources.length }, (_, index) => {
       const job = latestBySlot.get(index + 1);

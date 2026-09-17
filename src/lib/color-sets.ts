@@ -143,8 +143,11 @@ export function normalizedColorName(
   return (color.userConfirmedName?.trim() || color.name?.trim() || "").trim();
 }
 /**
- * 只有真正经过人工操作/确认的色卡才拥有主体色最高优先级。
- * 兼容旧项目：旧数据没有 userConfirmedHex 时，人工确认过的色卡同样视为已锁定。
+ * 只有真正经过人工改色/取色的色卡才拥有主体色最高优先级。
+ *
+ * manualReviewConfirmed 只表示用户确认了“同款结构/裁图范围”，不代表用户
+ * 人工选定了 HEX。把它当成色值锁定会将 AI 的拍摄色差识别结果误升级为“用户颜色”，
+ * 导致实际参考图失去最高优先级。
  */
 export function selectedRecolorMainColor(
   color:
@@ -164,8 +167,7 @@ export function selectedRecolorMainColor(
   const manuallySelected = Boolean(
     color.userConfirmedName?.trim() ||
     color.userConfirmedHex?.trim() ||
-    color.colorAdjustment ||
-    color.manualReviewConfirmed,
+    color.colorAdjustment,
   );
   if (!manuallySelected) return undefined;
   return {
@@ -306,7 +308,12 @@ export function colorSetIssue(
   const count = colorResultCount(color);
   if (!color.hex && !color.baseHex && !color.cropImage && count === 0)
     return "需要设置颜色";
-  if (!color.cropImage && count === 0) return "需要框选整件色款参考";
+  if (
+    !(color.referenceImages?.length || color.cropImage) &&
+    isComplexColorway(color) &&
+    count === 0
+  )
+    return "复杂款需要颜色参考图";
   const expected = expectedColorResultCount(color);
   if (count < expected) return `复色结果 ${count}/${expected}`;
   if (color.status !== "confirmed")

@@ -9,7 +9,9 @@ import AssetUploadCard, { type LocalAsset } from "./AssetUploadCard";
 import ResultCard from "./ResultCard";
 import { useInpaint } from "./useInpaint";
 import ConsistencyCheck from "./ConsistencyCheck";
-import ImagePreviewDialog from "./ImagePreviewDialog";
+import ImagePreviewDialog, {
+  type ImagePreviewDialogProps,
+} from "./ImagePreviewDialog";
 import ClearAssetsButton from "./ClearAssetsButton";
 import ClearResultsButton from "./ClearResultsButton";
 import { POSE_PRESETS } from "@/lib/ai/pose-presets";
@@ -127,10 +129,9 @@ export default function PosePanel({
         saved?.selectedResultImages ||
         jobs.flatMap((j) => j.outputImages),
     ),
-    [preview, setPreview] = useState<{
-      images: string[];
-      index: number;
-    } | null>(null),
+    [preview, setPreview] = useState<
+      Omit<ImagePreviewDialogProps, "onClose"> | null
+    >(null),
     [saveLibrary, setSaveLibrary] = useState(false),
     [libraryName, setLibraryName] = useState(`${p.productType}常用三姿势`),
     [libraryMessage, setLibraryMessage] = useState("");
@@ -710,7 +711,7 @@ export default function PosePanel({
             <div className="process-history-head">
               <div>
                 <h3 id="pose-process-history-title">历史生成记录</h3>
-                <small>点击小图回到该照片的姿势参考与制作结果</small>
+                <small>点击小图完整预览；可在预览窗回到制作过程</small>
               </div>
               <div>
                 {historyJob && (
@@ -732,8 +733,18 @@ export default function PosePanel({
                     type="button"
                     className={job.id === historyJobId ? "active" : ""}
                     key={job.id}
-                    onClick={() => setHistoryJobId(job.id)}
-                    title={`姿势 ${String(job.slot || 1).padStart(2, "0")} · ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
+                    onClick={() =>
+                      setPreview({
+                        images: [job.outputImages[0]],
+                        index: 0,
+                        compact: true,
+                        title: `姿势历史 · 姿势 ${String(job.slot || 1).padStart(2, "0")}`,
+                        actionLabel: "回到此制作过程",
+                        onAction: () => setHistoryJobId(job.id),
+                      })
+                    }
+                    title={`完整查看姿势 ${String(job.slot || 1).padStart(2, "0")} · ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
+                    aria-label={`完整查看姿势历史生成图 ${index + 1}`}
                   >
                     <LazyThumbnail
                       src={thumbnailUrl(job.outputImages[0])}

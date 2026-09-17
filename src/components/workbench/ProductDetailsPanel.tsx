@@ -172,7 +172,7 @@ const ASSET_FIELDS: {
   {
     key: "garmentImage",
     label: "产品主图",
-    description: "必填，用于换装的主商品图",
+    description: "必填；上传后自动生成高清工作副本供识别与细节裁切",
     name: "garment",
     required: true,
   },
@@ -399,6 +399,14 @@ export default function ProductDetailsPanel({
   const pendingAiReviewCount = Object.values(assetEvidence || {}).filter(
     (evidence) => evidence.source === "ai_crop" && !evidence.confirmed,
   ).length;
+  const enhancement=p.productImageEnhancement;
+  const enhancementSummary=enhancement
+    ?enhancement.status==="needs_review"
+      ?`已增强至 ${enhancement.enhancedWidth}×${enhancement.enhancedHeight}px；原图仍偏模糊，请补充清晰细节图或人工确认`
+      :enhancement.blurDetected
+        ?`检测到原图模糊，已增强至 ${enhancement.enhancedWidth}×${enhancement.enhancedHeight}px，后续优先参考高清副本`
+        :`高清工作图 ${enhancement.enhancedWidth}×${enhancement.enhancedHeight}px 已就绪，后续优先参考`
+    :"高清工作图已生成，后续识别与真实区域裁切优先使用";
 
   async function saveAsset(
     asset: LocalAsset,
@@ -825,9 +833,12 @@ export default function ProductDetailsPanel({
                 <h2>产品图片智能识别</h2>
                 <p>
                   {assets.garmentImage?.url
-                    ? "产品图片已保存，可以自动填写商品属性和细节要求。"
+                    ? p.assets.garmentEnhancedImage
+                      ? "产品图片与高清工作副本已保存，识别和细节裁切将优先使用高清副本。"
+                      : "产品图片已保存，可以自动填写商品属性和细节要求。"
                     : "请在左侧上传一张产品图片，再开始智能识别。"}
                 </p>
+                {p.assets.garmentEnhancedImage && <span className={`success-text${enhancement?.status==="needs_review"?" enhancement-review":""}`}>✓ {enhancementSummary} · 原产品图保持不变</span>}
                 {analysisNotice && (
                   <span className="success-text">{analysisNotice}</span>
                 )}
@@ -970,6 +981,9 @@ export default function ProductDetailsPanel({
                       setPreview(assets[field.key].url!)
                     }
                   />
+                  {field.key === "garmentImage" && p.assets.garmentEnhancedImage && (
+                    <span className={`product-enhanced-source-status${enhancement?.status==="needs_review"?" review":""}`}>✓ {enhancementSummary}</span>
+                  )}
                   {aiFilled[field.key] && (
                     <span className={`ai-fill-badge ${aiFilled[field.key].needsReview ? "review" : ""}`}>
                       AI裁剪 · 置信度 {Math.round((aiFilled[field.key].confidence ?? 0) * 100)}%

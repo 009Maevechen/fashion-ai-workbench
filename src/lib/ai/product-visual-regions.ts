@@ -134,7 +134,7 @@ export async function cropAndUpscaleRegion(
   sku: string,
   sourceUrl: string,
   box: NormalizedCropRegion,
-): Promise<{ cropPath: string; upscalePath: string; scale: 2 | 4 }> {
+): Promise<{ cropPath: string; upscalePath: string; scale: number }> {
   const input = await localImage(sourceUrl);
   const meta = await sharp(input, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS }).metadata();
   if (!meta.width || !meta.height) throw new Error("产品主图尺寸无效");
@@ -148,10 +148,17 @@ export async function cropAndUpscaleRegion(
     .extract({ left, top, width: cropWidth, height: cropHeight })
     .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();
-  const scale: 2 | 4 = cropWidth < 512 || cropHeight < 512 ? 4 : 2;
+  const requestedScale = cropWidth < 512 || cropHeight < 512 ? 4 : 2;
+  const longestCropEdge = Math.max(cropWidth, cropHeight);
+  // 高清主图可能已经达到 4096px。细节图不再无上限放大，避免 8K/16K
+  // 裁图造成内存峰值；仍保持等比例、真实区域和可追溯坐标。
+  const scale = Math.max(1, Math.min(requestedScale, 4096 / longestCropEdge));
+  const outputWidth = Math.max(cropWidth, Math.round(cropWidth * scale));
+  const outputHeight = Math.max(cropHeight, Math.round(cropHeight * scale));
   const upscaled = await sharp(cropped)
-    .resize({ width: cropWidth * scale, height: cropHeight * scale, kernel: "lanczos3" })
-    .jpeg({ quality: 90, mozjpeg: true })
+    .resize({ width: outputWidth, height: outputHeight, kernel: "lanczos3" })
+    .sharpen({ sigma: 0.55 })
+    .jpeg({ quality: 94, mozjpeg: true, chromaSubsampling: "4:4:4" })
     .toBuffer();
   const id = crypto.randomUUID();
   const cropPath = await saveOutput(
@@ -163,7 +170,7 @@ export async function cropAndUpscaleRegion(
   const upscalePath = await saveOutput(
     sku,
     "source/visual-details/upscale",
-    `${safeSegment(String(id))}-${scale}x.jpg`,
+    `${safeSegment(String(id))}-${scale.toFixed(2)}x.jpg`,
     upscaled,
   );
   return { cropPath, upscalePath, scale };

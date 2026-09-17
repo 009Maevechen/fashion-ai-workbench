@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import type { PanelProps } from "./types";
 import type { GarmentDetailLock, ProductType } from "@/lib/db";
 import AssetUploadCard, { type LocalAsset } from "./AssetUploadCard";
-import ImagePreviewDialog from "./ImagePreviewDialog";
+import ImagePreviewDialog, {
+  type ImagePreviewDialogProps,
+} from "./ImagePreviewDialog";
 import ResultCard from "./ResultCard";
 import { useInpaint } from "./useInpaint";
 import ConsistencyCheck from "./ConsistencyCheck";
@@ -99,10 +101,9 @@ export default function TryonPanel({
           ]),
         ],
   );
-  const [preview, setPreview] = useState<{
-    images: string[];
-    index: number;
-  } | null>(null);
+  const [preview, setPreview] = useState<
+    Omit<ImagePreviewDialogProps, "onClose"> | null
+  >(null);
   const [historyJobId, setHistoryJobId] = useState("");
   const [garmentCropUrl, setGarmentCropUrl] = useState(
     p.assets.garmentCropImage || "",
@@ -565,7 +566,7 @@ export default function TryonPanel({
             <div className="tryon-history-head">
               <div>
                 <h3 id="tryon-generation-history-title">生成历史</h3>
-                <small>点击小图回到之前生成的照片</small>
+                <small>点击小图完整预览；可在预览窗回到该结果</small>
               </div>
               <span>{historyItems.length} 张</span>
             </div>
@@ -579,12 +580,21 @@ export default function TryonPanel({
                       type="button"
                       className={active ? "active" : ""}
                       key={job.id}
-                      onClick={() => {
-                        setHistoryJobId(job.id);
-                        setCandidateSlot(job.slot || 1);
-                      }}
-                      title={`查看 ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
-                      aria-label={`查看历史生成图 ${index + 1}`}
+                      onClick={() =>
+                        setPreview({
+                          images: [url],
+                          index: 0,
+                          compact: true,
+                          title: `换装历史 · 候选 ${job.slot || 1}`,
+                          actionLabel: "回到此生成结果",
+                          onAction: () => {
+                            setHistoryJobId(job.id);
+                            setCandidateSlot(job.slot || 1);
+                          },
+                        })
+                      }
+                      title={`完整查看 ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
+                      aria-label={`完整查看历史生成图 ${index + 1}`}
                     >
                       <LazyThumbnail
                         src={thumbnailUrl(url)}

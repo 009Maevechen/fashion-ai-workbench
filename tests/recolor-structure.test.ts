@@ -19,10 +19,13 @@ test("遮挡导致同款关系无法判断时必须人工复核",()=>{
   assert.equal(recolorStructureNeedsReview("explicit_difference",.7,["疑似口袋不同"],"none"),true);
 });
 
-test("严格复色校验会把结构变化、颜色错位和人物构图变化直接判失败",()=>{
-  const healthy={silhouette:true,construction:true,colorMapping:true,regionIsolation:true,person:true,composition:true};
+test("严格复色校验会把结构变化、颜色错位、灰雾脏感和人物构图变化直接判失败",()=>{
+  const healthy={silhouette:true,construction:true,colorMapping:true,regionIsolation:true,person:true,composition:true,cleanliness:true,toneIntegrity:true,artifactFree:true};
   assert.equal(resolveRecolorConsistencyStatus({consistent:true,score:91,checks:healthy}),"passed");
   assert.equal(resolveRecolorConsistencyStatus({consistent:false,score:78,checks:healthy}),"needs_review");
   assert.equal(resolveRecolorConsistencyStatus({consistent:false,score:82,checks:{...healthy,colorMapping:false}}),"failed");
   assert.equal(resolveRecolorConsistencyStatus({consistent:false,score:88,checks:{...healthy,person:false}}),"failed");
+  assert.equal(resolveRecolorConsistencyStatus({consistent:false,score:90,checks:{...healthy,cleanliness:false}}),"failed");
+  assert.equal(resolveRecolorConsistencyStatus({consistent:false,score:90,checks:{...healthy,toneIntegrity:false}}),"failed");
+  assert.equal(resolveRecolorConsistencyStatus({consistent:false,score:90,checks:{...healthy,artifactFree:false}}),"failed");
 });

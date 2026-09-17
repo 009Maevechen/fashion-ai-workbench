@@ -3,7 +3,7 @@ import { getProject, updateProject, type ColorReferenceImage } from "@/lib/db";
 import { saveColorReferenceImage } from "@/lib/color-variant";
 import { moveFileToTrash } from "@/lib/ai/storage";
 
-// 给某个颜色款上传一张参考图；首个上传的图自动设为主参考图。可选 replaceImageId 用于替换。
+// 给某个颜色款上传新的唯一生效参考图；旧图保留为历史，但不参与分析或生成。
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; colorId: string }> },
@@ -26,28 +26,29 @@ export async function POST(
     if (replaceImageId) {
       const target = referenceImages.find((img) => img.id === replaceImageId);
       if (target) {
-        image.role = target.role;
-        image.isPrimary = target.isPrimary;
         removed.push(target);
         referenceImages = referenceImages.filter((img) => img.id !== replaceImageId);
       }
     }
-    if (!image.isPrimary && !referenceImages.some((img) => img.isPrimary)) {
-      image.isPrimary = true;
-      image.role = "primary";
-    }
+    referenceImages = referenceImages.map((img) => ({
+      ...img,
+      isPrimary: false,
+      role: "supporting" as const,
+    }));
+    image.isPrimary = true;
+    image.role = "primary";
     referenceImages.push(image);
-    const primary = referenceImages.find((img) => img.isPrimary);
     colors[index] = {
       ...color,
       referenceImages,
-      primaryReferenceId: primary?.id,
+      primaryReferenceId: image.id,
       colorProfile: undefined,
       colorMap: undefined,
       designOverrides: undefined,
       variantConfidence: undefined,
       referenceNeedsReview: undefined,
       referenceAnalysisSignature: undefined,
+      userConfirmedHex: undefined,
     };
     const updated = await updateProject(id, { targetColors: colors });
     for (const r of removed) {

@@ -44,7 +44,7 @@ test("换装一致性以原产品服装为基准并忽略模特差异", () => {
   assert.match(prompt, /"repairTargets"/);
 });
 
-test("复色一致性以第一张锁款式、第二张提供颜色映射", () => {
+test("无独立图的简单复色以第一张锁款式并按基本色检查", () => {
   const prompt = garmentConsistencyPrompt("recolor", project, job);
   assert.match(prompt, /深卡其色/);
   assert.match(prompt, /#8B7355/);
@@ -53,16 +53,21 @@ test("复色一致性以第一张锁款式、第二张提供颜色映射", () =>
     prompt,
     /第1张已确认姿势图是人物、姿势、动作、景别、构图、背景、画面样式、服装版型、结构、面料、纹理、垂感、扣子五金和全部颜色区域布局的唯一底图/,
   );
-  assert.match(prompt, /第2张是当前颜色款参考图，只负责提供普通颜色款的主体色/);
+  assert.match(prompt, /当前没有颜色参考图，仅允许按人工基本色检查简单单色复色/);
   assert.match(prompt, /当前颜色款没有获准改变结构/);
   assert.match(prompt, /扣子\/五金颜色仍以第1张为准/);
-  assert.match(prompt, /任何未获准款式变化、颜色错位、非服装区域误改/);
+  assert.match(prompt, /任何款式变化、颜色错位、历史颜色混入/);
   assert.match(prompt, /\"colorMapping\":boolean/);
   assert.match(prompt, /\"regionIsolation\":boolean/);
+  assert.match(prompt, /\"cleanliness\":boolean/);
+  assert.match(prompt, /\"toneIntegrity\":boolean/);
+  assert.match(prompt, /\"artifactFree\":boolean/);
+  assert.match(prompt, /灰雾脏感/);
+  assert.match(prompt, /全局色调改变/);
   assert.doesNotMatch(prompt, /"repairTargets"/);
 });
 
-test("复色质检只使用当前颜色款的多张独立参考图", () => {
+test("复色质检只使用当前颜色款唯一生效的独立参考图", () => {
   const independentProject = {
     ...project,
     targetColors: [
@@ -90,7 +95,7 @@ test("复色质检只使用当前颜色款的多张独立参考图", () => {
     ],
   } as Project;
   const prompt = garmentConsistencyPrompt("recolor", independentProject, job);
-  assert.match(prompt, /第2至第3张是当前颜色款参考图/);
-  assert.match(prompt, /第4张是复色结果图/);
-  assert.match(prompt, /完全忽略 SKU 级多色参考图/);
+  assert.match(prompt, /第2张是当前颜色款参考图/);
+  assert.match(prompt, /第3张是复色结果图/);
+  assert.match(prompt, /历史独立图、SKU 级多色图/);
 });

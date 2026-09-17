@@ -40,6 +40,9 @@ export function resolveRecolorConsistencyStatus(input:{
     regionIsolation:boolean;
     person:boolean;
     composition:boolean;
+    cleanliness:boolean;
+    toneIntegrity:boolean;
+    artifactFree:boolean;
   };
 }):RecolorConsistencyStatus{
   const criticalFailed=!input.checks.silhouette
@@ -47,7 +50,10 @@ export function resolveRecolorConsistencyStatus(input:{
     ||!input.checks.colorMapping
     ||!input.checks.regionIsolation
     ||!input.checks.person
-    ||!input.checks.composition;
+    ||!input.checks.composition
+    ||!input.checks.cleanliness
+    ||!input.checks.toneIntegrity
+    ||!input.checks.artifactFree;
   if(input.consistent&&input.score>=85&&!criticalFailed)return "passed";
   if(criticalFailed||(!input.consistent&&input.score<65))return "failed";
   return "needs_review";

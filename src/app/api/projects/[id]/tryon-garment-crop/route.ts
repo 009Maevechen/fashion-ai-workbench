@@ -12,7 +12,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const project = await getProject(id);
     if (!project?.assets.garmentImage) throw new Error("请先上传服装产品图");
     if (!region || region.width < 0.01 || region.height < 0.01) throw new Error("请框选完整的整套服装区域");
-    const input = await localImage(project.assets.garmentImage);
+    const input = await localImage(project.assets.garmentEnhancedImage || project.assets.garmentImage);
     const { width, height } = await rotatedDimensions(input);
     const left = Math.max(0, Math.min(width - 1, Math.round(region.x * width)));
     const top = Math.max(0, Math.min(height - 1, Math.round(region.y * height)));

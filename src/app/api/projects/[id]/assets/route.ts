@@ -11,16 +11,17 @@ export async function DELETE(request:Request,{params}:{params:Promise<{id:string
     const id=(await params).id,{assetKey,index}=await request.json() as {assetKey:keyof ProjectAssets;index?:number};
     if(!KEYS.has(assetKey))throw new Error("非法素材字段");
     const project=await getProject(id);if(!project)throw new Error("项目不存在");
-    const assets={...project.assets};let url:string|undefined;
+    const assets={...project.assets};let url:string|undefined,enhancedUrl:string|undefined;
     if(ARRAY_KEYS.has(assetKey)){const values=[...((assets[assetKey] as string[]|undefined)||[])];url=values[index??-1];values[index??-1]=undefined as unknown as string;Object.assign(assets,{[assetKey]:values})}
-    else{url=assets[assetKey] as string|undefined;delete assets[assetKey]}
+    else{url=assets[assetKey] as string|undefined;delete assets[assetKey];if(assetKey==="garmentImage"){enhancedUrl=assets.garmentEnhancedImage;delete assets.garmentEnhancedImage}}
     if(url&&!url.startsWith("/api/files/pose-library/"))await moveFileToTrash(url,id);
+    if(enhancedUrl&&enhancedUrl!==url)await moveFileToTrash(enhancedUrl,id);
     const now=new Date().toISOString();
     const poseReferenceInputs=assetKey==="poseReferenceImages"
       ?Array.from({length:3},(_,poseIndex)=>({id:project.poseReferenceInputs?.[poseIndex]?.id||crypto.randomUUID(),poseIndex:(poseIndex+1) as 1|2|3,imagePath:(assets.poseReferenceImages||[])[poseIndex]||"",description:project.poseReferenceInputs?.[poseIndex]?.description,createdAt:project.poseReferenceInputs?.[poseIndex]?.createdAt||now,updatedAt:now})).filter(item=>item.imagePath)
       :project.poseReferenceInputs;
     const assetEvidence={...(project.assetEvidence||{})};delete assetEvidence[assetKey as keyof typeof assetEvidence];
-    await updateProject(id,{assets,assetEvidence,poseReferenceInputs,...(DETAIL_LOCK_KEYS.has(assetKey)?{garmentDetailLock:undefined}:{})});await invalidateForAssetChange(id,assetKey);
+    await updateProject(id,{assets,assetEvidence,poseReferenceInputs,...(assetKey==="garmentImage"?{productImageEnhancement:undefined}:{}),...(DETAIL_LOCK_KEYS.has(assetKey)?{garmentDetailLock:undefined}:{})});await invalidateForAssetChange(id,assetKey);
     return NextResponse.json(await getProject(id));
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"删除素材失败"},{status:400})}
 }

@@ -2,7 +2,7 @@ import type { ColorVariantColorProfile } from "./db";
 import { colorDistance, readableColorName } from "./color-palette";
 
 export const COLOR_VARIANT_ANALYSIS_VERSION =
-  "color-variant-v2-reference-first";
+  "color-variant-v3-single-active-reference";
 
 export function colorVariantAnalysisSignature(
   images: Array<{ id: string; hash: string }>,
@@ -49,8 +49,8 @@ export function reconcileVariantPrimaryColor(
   const remoteToBase = basePrimary
     ? colorDistance(profile.primaryHex, basePrimary.hex)
     : Infinity;
-  if (remoteToReference < 24 || remoteToBase + 8 >= remoteToReference)
-    return profile;
+  if (remoteToReference < 24) return profile;
+  if (basePrimary && remoteToBase + 8 >= remoteToReference) return profile;
   const correctedHex = referencePrimary.hex.toUpperCase();
   return {
     ...profile,

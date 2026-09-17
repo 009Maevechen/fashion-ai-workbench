@@ -15,7 +15,9 @@ import AssetUploadCard, { type LocalAsset } from "./AssetUploadCard";
 import ResultCard from "./ResultCard";
 import { useInpaint } from "./useInpaint";
 import ConsistencyCheck from "./ConsistencyCheck";
-import ImagePreviewDialog from "./ImagePreviewDialog";
+import ImagePreviewDialog, {
+  type ImagePreviewDialogProps,
+} from "./ImagePreviewDialog";
 import ColorCropper, { type CropRegion } from "./ColorCropper";
 import ClearAssetsButton from "./ClearAssetsButton";
 import ClearResultsButton from "./ClearResultsButton";
@@ -155,10 +157,9 @@ export default function RecolorPanel({
     offsetY: number;
   } | null>(null);
   const [retrySlots, setRetrySlots] = useState<number[]>([]);
-  const [preview, setPreview] = useState<{
-    images: string[];
-    index: number;
-  } | null>(null);
+  const [preview, setPreview] = useState<
+    Omit<ImagePreviewDialogProps, "onClose"> | null
+  >(null);
   const [historyJobId, setHistoryJobId] = useState("");
   useEffect(() => setColors(p.targetColors || []), [p.targetColors]);
   // 新增颜色款自动纳入批量选择，删除的颜色款自动移除，同时保留用户已手动取消勾选的状态。
@@ -199,7 +200,16 @@ export default function RecolorPanel({
     color.poseResults?.some(Boolean),
   ).length;
   const hasTargetColor = (color?: TargetColor) =>
-    Boolean(color?.cropImage || (color?.referenceImages?.length || 0) > 0);
+    Boolean(
+      color &&
+        (color.cropImage ||
+          (color.referenceImages?.length || 0) > 0 ||
+          (!isComplexColorway(color) &&
+            (color.userConfirmedHex ||
+              color.hex ||
+              color.baseHex ||
+              normalizedColorName(color)))),
+    );
   const sources =
     sourceMode === "confirmed"
       ? [
@@ -2244,7 +2254,7 @@ export default function RecolorPanel({
         <div className="process-history-head">
           <div>
             <h2 id="recolor-process-history-title">历史生成记录</h2>
-            <small>点击小图回到该颜色与姿势的复色制作过程</small>
+            <small>点击小图完整预览；可在预览窗回到制作过程</small>
           </div>
           <div>
             {historyJob && (
@@ -2266,11 +2276,21 @@ export default function RecolorPanel({
                 type="button"
                 className={job.id === historyJobId ? "active" : ""}
                 key={job.id}
-                onClick={() => {
-                  if (job.targetColorId) setActiveId(job.targetColorId);
-                  setHistoryJobId(job.id);
-                }}
-                title={`${job.colorName || "复色"} · 姿势 ${job.slot || 1} · ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
+                onClick={() =>
+                  setPreview({
+                    images: [job.outputImages[0]],
+                    index: 0,
+                    compact: true,
+                    title: `${job.colorName || "复色"} · 姿势 ${job.slot || 1}`,
+                    actionLabel: "回到此制作过程",
+                    onAction: () => {
+                      if (job.targetColorId) setActiveId(job.targetColorId);
+                      setHistoryJobId(job.id);
+                    },
+                  })
+                }
+                title={`完整查看 ${job.colorName || "复色"} · 姿势 ${job.slot || 1} · ${new Date(job.startedAt).toLocaleString("zh-CN")}`}
+                aria-label={`完整查看复色历史生成图 ${index + 1}`}
               >
                 <LazyThumbnail
                   src={thumbnailUrl(job.outputImages[0])}

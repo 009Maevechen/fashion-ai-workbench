@@ -96,6 +96,8 @@ export type StepStatus =
 export type DependencyStatus = "current" | "stale" | "needs_review";
 export type ProjectAssets = {
   garmentImage?: string;
+  /** 忠实于产品原图的高清工作副本，只供识别、细节锁定与真实区域裁切使用。 */
+  garmentEnhancedImage?: string;
   garmentCropImage?: string;
   garmentCropRegion?: { x: number; y: number; width: number; height: number };
   productFrontImage?: string;
@@ -123,6 +125,20 @@ export type ProjectAssets = {
     height: number;
   };
   standaloneRecolorPoseImages?: string[];
+};
+export type ProductImageEnhancement = {
+  status: "preserved" | "enhanced" | "needs_review";
+  sourceWidth: number;
+  sourceHeight: number;
+  enhancedWidth: number;
+  enhancedHeight: number;
+  blurDetected: boolean;
+  lowResolution: boolean;
+  sourceSharpness: number;
+  enhancedSharpness: number;
+  methods: string[];
+  warning?: string;
+  processedAt: string;
 };
 export type ProductAttributes = {
   mainColor?: string;
@@ -196,7 +212,7 @@ export type ProductVisualRegion = {
   assetKey: ProductDetailAssetKey;
   needsReview: boolean;
   reason: string;
-  scale: 2 | 4;
+  scale: number;
 };
 export type ProductMissingDetail = {
   type: ProductDetailRegionType;
@@ -490,6 +506,7 @@ export type Project = {
     Record<ProductDetailAssetKey | "garmentImage", ProductAssetEvidence>
   >;
   productVisualAnalysis?: ProductVisualAnalysis;
+  productImageEnhancement?: ProductImageEnhancement;
   garmentDetailLock?: GarmentDetailLock;
   tryonModelReferenceAnalysis?: ModelReferenceAnalysis;
   profile?: ProductProfile;
@@ -543,6 +560,9 @@ export type GarmentConsistencyCheck = {
     person?: boolean;
     composition?: boolean;
     occlusion?: boolean;
+    cleanliness?: boolean;
+    toneIntegrity?: boolean;
+    artifactFree?: boolean;
   };
 };
 export type TryonSubjectFidelityCheck = {
@@ -622,6 +642,13 @@ export type Job = {
   correctionCheck?: CorrectionInstructionCheck;
   correctionQualityBaseline?: string;
   correctionQualityCheck?: CorrectionQualityCheck;
+  recolorColorCheck?: {
+    passed: boolean;
+    referenceHex?: string;
+    outputHex?: string;
+    distance: number;
+    issues: string[];
+  };
   qualityIssues?: string[];
   qcStatus?: "PASS" | "NEEDS_REVIEW" | "FAIL";
   errorCode?: "repair_fail" | "quality_fail";

@@ -42,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const input = cropSchema.parse(await request.json());
     const project = await getProject(id);
     if (!project) throw new Error("商品项目不存在");
-    const source = project.assets.garmentImage;
+    const source = project.assets.garmentEnhancedImage || project.assets.garmentImage;
     if (!source) throw new Error("请先上传并保存产品主图");
     const previous = project.assets[input.assetKey];
     const cropped = await cropAndUpscaleRegion(project.sku, source, input.boundingBox);

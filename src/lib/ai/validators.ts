@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import sharp from "sharp";
 import {assessImageQuality} from "../image-quality-check";
-import {MAX_INPUT_DIMENSION,MAX_INPUT_PIXELS,resizeToJpeg} from "../image-limits";
+import {MAX_INPUT_DIMENSION,MAX_INPUT_PIXELS,resizeToJpeg,rotatedDimensions} from "../image-limits";
 const ALLOWED=new Set(["image/jpeg","image/png","image/webp"]);export const MAX_IMAGE_BYTES=30*1024*1024;
 const HEIF_BRANDS=new Set(["heic","heix","hevc","hevx","heim","heis","mif1","msf1"]);
 function isHeif(buffer:Buffer){return buffer.length>=12&&buffer.subarray(4,8).toString("ascii")==="ftyp"&&HEIF_BRANDS.has(buffer.subarray(8,12).toString("ascii"))}
@@ -15,13 +15,81 @@ async function decodableBuffer(buffer:Buffer){
     return converted instanceof ArrayBuffer?Buffer.from(converted):Buffer.from(converted.buffer,converted.byteOffset,converted.byteLength);
   }
 }
-export async function validateUpload(file:File){
+async function validatedUploadBuffer(file:File){
   if(file.size<512||file.size>MAX_IMAGE_BYTES)throw new Error("图片大小必须在 512B 到 30MB 之间");
   const original=Buffer.from(await file.arrayBuffer());
   const decoded=await decodableBuffer(original).catch(()=>{throw new Error("图片无法解析或文件已损坏；请确认它是真实、完整的图片文件")});
   const metadata=await sharp(decoded,{failOn:"error",limitInputPixels:MAX_INPUT_PIXELS}).metadata().catch(()=>{throw new Error("图片无法解析或文件已损坏")});
   if(!metadata.width||!metadata.height)throw new Error("图片缺少有效尺寸");
+  return decoded;
+}
+export async function validateUpload(file:File){
+  const decoded=await validatedUploadBuffer(file);
   return resizeToJpeg(decoded,MAX_INPUT_DIMENSION,96);
+}
+export const MAX_PRODUCT_DETAIL_SOURCE_DIMENSION=4096;
+export type ProductUploadImages={
+  standard:Buffer;
+  detailSource:Buffer;
+  sourceWidth:number;
+  sourceHeight:number;
+  detailWidth:number;
+  detailHeight:number;
+  enhancement:{
+    applied:boolean;
+    blurDetected:boolean;
+    lowResolution:boolean;
+    sourceSharpness:number;
+    enhancedSharpness:number;
+    needsReview:boolean;
+    methods:string[];
+  };
+};
+/**
+ * 产品主图额外保留一份高分辨率工作副本。它只做确定性的缩放和轻锐化，
+ * 不调用生成式模型，也不会补造原图中不存在的纹理、纽扣或服装结构。
+ */
+export async function validateProductUpload(file:File):Promise<ProductUploadImages>{
+  const decoded=await validatedUploadBuffer(file);
+  const {width:sourceWidth,height:sourceHeight}=await rotatedDimensions(decoded);
+  const sourceQuality=await assessImageQuality(decoded);
+  const longest=Math.max(sourceWidth,sourceHeight);
+  const targetLongEdge=Math.min(
+    MAX_PRODUCT_DETAIL_SOURCE_DIMENSION,
+    longest<MAX_INPUT_DIMENSION?Math.max(longest*2,MAX_INPUT_DIMENSION):longest,
+  );
+  // 两个版本顺序处理，避免手机超大原图在 Windows 上同时解码两次造成内存峰值。
+  const standard=await resizeToJpeg(decoded,MAX_INPUT_DIMENSION,96);
+  const detailSource=await sharp(decoded,{failOn:"error",animated:false,limitInputPixels:MAX_INPUT_PIXELS})
+    .rotate()
+    .resize({width:Math.round(targetLongEdge),height:Math.round(targetLongEdge),fit:"inside",withoutEnlargement:false,kernel:"lanczos3"})
+    .flatten({background:{r:255,g:255,b:255}})
+    .sharpen({sigma:sourceQuality.blurry?.85:.5})
+    .jpeg({quality:96,mozjpeg:true,chromaSubsampling:"4:4:4"})
+    .toBuffer();
+  const detailDimensions=await rotatedDimensions(detailSource);
+  const enhancedQuality=await assessImageQuality(detailSource);
+  return {
+    standard,
+    detailSource,
+    sourceWidth,
+    sourceHeight,
+    detailWidth:detailDimensions.width,
+    detailHeight:detailDimensions.height,
+    enhancement:{
+      applied:targetLongEdge>longest||sourceQuality.blurry||sourceQuality.lowResolution,
+      blurDetected:sourceQuality.blurry,
+      lowResolution:sourceQuality.lowResolution,
+      sourceSharpness:sourceQuality.sharpnessScore,
+      enhancedSharpness:enhancedQuality.sharpnessScore,
+      needsReview:sourceQuality.sharpnessScore<90||(sourceQuality.blurry&&enhancedQuality.blurry),
+      methods:[
+        targetLongEdge>longest?`等比例高清放大至长边 ${Math.round(targetLongEdge)}px`:"保留原始高分辨率",
+        sourceQuality.blurry?"模糊检测后受控锐化":"轻度锐化",
+        "高质量 4:4:4 色彩保存",
+      ],
+    },
+  };
 }
 export async function prepareProviderInput(buffer:Buffer){
   const metadata=await sharp(buffer,{failOn:"error",limitInputPixels:MAX_INPUT_PIXELS}).metadata().catch(()=>{throw new Error("输入图片无法解析或文件已损坏，请重新上传原始 JPG、PNG 或 WebP 图片")});

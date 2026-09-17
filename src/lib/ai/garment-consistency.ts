@@ -49,6 +49,9 @@ const checkSchema = z.object({
     person: z.boolean().optional(),
     composition: z.boolean().optional(),
     occlusion: z.boolean().optional(),
+    cleanliness: z.boolean().optional(),
+    toneIntegrity: z.boolean().optional(),
+    artifactFree: z.boolean().optional(),
   }),
   repairTargets: z
     .array(
@@ -129,10 +132,6 @@ export async function checkGarmentConsistency(
           return resolveRecolorReferenceEvidence(color).images;
         })()
       : [];
-  if (job.workflow === "recolor" && !variantReferences.length)
-    throw new Error(
-      "找不到当前颜色款的整件服装设计参考，无法进行一对一复色质检",
-    );
   const runtime = await resolveQcModel();
   const tryonDetailReferences =
     job.workflow === "tryon"
@@ -171,6 +170,9 @@ export async function checkGarmentConsistency(
     person: parsed.checks.person ?? false,
     composition: parsed.checks.composition ?? false,
     occlusion: parsed.checks.occlusion ?? false,
+    cleanliness: parsed.checks.cleanliness ?? false,
+    toneIntegrity: parsed.checks.toneIntegrity ?? false,
+    artifactFree: parsed.checks.artifactFree ?? false,
   };
   const status =
     job.workflow === "recolor"

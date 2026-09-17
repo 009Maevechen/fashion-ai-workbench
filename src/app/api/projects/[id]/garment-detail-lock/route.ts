@@ -14,7 +14,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     const id = (await params).id;
     const project = await getProject(id);
     if (!project) throw new Error("商品项目不存在");
-    let source = project.assets.garmentCropImage || project.assets.garmentImage;
+    let source = project.assets.garmentCropImage || project.assets.garmentEnhancedImage || project.assets.garmentImage;
     if (!source) throw new Error("请先上传并保存服装产品图");
     try {
       await localImage(source);

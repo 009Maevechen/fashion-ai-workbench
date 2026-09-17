@@ -31,6 +31,7 @@ export async function POST(
       variantConfidence: undefined,
       referenceNeedsReview: undefined,
       referenceAnalysisSignature: undefined,
+      userConfirmedHex: undefined,
     };
     const updated = await updateProject(id, { targetColors: colors });
     return NextResponse.json({ color: (updated.targetColors || []).find((c) => c.id === colorId) });

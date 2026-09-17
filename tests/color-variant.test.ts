@@ -8,7 +8,10 @@ import {
   referenceNeedsReview,
 } from "../src/lib/color-variant-map";
 import type { ColorVariantColorProfile } from "../src/lib/db";
-import { resolveRecolorReferenceEvidence } from "../src/lib/recolor-reference-source";
+import {
+  activeIndependentReference,
+  resolveRecolorReferenceEvidence,
+} from "../src/lib/recolor-reference-source";
 
 test("buildColorMap 从识别结果生成部位颜色映射", () => {
   const profile: ColorVariantColorProfile = {
@@ -121,7 +124,7 @@ test("单独上传的颜色款参考图完全覆盖共享颜色参考", () => {
       status: "ready",
       referenceImages,
       referenceAnalysisSignature:
-        colorVariantAnalysisSignature(referenceImages),
+        colorVariantAnalysisSignature([referenceImages[1]]),
       colorProfile: {
         primaryColor: "墨绿色",
         primaryHex: "#234B36",
@@ -132,10 +135,7 @@ test("单独上传的颜色款参考图完全覆盖共享颜色参考", () => {
     "/api/files/global-crop.jpg",
   );
   assert.equal(evidence.mode, "independent");
-  assert.deepEqual(evidence.images, [
-    "/api/files/green-primary.jpg",
-    "/api/files/green-detail.jpg",
-  ]);
+  assert.deepEqual(evidence.images, ["/api/files/green-primary.jpg"]);
   assert.equal(evidence.images.includes("/api/files/global-crop.jpg"), false);
   assert.equal(evidence.images.includes("/api/files/shared-green.jpg"), false);
   assert.equal(evidence.promptColorName, "墨绿色");
@@ -159,7 +159,25 @@ test("没有单独参考图时沿用共享色款裁图并锁定同款结构", ()
   assert.deepEqual(evidence.images, ["/api/files/beige-crop.jpg"]);
   assert.equal(evidence.structureMode, "same_style");
   assert.deepEqual(evidence.structureDifferences, []);
-  assert.deepEqual(evidence.colorMap, {});
+  assert.equal(evidence.mainColorAuthority, "reference");
+  assert.equal(evidence.promptColorName, "当前参考图主体色");
+  assert.deepEqual(evidence.colorMap, { mainBody: "#E8DCC8" });
+});
+
+test("只确认裁图和同款结构不得把 AI HEX 冒充成人工选色", () => {
+  const evidence = resolveRecolorReferenceEvidence({
+    id: "taupe",
+    name: "驼色",
+    hex: "#C9A882",
+    baseHex: "#C9A882",
+    cropImage: "/api/files/taupe-crop.jpg",
+    manualReviewConfirmed: true,
+    status: "ready",
+  });
+  assert.equal(evidence.mode, "shared");
+  assert.equal(evidence.mainColorAuthority, "reference");
+  assert.equal(evidence.promptColorName, "当前参考图主体色");
+  assert.equal(evidence.promptHex, "#C9A882");
 });
 
 test("AI 观察到的疑似设计差异不能自动解除同款结构锁", () => {
@@ -219,13 +237,13 @@ test("旧版错误颜色分析不得进入新的复色生成", () => {
     colorMap: { mainBody: "#F5F3EE" },
     designOverrides: ["米白色主体"],
   });
-  assert.equal(evidence.promptColorName, "纯黑色");
-  assert.equal(evidence.promptHex, "#1A1A1A");
+  assert.equal(evidence.promptColorName, "以当前唯一参考图为准");
+  assert.equal(evidence.promptHex, "");
   assert.deepEqual(evidence.colorMap, {});
   assert.deepEqual(evidence.designDetails, []);
 });
 
-test("独立参考照片存在色差时人工基本色仍控制主体", () => {
+test("新独立参考图覆盖旧人工基本色并成为唯一颜色标准", () => {
   const referenceImages = [
     {
       id: "primary",
@@ -258,11 +276,79 @@ test("独立参考照片存在色差时人工基本色仍控制主体", () => {
       下摆条纹: "#7A2E3A",
     },
   });
-  assert.equal(evidence.mainColorAuthority, "selected");
-  assert.equal(evidence.promptColorName, "纯黑色");
-  assert.equal(evidence.promptHex, "#1A1A1A");
-  assert.equal(evidence.colorMap.mainBody, "#1A1A1A");
+  assert.equal(evidence.mainColorAuthority, "reference");
+  assert.equal(evidence.promptColorName, "深炭灰色");
+  assert.equal(evidence.promptHex, "#3A3A3A");
+  assert.equal(evidence.colorMap.mainBody, "#3A3A3A");
   assert.equal(evidence.colorMap["下摆条纹"], "#7A2E3A");
+});
+
+test("primaryReferenceId 决定唯一生效图，其他图只保留历史", () => {
+  const color = {
+    id: "black",
+    name: "黑色",
+    status: "ready" as const,
+    primaryReferenceId: "new",
+    referenceImages: [
+      {
+        id: "old",
+        path: "/api/files/old-white.jpg",
+        hash: "old",
+        role: "supporting" as const,
+        isPrimary: false,
+        uploadedAt: "2026-09-14T00:00:00.000Z",
+      },
+      {
+        id: "new",
+        path: "/api/files/new-black.jpg",
+        hash: "new",
+        role: "primary" as const,
+        isPrimary: true,
+        uploadedAt: "2026-09-16T00:00:00.000Z",
+      },
+    ],
+  };
+  assert.equal(activeIndependentReference(color)?.id, "new");
+  assert.deepEqual(resolveRecolorReferenceEvidence(color).images, [
+    "/api/files/new-black.jpg",
+  ]);
+});
+
+test("复杂款没有独立图时可使用共享参考图，完全无图才禁止猜色", () => {
+  const complex = resolveRecolorReferenceEvidence(
+    {
+      id: "striped",
+      name: "黑白条纹",
+      hex: "#111111",
+      status: "ready",
+      colorRegions: [
+        { part: "侧条纹", colorName: "白色", hex: "#FFFFFF", confidence: 1 },
+      ],
+    },
+    "/api/files/shared-striped.jpg",
+  );
+  assert.equal(complex.mode, "shared");
+  assert.equal(complex.requiresImageReference, false);
+  const complexWithoutImage = resolveRecolorReferenceEvidence({
+    id: "striped-without-image",
+    name: "黑白条纹",
+    hex: "#111111",
+    status: "ready",
+    colorRegions: [
+      { part: "侧条纹", colorName: "白色", hex: "#FFFFFF", confidence: 1 },
+    ],
+  });
+  assert.equal(complexWithoutImage.requiresImageReference, true);
+  const simple = resolveRecolorReferenceEvidence({
+    id: "plain",
+    name: "纯黑色",
+    userConfirmedName: "纯黑色",
+    userConfirmedHex: "#111111",
+    status: "ready",
+  });
+  assert.equal(simple.mode, "selected");
+  assert.equal(simple.requiresImageReference, false);
+  assert.equal(simple.mainColorAuthority, "selected");
 });
 
 test("远程识别误读为底图白色时由当前参考图本地主色纠正", () => {

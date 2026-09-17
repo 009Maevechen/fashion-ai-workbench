@@ -5,7 +5,7 @@ import type { TargetColor } from "@/lib/db";
 import { thumbnailUrl } from "@/lib/image-url";
 import type { Runner } from "./types";
 
-// 每个颜色款独立管理自己的多张参考图：上传、删除、替换、设主参考图、查看高清、改名、分析。
+// 每个颜色款只启用一张当前参考图；旧图保留为历史记录但绝不参与分析或生成。
 export default function ColorVariantReferences({
   projectId,
   colors,
@@ -111,7 +111,7 @@ export default function ColorVariantReferences({
         <div>
           <h3>每款颜色独立参考图</h3>
           <small>
-            有独立图时只按该色款作图并忽略共享颜色图；没有时保持原款结构正常复色
+            最新主参考图是唯一颜色标准；历史图保留查看，但不会参与生成
           </small>
         </div>
         <button
@@ -199,8 +199,10 @@ export default function ColorVariantReferences({
                     )}
                     <small className="color-variant-count">
                       {refs.length
-                        ? `${refs.length} 张 · 独立图优先`
-                        : "无独立图 · 同款复色"}
+                        ? `1 张生效${refs.length > 1 ? ` · ${refs.length - 1} 张历史` : ""}`
+                        : color.cropImage
+                          ? "无独立图 · 使用共享参考图"
+                          : "无独立图 · 按当前参考资料复色"}
                     </small>
                   </button>
                   <div className="color-variant-actions">
@@ -240,6 +242,7 @@ export default function ColorVariantReferences({
                             alt={img.fileName || "参考图"}
                           />
                           {img.isPrimary && <span>主参考图</span>}
+                          {!img.isPrimary && <span>历史图 · 不参与</span>}
                         </button>
                         <div className="color-variant-ref-actions">
                           {!img.isPrimary && (
@@ -279,7 +282,7 @@ export default function ColorVariantReferences({
                       disabled={busy}
                       onClick={() => pickAndUpload(color.id)}
                     >
-                      ＋ 上传参考图
+                      ＋ 上传新的唯一参考图
                     </button>
                   </div>
                 )}

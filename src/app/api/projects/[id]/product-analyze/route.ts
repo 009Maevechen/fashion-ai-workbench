@@ -12,7 +12,7 @@ export async function POST(
     if (!project.assets.garmentImage) throw new Error("请先上传一张产品主图");
     const body = await request.json().catch(() => ({})) as { force?: boolean };
     return NextResponse.json(
-      await analyzeProductImage(project.assets.garmentImage, { force: Boolean(body.force) }),
+      await analyzeProductImage(project.assets.garmentEnhancedImage || project.assets.garmentImage, { force: Boolean(body.force) }),
     );
   } catch (error) {
     return NextResponse.json(

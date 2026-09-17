@@ -103,6 +103,10 @@ test("普通复色只映射主体色并让扣子继承原款", () => {
   assert.match(prompt, /露脸与原图样式锁定/);
   assert.match(prompt, /有脸就保留同一张脸/);
   assert.match(prompt, /没有脸就不得补画/);
+  assert.match(prompt, /画面洁净与色调锁定/);
+  assert.match(prompt, /不得在服装或整张画面叠加灰雾/);
+  assert.match(prompt, /曝光、白平衡、对比度、黑位/);
+  assert.match(prompt, /目标色本身是灰色/);
 });
 
 test("复色区域由商品类型锁定，上衣不得改动下装", () => {
@@ -114,7 +118,43 @@ test("复色区域由商品类型锁定，上衣不得改动下装", () => {
   assert.match(prompt, /背景、皮肤、头发、鞋子、道具/);
 });
 
-test("所有复色模式默认同款不同色，只有明确高置信度差异才允许局部改款", () => {
+test("复色按商品品类锁定结构并保护微细节与五金", () => {
+  const prompt = recolorPrompt(
+    "裤子",
+    "纯黑色",
+    "#1A1A1A",
+    [],
+    "",
+    false,
+    "",
+    "",
+    [],
+    "",
+    "",
+    "perVariant",
+    [],
+    false,
+    0,
+    "none",
+    "visible_only",
+    "",
+    "same_style",
+    [],
+    0,
+    {},
+    "selected",
+    "selected",
+    "裤装",
+  );
+  assert.match(prompt, /裤装结构锁/);
+  assert.match(prompt, /两条独立裤腿、裆缝、内外侧缝/);
+  assert.match(prompt, /微细节与五金锁定/);
+  assert.match(prompt, /拉链类型、齿链、拉头形状与位置/);
+  assert.match(prompt, /品牌标、洗标、刺绣、印字/);
+  assert.match(prompt, /铆钉、搭扣、钩扣、腰袢、抽绳/);
+});
+
+test("所有复色模式强制同款不同色，参考图不得授权局部改款", () => {
   const uniform = recolorPrompt(
     "上衣",
     "黑色",
@@ -169,9 +209,12 @@ test("所有复色模式默认同款不同色，只有明确高置信度差异�
     ["包边宽度不同"],
     0.93,
   );
-  assert.match(explicitVariant, /明确颜色款差异规则/);
-  assert.match(explicitVariant, /允许的明确差异仅限：包边宽度不同/);
-  assert.match(explicitVariant, /未列明的版型、结构、口袋/);
+  assert.match(explicitVariant, /同款不同色默认规则/);
+  assert.match(
+    explicitVariant,
+    /当前颜色款按同款不同色处理，所有结构与第一张图完全一致/,
+  );
+  assert.doesNotMatch(explicitVariant, /允许的明确差异仅限/);
   // 所有模式都必须保证同一颜色款内多张图设计一致，不允许某张多一块少一块。
   assert.match(uniform, /同款颜色设计一致性/);
   assert.match(perVariant, /同款颜色设计一致性/);
@@ -199,7 +242,7 @@ test("复色款式以底图为唯一依据，颜色以参考图为主要依据",
   );
   assert.match(prompt, /第1张图始终负责款式结构和区域布局/);
   assert.match(prompt, /名称和 HEX 只能辅助命名/);
-  assert.match(prompt, /冲突时以第2张图可见颜色为准/);
+  assert.match(prompt, /冲突时以当前新参考图可见固有色为准/);
   assert.match(prompt, /主体=橄榄绿\(#556B2F\)/);
   assert.match(prompt, /侧条纹=白色\(#FFFFFF\)/);
   assert.doesNotMatch(prompt, /颜色名称就是生成规则/);
@@ -278,12 +321,12 @@ test("单独上传的当前颜色款参考图拥有绝对优先级", () => {
     {},
     "independent",
   );
-  assert.match(prompt, /独立参考图绝对优先/);
-  assert.match(prompt, /完全忽略 SKU 级多色参考图/);
-  assert.match(prompt, /禁止借用或混入任何其他颜色款/);
+  assert.match(prompt, /新独立参考图 = 唯一颜色标准/);
+  assert.match(prompt, /历史独立图、旧共享图/);
+  assert.match(prompt, /不得借用、平均、融合或回退/);
 });
 
-test("人工选定基本色覆盖照片色差，照片只提供局部颜色布局", () => {
+test("没有新独立图时简单款人工基本色可覆盖共享照片色差", () => {
   const prompt = recolorPrompt(
     "上衣",
     "纯黑色",
@@ -311,7 +354,7 @@ test("人工选定基本色覆盖照片色差，照片只提供局部颜色布�
       下摆米白条纹: "#E8E4D8",
       下摆酒红条纹: "#7A2E3A",
     },
-    "independent",
+    "shared",
     "selected",
   );
   assert.match(prompt, /人工基本色锁定/);

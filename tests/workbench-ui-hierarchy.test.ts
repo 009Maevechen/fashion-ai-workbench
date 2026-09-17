@@ -18,6 +18,18 @@ const recolorPanel = readFileSync(
   new URL("../src/components/workbench/RecolorPanel.tsx", import.meta.url),
   "utf8",
 );
+const tryonPanel = readFileSync(
+  new URL("../src/components/workbench/TryonPanel.tsx", import.meta.url),
+  "utf8",
+);
+const posePanel = readFileSync(
+  new URL("../src/components/workbench/PosePanel.tsx", import.meta.url),
+  "utf8",
+);
+const imagePreviewDialog = readFileSync(
+  new URL("../src/components/workbench/ImagePreviewDialog.tsx", import.meta.url),
+  "utf8",
+);
 const globalStyles = readFileSync(
   new URL("../src/app/globals.css", import.meta.url),
   "utf8",
@@ -44,6 +56,18 @@ test("工作台首页和项目页使用明确的信息层级", () => {
   assert.match(projectHeader, /aria-current=\{number===step\?"step"/);
   assert.match(globalStyles, /工作台视觉层级 v1/);
   assert.match(workflowStyles, /制作流程统一层级/);
+});
+
+test("各制作流程的历史图片可完整预览并保留返回制作过程入口", () => {
+  for (const panel of [tryonPanel, posePanel, recolorPanel]) {
+    assert.match(panel, /compact:\s*true/);
+    assert.match(panel, /完整查看/);
+    assert.match(panel, /actionLabel:/);
+  }
+  assert.match(imagePreviewDialog, /history-image-dialog/);
+  assert.match(imagePreviewDialog, /dialog-primary-action/);
+  assert.match(workflowStyles, /\.image-dialog\.history-image-dialog/);
+  assert.match(workflowStyles, /\.dialog-primary-action/);
 });
 
 test("颜色调整浮层支持拖动且保留可恢复入口", () => {

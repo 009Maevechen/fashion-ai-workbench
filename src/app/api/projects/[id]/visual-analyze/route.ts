@@ -25,7 +25,7 @@ export async function POST(
     const id = (await params).id;
     const project = await getProject(id);
     if (!project) throw new Error("商品项目不存在");
-    const source = project.assets.garmentImage;
+    const source = project.assets.garmentEnhancedImage || project.assets.garmentImage;
     if (!source) throw new Error("请先上传一张产品主图");
     const detected = await detectProductVisualRegions(source);
     if (!detected.regions.length)

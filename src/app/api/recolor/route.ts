@@ -61,6 +61,10 @@ export async function POST(request: Request) {
       targetColor,
       input.colorReferenceCrop,
     );
+    if (evidence.requiresImageReference)
+      throw new Error(
+        `颜色款“${input.colorName}”包含条纹、拼接、包边或其他复杂配色，但当前没有可用的颜色参考图；请单独上传该色款参考图，或先从共享颜色参考图框选该色款，系统不会只凭名称猜测局部颜色`,
+      );
     // 旧共享大图的待确认状态不得拦截用户后来单独上传的当前色款参考图。
     if (
       evidence.mode === "shared" &&
@@ -70,9 +74,12 @@ export async function POST(request: Request) {
       throw new Error(
         `颜色款“${input.colorName}”存在遮挡或低置信度信息，请先人工确认参考图规则`,
       );
-    if (!evidence.images.length)
+    if (
+      !evidence.images.length &&
+      !(evidence.promptColorName || evidence.promptHex)
+    )
       throw new Error(
-        "当前颜色款缺少颜色依据：可单独上传该颜色款参考图，或先从共享颜色参考图建立该色款",
+        "当前颜色款缺少颜色依据：请单独上传该颜色款参考图，或为简单款选择明确的基本色",
       );
     evidence.images.forEach((url) =>
       assertFormalImageSource(url, "复色颜色参考"),
@@ -85,14 +92,20 @@ export async function POST(request: Request) {
       assertFormalImageSource(url, `复色姿势${index + 1}源图`),
     );
     const isIndependent = evidence.mode === "independent";
+    const isShared = evidence.mode === "shared";
     const scopedInput = {
       ...input,
       // 独立参考图存在时绝不再把 SKU 级多色图或旧共享裁图传给生成服务。
       colorReferenceImage: isIndependent
         ? evidence.primaryImage
-        : project.assets.colorReferenceImage,
-      colorReferenceCrop: isIndependent ? undefined : evidence.primaryImage,
+        : isShared
+          ? project.assets.colorReferenceImage
+          : undefined,
+      colorReferenceCrop: isShared ? evidence.primaryImage : undefined,
       referenceImages: evidence.images,
+      // 独立参考图出现后，旧标题/色卡边色不能再把当前图带回旧配色逻辑。
+      trimColorName: isIndependent ? "" : input.trimColorName,
+      trimHex: isIndependent ? "" : input.trimHex,
       variantReferenceMode: evidence.mode,
       variantPromptColorName: evidence.promptColorName,
       variantPromptHex: evidence.promptHex,

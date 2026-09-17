@@ -6,9 +6,9 @@ import {
   colorVariantAnalysisSignature,
   referenceNeedsReview,
 } from "@/lib/color-variant";
-import { selectedRecolorMainColor } from "@/lib/color-sets";
+import { activeIndependentReference } from "@/lib/recolor-reference-source";
 
-// 分析单个颜色款的全部参考图：综合识别配色、生成 colorMap、检测冲突（needsReview）。
+// 只分析当前生效的独立主参考图；历史图不得混入当前色款。
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; colorId: string }> },
@@ -24,18 +24,10 @@ export async function POST(
     const index = colors.findIndex((c) => c.id === colorId);
     if (index < 0) throw new Error("颜色款不存在");
     const color = colors[index];
-    const referenceImages = color.referenceImages || [];
-    if (!referenceImages.length) throw new Error("请先为该颜色款上传参考图");
-    const baseStyle =
-      project.confirmedPoseImages?.[0] ||
-      project.confirmedTryonImage ||
-      project.assets.garmentCropImage ||
-      project.assets.garmentImage;
-    const selectedMainColor = selectedRecolorMainColor(color);
-    const signature = colorVariantAnalysisSignature(
-      referenceImages,
-      selectedMainColor,
-    );
+    const activeReference = activeIndependentReference(color);
+    if (!activeReference) throw new Error("请先为该颜色款上传参考图");
+    const referenceImages = [activeReference];
+    const signature = colorVariantAnalysisSignature(referenceImages);
     if (
       !body.force &&
       color.referenceAnalysisSignature === signature &&
@@ -49,14 +41,10 @@ export async function POST(
         cached: true,
       });
     }
-    const observedProfile = await analyzeColorVariantReferences(
-      referenceImages,
-      baseStyle,
-    );
-    // 保留照片的观察值用于识别哪些局部与照片主体同色；真正生成时由 colorMap
-    // 将主体及同色罗纹统一映射到用户基本色，其他明确局部配色继续取参考图。
+    const observedProfile =
+      await analyzeColorVariantReferences(referenceImages);
     const colorProfile = observedProfile;
-    const colorMap = buildColorMap(observedProfile, selectedMainColor);
+    const colorMap = buildColorMap(observedProfile);
     const needsReview = referenceNeedsReview(colorProfile);
     colors[index] = {
       ...color,
@@ -69,7 +57,9 @@ export async function POST(
         : color.designOverrides,
       referenceAnalysisSignature: signature,
       // 主色识别成功即补全 hex，方便用户直接核对。
-      hex: color.hex || colorProfile.primaryHex,
+      hex: colorProfile.primaryHex || color.hex,
+      baseHex: colorProfile.primaryHex || color.baseHex,
+      userConfirmedHex: undefined,
       name: color.name || colorProfile.primaryColor || "",
     };
     const updated = await updateProject(id, { targetColors: colors });
