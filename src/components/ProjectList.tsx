@@ -22,9 +22,11 @@ export default function ProjectList({initial}:{initial:Project[]}){
   }
   async function remove(project:Project){if(!confirm(`确认删除项目“${project.sku}”？项目记录会被删除。`))return;const trash=confirm("是否同时把该项目的所有图片移入回收站？\n\n确定：删除记录并移动图片\n取消：只删除项目记录，保留图片");const response=await fetch(`/api/projects/${project.id}${trash?"?trash=1":""}`,{method:"DELETE"});if(!response.ok){const data=await response.json();setError(data.error||"删除失败");return}setProjects(items=>items.filter(item=>item.id!==project.id))}
   return <div className="stack project-list-stack">
-    <section className="card project-create-card">
+    <details className="card project-create-card project-manual-entry">
+      <summary><div><span className="section-kicker">补充入口</span><h2>手工新建单个 SKU</h2><small>临时任务或表格外商品可在这里创建</small></div><span className="badge">展开</span></summary>
+      <div className="project-manual-entry-body">
       <div className="panel-head">
-        <div><span className="section-kicker">开始新任务</span><h2>新建商品项目</h2><small>创建一个 SKU，开始服装制作流程</small></div>
+        <div><h3>单个商品资料</h3><small>Excel/WPS 是主要入口，手工创建不会影响已有流程。</small></div>
         <span className="badge">＋ NEW SKU</span>
       </div>
       <form action={create} className="form-grid project-create-form">
@@ -34,7 +36,8 @@ export default function ProjectList({initial}:{initial:Project[]}){
         <div className="actions"><button className="primary project-create-action" disabled={submitting}>{submitting?"创建中…":"新建并进入制作"}</button></div>
         {error&&<div className="error full">{error}</div>}
       </form>
-    </section>
+      </div>
+    </details>
     <section className="card project-list-card">
       <div className="panel-head project-list-head">
         <div><span className="section-kicker">继续已有任务</span><h2>最近商品项目</h2><small>{query?`找到 ${visible.length} 个项目`:`共 ${projects.length} 个项目`}</small></div>

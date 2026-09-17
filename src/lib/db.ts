@@ -14,6 +14,13 @@ import type { CorrectionQualityCheck } from "./correction-quality";
 import type { ImageSourceVersions } from "./image-sources";
 import type { InpaintBoundaryCheck } from "./inpaint-qc";
 import type {
+  ColorVariantBinding,
+  GarmentProductionProfile,
+  ProjectImageRefs,
+  SpreadsheetSourceLink,
+  SkuProductionTask,
+} from "./sku-production";
+import type {
   RecolorStructureMode,
   RecolorStyleRelation,
 } from "./recolor-structure";
@@ -518,6 +525,14 @@ export type Project = {
   selectedPoseTemplateGroupId?: string;
   poseTemplateSnapshot?: PoseTemplateGroup;
   poseReviewStates?: Record<string, "pending" | "approved" | "redo">;
+  /** 项目入口：手工创建继续兼容；表格导入是批量生产主入口。 */
+  sourceMode?: "manual" | "spreadsheet";
+  spreadsheetSource?: SpreadsheetSourceLink;
+  /** 原始图片只保存索引 ID，文件本体仍留在用户指定位置。 */
+  sourceImageRefs?: ProjectImageRefs;
+  garmentProfile?: GarmentProductionProfile;
+  productionTask?: SkuProductionTask;
+  colorVariantBindings?: ColorVariantBinding[];
 };
 export type JobPhase =
   | "queued"

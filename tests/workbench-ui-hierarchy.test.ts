@@ -46,6 +46,21 @@ const electronMain = readFileSync(
   new URL("../electron/main.cjs", import.meta.url),
   "utf8",
 );
+const rootPage = readFileSync(
+  new URL("../src/app/page.tsx", import.meta.url),
+  "utf8",
+);
+const portfolioHeader = readFileSync(
+  new URL("../src/components/portfolio/SiteHeader.tsx", import.meta.url),
+  "utf8",
+);
+
+test("工作台根入口与作品集导航分离", () => {
+  assert.match(rootPage, /redirect\("\/workbench"\)/);
+  assert.doesNotMatch(appChrome, /href="\/portfolio"/);
+  assert.match(portfolioHeader, /href="\/portfolio"/);
+  assert.doesNotMatch(portfolioHeader, /href="\/workbench"/);
+});
 
 test("工作台首页和项目页使用明确的信息层级", () => {
   assert.match(home, /workbench-home/);

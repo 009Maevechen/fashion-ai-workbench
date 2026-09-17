@@ -46,11 +46,11 @@ export type ProductUploadImages={
   };
 };
 /**
- * 产品主图额外保留一份高分辨率工作副本。它只做确定性的缩放和轻锐化，
+ * 从已解码的图片 Buffer 生成高清忠实副本：只做确定性等比例放大与受控锐化，
  * 不调用生成式模型，也不会补造原图中不存在的纹理、纽扣或服装结构。
+ * 供上传时自动增强，也供「一键变高清」对已保存产品图再次增强复用。
  */
-export async function validateProductUpload(file:File):Promise<ProductUploadImages>{
-  const decoded=await validatedUploadBuffer(file);
+export async function enhanceProductDetailBuffer(decoded:Buffer){
   const {width:sourceWidth,height:sourceHeight}=await rotatedDimensions(decoded);
   const sourceQuality=await assessImageQuality(decoded);
   const longest=Math.max(sourceWidth,sourceHeight);
@@ -58,8 +58,6 @@ export async function validateProductUpload(file:File):Promise<ProductUploadImag
     MAX_PRODUCT_DETAIL_SOURCE_DIMENSION,
     longest<MAX_INPUT_DIMENSION?Math.max(longest*2,MAX_INPUT_DIMENSION):longest,
   );
-  // 两个版本顺序处理，避免手机超大原图在 Windows 上同时解码两次造成内存峰值。
-  const standard=await resizeToJpeg(decoded,MAX_INPUT_DIMENSION,96);
   const detailSource=await sharp(decoded,{failOn:"error",animated:false,limitInputPixels:MAX_INPUT_PIXELS})
     .rotate()
     .resize({width:Math.round(targetLongEdge),height:Math.round(targetLongEdge),fit:"inside",withoutEnlargement:false,kernel:"lanczos3"})
@@ -70,7 +68,6 @@ export async function validateProductUpload(file:File):Promise<ProductUploadImag
   const detailDimensions=await rotatedDimensions(detailSource);
   const enhancedQuality=await assessImageQuality(detailSource);
   return {
-    standard,
     detailSource,
     sourceWidth,
     sourceHeight,
@@ -90,6 +87,16 @@ export async function validateProductUpload(file:File):Promise<ProductUploadImag
       ],
     },
   };
+}
+/**
+ * 产品主图额外保留一份高分辨率工作副本。
+ */
+export async function validateProductUpload(file:File):Promise<ProductUploadImages>{
+  const decoded=await validatedUploadBuffer(file);
+  // 两个版本顺序处理，避免手机超大原图在 Windows 上同时解码两次造成内存峰值。
+  const standard=await resizeToJpeg(decoded,MAX_INPUT_DIMENSION,96);
+  const {detailSource,sourceWidth,sourceHeight,detailWidth,detailHeight,enhancement}=await enhanceProductDetailBuffer(decoded);
+  return {standard,detailSource,sourceWidth,sourceHeight,detailWidth,detailHeight,enhancement};
 }
 export async function prepareProviderInput(buffer:Buffer){
   const metadata=await sharp(buffer,{failOn:"error",limitInputPixels:MAX_INPUT_PIXELS}).metadata().catch(()=>{throw new Error("输入图片无法解析或文件已损坏，请重新上传原始 JPG、PNG 或 WebP 图片")});

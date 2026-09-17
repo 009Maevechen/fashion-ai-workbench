@@ -6,8 +6,8 @@ import RootShell from "@/components/RootShell";
 import { Suspense } from "react";
 
 export const metadata = {
-  title: { default: "电商服饰AI工作流", template: "%s｜电商服饰AI工作流" },
-  description: "跨境电商 AIGC 视觉设计与 AI 工作流搭建作品集。",
+  title: { default: "AI服装工作台", template: "%s｜AI服装工作台" },
+  description: "跨境电商服装图片生产工作台。",
   icons: { icon: "/icon.png", apple: "/apple-touch-icon.png" },
 };
 export default function Layout({ children }: { children: React.ReactNode }) {

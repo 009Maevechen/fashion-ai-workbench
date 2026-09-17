@@ -10,6 +10,7 @@ import {isSafeStoredPath,outputSegments} from "./storage-paths";
 import {runtimeOutputSearchDirs,runtimeOutputsDir} from "../runtime-paths";
 import {durableWriteFile} from "../durable-json";
 import {createThumbnail} from "../image-limits";
+import {readIndexedImage} from "../image-index";
 
 let root=runtimeOutputsDir();
 export function updateOutputRoot(next:string){root=path.resolve(next)}
@@ -69,7 +70,13 @@ export async function downloadImage(raw:string,signal?:AbortSignal,_trustedHostn
   }
   throw new Error("模型图片地址跳转次数过多");
 }
-export async function localImage(url:string){const prefix="/api/files/";if(!url.startsWith(prefix))throw new Error("只能读取工作台持久化图片");return readOutput(url.slice(prefix.length).split("/").map(decodeURIComponent))}
+export async function localImage(url:string){
+  const indexedPrefix="/api/image-index/";
+  if(url.startsWith(indexedPrefix))return (await readIndexedImage(decodeURIComponent(url.slice(indexedPrefix.length)))).buffer;
+  const prefix="/api/files/";
+  if(!url.startsWith(prefix))throw new Error("只能读取工作台持久化图片或已登记的本地原图");
+  return readOutput(url.slice(prefix.length).split("/").map(decodeURIComponent));
+}
 export const toDataUrl=(b:Buffer,mime="image/jpeg")=>`data:${mime};base64,${b.toString("base64")}`;
 export async function moveProjectToTrash(sku:string,projectId:string){const source=path.resolve(root,safeSegment(sku));try{await fs.access(source)}catch{return false}const trash=path.resolve(root,".trash",`${safeSegment(projectId)}-${Date.now()}`);await fs.mkdir(path.dirname(trash),{recursive:true});await fs.rename(source,trash);return true}
 export async function moveFileToTrash(url:string,projectId:string){const prefix="/api/files/";if(!url.startsWith(prefix))return false;const parts=url.slice(prefix.length).split("/").map(decodeURIComponent);if(parts.some(x=>x!==safeSegment(x)))throw new Error("非法文件路径");const source=path.resolve(root,...parts),target=path.resolve(root,".trash",`${safeSegment(projectId)}-${Date.now()}`,...parts.slice(1));if(!source.startsWith(root+path.sep))throw new Error("非法文件路径");await fs.mkdir(path.dirname(target),{recursive:true});await fs.rename(source,target).catch(()=>{});return true}

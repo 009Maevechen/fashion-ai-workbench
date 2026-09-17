@@ -20,8 +20,10 @@ import { hasClearableSourceAssets } from "@/lib/asset-cleanup";
 import { DEFAULT_PROTECTION_ITEMS } from "@/lib/product-structure";
 import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
 import ColorCropper from "./ColorCropper";
+import type { ProductionTaskType } from "@/lib/sku-production";
 
 const TYPES: ProductType[] = ["上衣", "裤装", "连衣裙", "半身裙", "套装"];
+const PRODUCTION_TASK_TYPES: ProductionTaskType[] = ["换装", "复色", "三姿势", "白底图", "高清优化", "局部修改", "产品展示图"];
 const ATTRIBUTE_OPTIONS: Record<keyof ProductAttributes, string[]> = {
   mainColor: [
     "米白色",
@@ -324,9 +326,15 @@ export default function ProductDetailsPanel({
     [preview, setPreview] = useState<string | null>(null),
     [activeTab, setActiveTab] = useState<ProductTab>("basic"),
     [analyzing, setAnalyzing] = useState(false),
-    [analysisNotice, setAnalysisNotice] = useState("");
+    [analysisNotice, setAnalysisNotice] = useState(""),
+    [enhancing, setEnhancing] = useState(false),
+    [enhanceNotice, setEnhanceNotice] = useState("");
   const [visualAnalyzing, setVisualAnalyzing] = useState(false);
   const [visualNotice, setVisualNotice] = useState("");
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planNotice, setPlanNotice] = useState("");
+  const [planConfirmed, setPlanConfirmed] = useState(p.productionTask?.status === "ready");
+  const [selectedTaskTypes, setSelectedTaskTypes] = useState<ProductionTaskType[]>(p.productionTask?.taskTypes || []);
   const [assetEvidence, setAssetEvidence] = useState<Project["assetEvidence"]>(() => ({ ...(p.assetEvidence || {}) }));
   const [cropTarget, setCropTarget] = useState<{key: ProductDetailAssetKey; label: string} | null>(null);
   const [cropDraft, setCropDraft] = useState<NormalizedCropRegion | undefined>();
@@ -504,10 +512,36 @@ export default function ProductDetailsPanel({
     setSaved(true);
     if (advance) onNext();
   }
+  async function enhanceProduct() {
+    if (!assets.garmentImage?.url)
+      throw new Error("请先上传产品主图，再一键变高清");
+    setEnhancing(true);
+    setEnhanceNotice("");
+    try {
+      const response = await fetch(`/api/projects/${p.id}/enhance-product`, {
+          method: "POST",
+        }),
+        data = (await response.json()) as {
+          enhancedUrl?: string;
+          enhancedSize?: { width: number; height: number };
+          method?: "ai" | "deterministic";
+          aiError?: string;
+          error?: string;
+        };
+      if (!response.ok || !data.enhancedUrl)
+        throw new Error(data.error || "一键变高清失败");
+      setEnhanceNotice(
+        data.method === "ai"
+          ? `已 AI 超分变高清：${data.enhancedSize?.width}×${data.enhancedSize?.height}px，后续识别、细节裁切、换装与复色将优先使用高清副本。`
+          : `已变高清（AI 增强失败已回退确定性放大）：${data.enhancedSize?.width}×${data.enhancedSize?.height}px。${data.aiError || ""}`,
+      );
+    } finally {
+      setEnhancing(false);
+    }
+  }
   async function analyzeProduct() {
     if (!assets.garmentImage?.url)
-      throw new Error("请先在图片素材中上传一张产品主图");
-    setAnalyzing(true);
+      throw new Error("请先在图片素材中上传一张产品主图");    setAnalyzing(true);
     setAnalysisNotice("");
     try {
       const response = await fetch(`/api/projects/${p.id}/product-analyze`, {
@@ -655,8 +689,46 @@ export default function ProductDetailsPanel({
       job.status === "needs_review",
   ).length;
 
+  async function confirmProductionPlan() {
+    setPlanBusy(true);
+    setPlanNotice("");
+    try {
+      const response = await fetch(`/api/projects/${p.id}/production-plan`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true, taskTypes: selectedTaskTypes }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "生产方案确认失败");
+      setPlanConfirmed(true);
+      setPlanNotice("生产方案已确认，可以进入换装、复色或三姿势流程");
+    } catch (error) {
+      setPlanNotice(error instanceof Error ? error.message : "生产方案确认失败");
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
   return (
     <div className="product-details-page">
+      {p.productionTask && (
+        <section className="card sku-production-plan-card">
+          <div className="panel-head">
+            <div><span className="section-kicker">Excel / WPS 生产方案</span><h2>{p.sku} · AI 视觉生产任务</h2><small>来源：{p.spreadsheetSource?.fileName || "商品表格"} · 第 {p.spreadsheetSource?.rowNumber || "-"} 行</small></div>
+            <span className={`badge ${planConfirmed ? "success" : "wait"}`}>{planConfirmed ? "方案已确认" : p.productionTask.status === "draft" ? "等待AI分析" : "需要人工确认"}</span>
+          </div>
+          <div className="sku-production-plan-grid">
+            <div><small>服装分类</small><b>{p.garmentProfile?.primaryCategory || p.productType} / {p.garmentProfile?.secondaryCategory || "待识别"}</b></div>
+            <div><small>任务类型</small><b>{p.productionTask.taskTypes.join("、") || "待确认"}</b></div>
+            <div><small>设计复杂度</small><b>{p.productionTask.designLevel === "complex" ? "复杂款（逐色参考）" : p.productionTask.designLevel === "simple" ? "简单款（快速生产）" : "待人工确认"}</b></div>
+            <div><small>Top 3 姿势</small><b>{p.productionTask.recommendedPoses.slice(0, 3).map((item) => item.poseGroupId).join("、") || "姿势库暂无匹配"}</b></div>
+          </div>
+          <div className="sku-plan-task-editor"><b>确认要执行的流程</b><div>{PRODUCTION_TASK_TYPES.map((taskType) => <label className="check-item" key={taskType}><input type="checkbox" checked={selectedTaskTypes.includes(taskType)} disabled={planConfirmed} onChange={() => setSelectedTaskTypes((items) => items.includes(taskType) ? items.filter((item) => item !== taskType) : [...items, taskType])}/>{taskType}</label>)}</div></div>
+          {p.productionTask.issues.length > 0 && <div className="notice warning"><b>需要处理</b><span>{p.productionTask.issues.join("；")}</span></div>}
+          {p.garmentProfile?.protectedDetails.length ? <div className="sku-plan-rules"><b>服装细节锁定</b><span>{p.garmentProfile.protectedDetails.slice(0, 6).join("；")}</span></div> : null}
+          <div className="actions"><button type="button" className="primary" disabled={planBusy || planConfirmed || !selectedTaskTypes.length} onClick={() => void confirmProductionPlan()}>{planBusy ? "确认中…" : planConfirmed ? "生产方案已确认" : "确认生产方案"}</button>{planNotice && <small>{planNotice}</small>}</div>
+        </section>
+      )}
       <nav className="product-tabs" aria-label="商品资料分区" role="tablist">
         {PRODUCT_TABS.map((tab) => (
           <button
@@ -839,18 +911,35 @@ export default function ProductDetailsPanel({
                     : "请在左侧上传一张产品图片，再开始智能识别。"}
                 </p>
                 {p.assets.garmentEnhancedImage && <span className={`success-text${enhancement?.status==="needs_review"?" enhancement-review":""}`}>✓ {enhancementSummary} · 原产品图保持不变</span>}
+                {enhanceNotice && (
+                  <span className="success-text">{enhanceNotice}</span>
+                )}
                 {analysisNotice && (
                   <span className="success-text">{analysisNotice}</span>
                 )}
               </div>
-              <button
-                type="button"
-                className="primary product-auto-analysis-action"
-                disabled={busy || analyzing || !assets.garmentImage?.url}
-                onClick={() => run(analyzeProduct)}
-              >
-                {analyzing ? "正在识别…" : "▶ 自动识别商品资料"}
-              </button>
+              <div className="product-auto-analysis-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy || enhancing || analyzing || !assets.garmentImage?.url}
+                  onClick={() => run(enhanceProduct)}
+                >
+                  {enhancing
+                    ? "正在变高清…"
+                    : p.assets.garmentEnhancedImage
+                      ? "⚡ 重新一键变高清"
+                      : "⚡ 一键变高清"}
+                </button>
+                <button
+                  type="button"
+                  className="primary product-auto-analysis-action"
+                  disabled={busy || analyzing || !assets.garmentImage?.url}
+                  onClick={() => run(analyzeProduct)}
+                >
+                  {analyzing ? "正在识别…" : "▶ 自动识别商品资料"}
+                </button>
+              </div>
             </div>
             <div className="panel-head product-ai-review-head">
               <div><h2>AI 识别结果</h2><small>版型、长度、口袋、纹理和印花由 AI 先填，你只需确认或修改</small></div>

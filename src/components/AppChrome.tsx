@@ -250,7 +250,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               href="/workbench"
             >
               <span className="nav-icon"><IconGrid /></span>
-              <span className="nav-label">商品项目</span>
+              <span className="nav-label">商品表格 / SKU</span>
             </Link>
           </section>
           <section className="nav-section">
