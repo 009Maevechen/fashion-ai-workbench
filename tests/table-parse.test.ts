@@ -25,13 +25,13 @@ test("旧版 xls 给出明确转换提示", async () => {
   await assert.rejects(() => parseTableDocument(Buffer.from("xls"), "商品.xls"), /另存为 \.xlsx/);
 });
 
-test("表格上传允许超过旧版 20MB 限制", () => {
-  assert.equal(spreadsheetUploadLimitMb(), 100);
+test("表格上传支持大文件（约 500MB 以内）", () => {
+  assert.equal(spreadsheetUploadLimitMb(), 500);
   assert.doesNotThrow(() => validateSpreadsheetUploadSize(21 * 1024 * 1024));
-  assert.doesNotThrow(() => validateSpreadsheetUploadSize(100 * 1024 * 1024));
+  assert.doesNotThrow(() => validateSpreadsheetUploadSize(500 * 1024 * 1024));
 });
 
 test("表格上传仍会拒绝超过安全上限的文件", () => {
-  assert.throws(() => validateSpreadsheetUploadSize(100 * 1024 * 1024 + 1), /不能超过 100MB/);
+  assert.throws(() => validateSpreadsheetUploadSize(500 * 1024 * 1024 + 1), /不能超过 500MB/);
   assert.throws(() => validateSpreadsheetUploadSize(0), /文件大小无效/);
 });

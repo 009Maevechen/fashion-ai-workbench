@@ -25,14 +25,15 @@ test("WPS 商品行兼容中英文表头并保持 SKU 为文本", () => {
   assert.deepEqual(row.colors, ["白色", "黑色"]);
   assert.equal(row.productImagePaths.length, 1);
   assert.equal(row.poseImagePaths.length, 3);
-  assert.equal(row.garmentProfile.primaryCategory, "上衣");
-  assert.equal(row.garmentProfile.secondaryCategory, "针织衫");
+  assert.equal(row.garmentProfile.primaryCategory, "");
+  assert.equal(row.garmentProfile.secondaryCategory, "");
+  assert.ok(row.issues.some((issue) => issue.includes("禁止按标题猜测")));
   assert.equal(row.designLevel, "complex");
 });
 
 test("分类系统覆盖要求的主要服装类别", () => {
   assert.deepEqual(classifyGarment("牛仔阔腿裤"), { primaryCategory: "裤子", secondaryCategory: "阔腿裤", confidence: 0.78 });
-  assert.equal(classifyGarment("女士连衣裙").primaryCategory, "裙子");
+  assert.equal(classifyGarment("女士连衣裙").primaryCategory, "连衣裙");
   assert.equal(classifyGarment("防风夹克外套").primaryCategory, "外套");
   assert.equal(classifyGarment("比基尼泳装").primaryCategory, "泳装");
   assert.equal(classifyGarment("运动套装").primaryCategory, "运动服");

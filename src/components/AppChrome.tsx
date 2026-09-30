@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { Project } from "@/lib/db";
-import { projectModuleHref } from "@/lib/project-navigation";
+import { projectModuleHref, projectResumeHref, workbenchSkuHref } from "@/lib/project-navigation";
 import WorkflowModelSelector from "@/components/workbench/WorkflowModelSelector";
 import WorkflowSkuExport from "@/components/workbench/WorkflowSkuExport";
 import type { GenerationWorkflow } from "@/lib/ai/types";
@@ -28,6 +28,7 @@ import {
 import TaskCenter from "@/components/TaskCenter";
 import LocalFilesMenu from "@/components/LocalFilesMenu";
 import ModelStatusMenu from "@/components/ModelStatusMenu";
+import {useProductionNavigation} from "@/components/workbench/ProductionNavigationGuard";
 
 const MODULES = [
   { segment: "details", icon: IconDoc, label: "商品资料" },
@@ -38,8 +39,8 @@ const MODULES = [
 ];
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname(),
-    router = useRouter();
+  const pathname = usePathname();
+  const {navigate}=useProductionNavigation();
   const [collapsed, setCollapsed] = useState(false),
     [apiState, setApiState] = useState("检查中"),
     [monthly, setMonthly] = useState(0),
@@ -63,7 +64,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     current = useMemo(
       () => projects.find((project) => project.id === projectId),
       [projects, projectId],
-    );
+    ),
+    workbenchHref = current ? workbenchSkuHref(current.sku) : "/workbench";
   useEffect(() => {
     setProjectsLoaded(false);
     fetch("/api/projects", { cache: "no-store" })
@@ -131,10 +133,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       (item) =>
         `${item.sku} ${item.productName}` === value || item.sku === value,
     );
-    if (project)
-      router.push(
-        `/projects/${project.id}${activeModule ? `/${activeModule}` : ""}`,
-      );
+    if (project) navigate(projectResumeHref(project));
   }
   async function refreshCurrentPage() {
     if (refreshing) return;
@@ -180,7 +179,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   return (
     <div className={collapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <header className="global-header">
-        <Link className="wordmark" href="/workbench">
+        <Link className="wordmark" href={workbenchHref}>
           <span className="wordmark-icon"><AppLogo /></span>
           <b>AI服装工作台</b>
         </Link>
@@ -190,6 +189,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
             list="project-options"
             value={projectQuery}
             onChange={(event) => choose(event.target.value)}
+            onBlur={() => { if (current) setProjectQuery(`${current.sku} ${current.productName}`); }}
             placeholder="搜索SKU或商品名称"
             aria-label="项目选择器"
           />
@@ -247,7 +247,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               className={
                 pathname === "/workbench" ? "nav-link active" : "nav-link"
               }
-              href="/workbench"
+              href={workbenchHref}
             >
               <span className="nav-icon"><IconGrid /></span>
               <span className="nav-label">商品表格 / SKU</span>
@@ -268,7 +268,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   className={`${activeModule === item.segment ? "nav-link active" : "nav-link"} workflow-nav-button`}
-                  onClick={() => router.push(href)}
+                  onClick={() => navigate(href)}
                   key={item.segment}
                   title={item.label}
                 >
@@ -279,16 +279,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
                   type="button"
                   className="nav-link disabled"
                   key={item.segment}
-                  title={
-                    projectsLoaded ? "请先新建商品项目" : "正在加载商品项目"
-                  }
-                  onClick={() =>
-                    alert(
-                      projectsLoaded
-                        ? "请先新建商品项目，再进入制作流程。"
-                        : "商品项目正在加载，请稍候。",
-                    )
-                  }
+                  title={projectsLoaded ? "请先在商品表格选择一个 SKU" : "正在加载商品项目"}
+                  onClick={() => navigate("/workbench#sku-project-list")}
                 >
                   {content}
                 </button>

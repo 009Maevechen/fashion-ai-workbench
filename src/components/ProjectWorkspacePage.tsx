@@ -8,5 +8,5 @@ export default async function ProjectWorkspacePage({id,step}:{id:string;step?:nu
   const project=await getProject(id);
   if(!project)notFound();
   const [initialJobs,modelRouting]=await Promise.all([listJobs({projectId:project.id}),getWorkflowRuntimeSummary()]);
-  return <Workspace initial={project} initialJobs={initialJobs} health={providerHealth()} modelRouting={modelRouting} initialStep={step}/>;
+  return <Workspace key={project.id} initial={project} initialJobs={initialJobs} health={providerHealth()} modelRouting={modelRouting} initialStep={step}/>;
 }

@@ -11,6 +11,9 @@ export type SpreadsheetImportRowResult = {
   projectId?: string;
   taskId?: string;
   status: "created" | "updated" | "skipped" | "failed";
+  precheck?: "READY" | "NEEDS_REVIEW" | "BLOCKED";
+  setCount?: number;
+  stopBefore?: string;
   issues: string[];
 };
 

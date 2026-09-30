@@ -70,6 +70,30 @@ export async function downloadImage(raw:string,signal?:AbortSignal,_trustedHostn
   }
   throw new Error("模型图片地址跳转次数过多");
 }
+/**
+ * 仅供服务端已经完成 URL 路径校验的固定官方资源域名使用。
+ * 桌面端的 Fake-IP/企业代理有时会把公共 CDN 解析为保留网段，通用下载器会
+ * 正确地拒绝它；这里通过精确主机白名单放行，并在每次重定向后重新核对主机。
+ */
+export async function downloadAllowlistedImage(raw:string,allowedHostnames:readonly string[],signal?:AbortSignal){
+  const allowed=new Set(allowedHostnames.map(item=>item.trim().toLowerCase()).filter(Boolean));
+  if(!allowed.size)throw new Error("商品图片下载白名单为空");
+  let current=raw;
+  const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(timeout())]):AbortSignal.timeout(timeout());
+  for(let redirect=0;redirect<=5;redirect++){
+    const url=validateRemoteImageUrl(current),hostname=url.hostname.toLowerCase();
+    if(!allowed.has(hostname))throw new Error("商品图片跳转到了未授权的资源域名");
+    const response=await fetch(url,{signal:requestSignal,redirect:"manual",headers:{Accept:"image/jpeg,image/png,image/webp"}});
+    if([301,302,303,307,308].includes(response.status)){
+      const location=response.headers.get("location");if(!location)throw new Error("商品图片跳转地址缺失");
+      current=new URL(location,url).toString();continue;
+    }
+    if(!response.ok)throw new Error(`下载商品图片失败：HTTP ${response.status}`);
+    const mime=response.headers.get("content-type")||"";
+    return {buffer:await readLimited(response),mime};
+  }
+  throw new Error("商品图片地址跳转次数过多");
+}
 export async function localImage(url:string){
   const indexedPrefix="/api/image-index/";
   if(url.startsWith(indexedPrefix))return (await readIndexedImage(decodeURIComponent(url.slice(indexedPrefix.length)))).buffer;

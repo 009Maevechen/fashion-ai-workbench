@@ -138,11 +138,17 @@ export async function analyzeGarmentDesign(
     (key) =>
       fields[key].visibility === "visible" && fields[key].confidence < 0.7,
   );
+  const notVisible = GARMENT_DETAIL_FIELD_KEYS.filter(
+    (key) => fields[key].visibility === "not_visible",
+  );
   const issues = [
     ...new Set([
       ...parsed.issues,
       ...lowConfidence.map(
         (key) => `${GARMENT_DETAIL_FIELD_LABELS[key]}置信度低，需要人工确认`,
+      ),
+      ...notVisible.map(
+        (key) => `${GARMENT_DETAIL_FIELD_LABELS[key]}在产品证据中不可见，禁止猜测，需要补充图片或人工确认`,
       ),
     ]),
   ];

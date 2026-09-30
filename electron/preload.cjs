@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld("desktop",Object.freeze({
   openDataFolder:()=>ipcRenderer.invoke("desktop:open-data-folder"),
   openLogFolder:()=>ipcRenderer.invoke("desktop:open-log-folder"),
   copyImage:value=>ipcRenderer.invoke("desktop:copy-image",value),
+  openProductSystemLogin:(systemId)=>ipcRenderer.invoke("desktop:product-system-login",systemId),
+  lookupProduct:(sku)=>ipcRenderer.invoke("desktop:product-system-lookup",sku),
 }));

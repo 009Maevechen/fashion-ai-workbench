@@ -115,6 +115,8 @@ test("换装编辑任务固定产品图与模特图职责并使用八段结构�
   assert.match(prompt, /不接受只是相似/);
   assert.match(prompt, /数量、相对位置、方向、形状、尺寸比例、颜色和材质关系/);
   assert.match(prompt, /参考模特原服装.*待删除/);
+  assert.match(prompt, /产品主图 > 产品细节图 > 模特图 > 用户 prompt/);
+  assert.match(prompt, /细节图只能补充主图/);
   assert.match(prompt, /扣子数量：3颗/);
   assert.match(prompt, /刺绣不可见，需要人工确认/);
 });

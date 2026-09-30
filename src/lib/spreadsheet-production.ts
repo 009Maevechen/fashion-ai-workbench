@@ -3,9 +3,13 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { createProject, getProject, listProjects, updateProject, type GarmentDetailLock, type Project, type TargetColor } from "./db";
 import { analyzeGarmentDesign } from "./ai/garment-detail-lock";
-import { getIndexedImage, indexLocalImage, indexedImageUrl, saveIndexedGarmentAnalysis, type ImageIndexEntry } from "./image-index";
+import { getIndexedImage, indexImageBuffer, indexLocalImage, indexedImageUrl, saveIndexedGarmentAnalysis, type ImageIndexEntry } from "./image-index";
 import { listInventory, recommendGroups } from "./pose-inventory";
 import { parseTableDocument } from "./table-parse";
+import type { XlsxImageRef } from "./xlsx-images";
+import { resolvePrecheckStatus } from "./sku-production-plan";
+import { classifyImageRole, ROLE_CONFIDENCE_THRESHOLD } from "./ai/image-role-classify";
+import { categoryFromVisualLabels } from "./garment-classification";
 import {
   normalizeSkuRow,
   operationalProductType,
@@ -25,7 +29,22 @@ import {
 
 type IndexedByRole = Record<IndexedImageType, ImageIndexEntry[]>;
 
-async function indexRowImages(row: NormalizedSkuRow, baseDirectory?: string): Promise<IndexedByRole> {
+function roleFromColumn(ref: XlsxImageRef, headers: string[]) {
+  const header = String(headers[ref.column] || "").trim().toLocaleLowerCase();
+  if (!header) return undefined;
+  if (/商品图片|产品服装图|产品图|商品图|主图|^图片$|product/.test(header)) return "product" as const;
+  if (/模特|model/.test(header)) return "model" as const;
+  if (/姿势|姿态|pose/.test(header)) return "pose" as const;
+  if (/颜色|色卡|颜色款|color/.test(header)) return "color" as const;
+  if (/细节|补充|面料|detail|supplement/.test(header)) return "supplemental" as const;
+  return undefined;
+}
+
+async function indexRowImages(
+  row: NormalizedSkuRow,
+  baseDirectory: string | undefined,
+  extracted: { refs: XlsxImageRef[]; headers: string[]; readMedia?: (mediaPath: string) => Promise<Buffer> },
+): Promise<IndexedByRole> {
   const roles: Array<[IndexedImageType, string[]]> = [
     ["product", row.productImagePaths],
     ["model", row.modelImagePaths],
@@ -33,9 +52,30 @@ async function indexRowImages(row: NormalizedSkuRow, baseDirectory?: string): Pr
     ["color", row.colorImagePaths],
     ["supplemental", row.supplementalImagePaths],
   ];
-  const result = { product: [], model: [], pose: [], color: [], supplemental: [] } as IndexedByRole;
+  const result = { product: [], model: [], pose: [], color: [], supplemental: [], unknown: [] } as IndexedByRole;
   for (const [type, paths] of roles) {
     for (const filePath of paths) result[type].push(await indexLocalImage({ sku: row.sku, filePath, type, baseDirectory }));
+  }
+  // 表格内嵌图片 / WPS DISPIMG：逐个读取字节 → AI 分类角色 → 落盘建索引后释放，绝不整表入内存。
+  if (extracted.readMedia && row.sku) {
+    for (const ref of extracted.refs) {
+      const buffer = await extracted.readMedia(ref.mediaPath).catch(() => undefined);
+      if (!buffer) continue;
+      const dot = ref.mediaPath.lastIndexOf(".");
+      const ext = dot >= 0 ? ref.mediaPath.slice(dot) : ".png";
+      // 表格列名是确定的角色证据：例如“图片”列直接作为商品图，避免导入时为每张图调用一次视觉模型。
+      // 只有没有明确列角色的图片才进入后续 AI 分类，导入本身保持快速、可恢复。
+      let type: IndexedImageType = roleFromColumn(ref, extracted.headers) || "unknown";
+      if (type === "unknown") {
+        try {
+          const classified = await classifyImageRole(buffer, { sku: row.sku, title: row.productName });
+          type = classified.confidence >= ROLE_CONFIDENCE_THRESHOLD ? classified.role : "unknown";
+        } catch {
+          type = "unknown";
+        }
+      }
+      result[type].push(await indexImageBuffer({ sku: row.sku, type, buffer, ext }));
+    }
   }
   return result;
 }
@@ -87,8 +127,8 @@ function colorData(row: NormalizedSkuRow, indexed: IndexedByRole, existing: Proj
   return { colors, bindings };
 }
 
-async function poseRecommendations(row: NormalizedSkuRow) {
-  const manifest = await listInventory();
+async function poseRecommendations(row: NormalizedSkuRow, manifest: Awaited<ReturnType<typeof listInventory>>) {
+  if (!row.garmentProfile.primaryCategory) return [];
   return recommendGroups(manifest.groups, {
     productType: operationalProductType(row.garmentProfile),
     productSubtype: row.garmentProfile.secondaryCategory,
@@ -116,6 +156,15 @@ export async function importSkuSpreadsheet(buffer: Buffer, fileName: string, bas
   const bySku = new Map(projects.map((project) => [project.sku.trim().toLocaleLowerCase(), project]));
   const results: SpreadsheetImportRowResult[] = [];
   let createdCount = 0, updatedCount = 0, failedCount = 0;
+  const poseManifest = await listInventory();
+  // 按 1-based 工作表行号分组表格内嵌图片，供每行读取。
+  const imagesByRow = new Map<number, XlsxImageRef[]>();
+  for (const ref of document.images) {
+    const key = ref.row + 1;
+    const list = imagesByRow.get(key) ?? [];
+    list.push(ref);
+    imagesByRow.set(key, list);
+  }
 
   for (let index = 0; index < document.rows.length; index++) {
     const row = normalizeSkuRow(document.rows[index], index + 2);
@@ -131,16 +180,31 @@ export async function importSkuSpreadsheet(buffer: Buffer, fileName: string, bas
         project = await createProject({ sku: row.sku, productName: row.productName, productType: operationalProductType(row.garmentProfile) });
         bySku.set(row.sku.toLocaleLowerCase(), project);
       }
-      const indexed = await indexRowImages(row, baseDirectory);
+      const extracted = { refs: imagesByRow.get(row.rowNumber) || [], headers: document.headers, readMedia: document.readMedia };
+      const indexed = await indexRowImages(row, baseDirectory, extracted);
       const issues = mergeIssues(row, indexed);
-      const recommendedPoses = await poseRecommendations(row);
+      const recommendedPoses = await poseRecommendations(row, poseManifest);
+      const needsModelButMissing = row.taskTypes.some((type) => type === "换装" || type === "三姿势") && indexed.model.length === 0;
+      const precheck = resolvePrecheckStatus({
+        sku: row.sku,
+        hasProductImage: indexed.product.length > 0 || row.productImagePaths.length > 0,
+        hasModelImage: indexed.model.length > 0,
+        setPlan: row.setPlan,
+        unknownImageCount: indexed.unknown.length,
+        fieldIssues: issues,
+        needsModelButMissing,
+      });
       const task: SkuProductionTask = {
         taskId: project.productionTask?.taskId || crypto.randomUUID(),
         taskTypes: row.taskTypes,
         designLevel: row.designLevel,
         requirements: row.requirements,
         notes: row.notes,
-        status: issues.length ? "needs_review" : "draft",
+        productionSets: row.setPlan.sets,
+        setCount: row.setPlan.sets.length,
+        stopBefore: row.setPlan.stopBefore,
+        precheck,
+        status: precheck === "READY" ? "ready" : "needs_review",
         recommendedPoses,
         issues,
         createdAt: project.productionTask?.createdAt || identity.importedAt,
@@ -148,13 +212,15 @@ export async function importSkuSpreadsheet(buffer: Buffer, fileName: string, bas
       };
       const { colors, bindings } = colorData(row, indexed, project);
       const first = (role: IndexedImageType) => indexed[role][0] ? indexedImageUrl(indexed[role][0].imageId) : undefined;
+      const retainedVisualProfile = Boolean(project.garmentProfile?.sourceImage || project.garmentProfile?.classificationConfirmed || project.garmentProfile?.manualFields?.length || project.garmentProfile?.source === "manual");
+      const effectiveGarmentProfile = retainedVisualProfile ? project.garmentProfile! : row.garmentProfile;
       const updated = await updateProject(project.id, {
         productName: project.sourceMode === "manual" && project.productName ? project.productName : row.productName,
-        productType: operationalProductType(row.garmentProfile),
+        productType: operationalProductType(effectiveGarmentProfile),
         sourceMode: "spreadsheet",
         spreadsheetSource: { importId: identity.id, fileName, sheetName: document.sheetName, rowNumber: row.rowNumber, importedAt: identity.importedAt },
         sourceImageRefs: refsFromIndexed(indexed),
-        garmentProfile: project.garmentProfile?.source === "manual" ? project.garmentProfile : row.garmentProfile,
+        garmentProfile: effectiveGarmentProfile,
         productionTask: task,
         colorVariantBindings: bindings,
         targetColors: colors.length ? colors : project.targetColors,
@@ -172,7 +238,7 @@ export async function importSkuSpreadsheet(buffer: Buffer, fileName: string, bas
       project = updated;
       if (existed) updatedCount++;
       else createdCount++;
-      results.push({ rowNumber: row.rowNumber, sku: row.sku, projectId: project.id, taskId: task.taskId, status: existed ? "updated" : "created", issues });
+      results.push({ rowNumber: row.rowNumber, sku: row.sku, projectId: project.id, taskId: task.taskId, status: existed ? "updated" : "created", precheck, setCount: row.setPlan.sets.length, stopBefore: row.setPlan.stopBefore, issues });
     } catch (error) {
       failedCount++;
       results.push({ rowNumber: row.rowNumber, sku: row.sku, status: "failed", issues: [error instanceof Error ? error.message : "导入失败"] });
@@ -197,11 +263,18 @@ const value = (lock: GarmentDetailLock, key: keyof GarmentDetailLock["fields"]) 
 };
 
 export function garmentProfileFromLock(lock: GarmentDetailLock, previous?: GarmentProductionProfile): GarmentProductionProfile {
-  const detected = normalizeSkuRow({ 商品名称: `${value(lock, "category") || ""} ${value(lock, "subcategory") || ""}` }, 1).garmentProfile;
-  const category = previous?.source === "manual" ? previous : { ...detected, confidence: Math.max(detected.confidence, previous?.confidence || 0.5) };
+  const visualCategory = categoryFromVisualLabels(value(lock, "category") || "", value(lock, "subcategory") || "");
+  const manuallyProtected = Boolean(previous?.classificationConfirmed || previous?.source === "manual" || previous?.source === "spreadsheet" && previous.primaryCategory || previous?.manualFields?.includes("category"));
+  const primaryCategory = manuallyProtected ? previous?.primaryCategory || "" : visualCategory;
+  const preserveSubcategory = Boolean(previous?.classificationConfirmed || previous?.manualFields?.includes("subcategory") || previous?.source === "spreadsheet" && previous.secondaryCategory);
+  const secondaryCategory = preserveSubcategory ? previous?.secondaryCategory || "" : value(lock, "subcategory") || previous?.secondaryCategory || "";
+  const visibleConfidences = Object.values(lock.fields).filter((item) => item.visibility === "visible").map((item) => item.confidence);
   return {
-    ...category,
-    secondaryCategory: value(lock, "subcategory") || category.secondaryCategory,
+    ...previous,
+    primaryCategory,
+    category: primaryCategory,
+    secondaryCategory,
+    subcategory: secondaryCategory,
     fit: value(lock, "fit"), silhouette: value(lock, "silhouette"), length: value(lock, "length"),
     neckline: value(lock, "neckline"), sleeve: value(lock, "sleeve"), hem: value(lock, "hem"),
     texture: value(lock, "fabricTexture"), gloss: value(lock, "fabricGloss"), drape: value(lock, "drape"),
@@ -212,9 +285,10 @@ export function garmentProfileFromLock(lock: GarmentDetailLock, previous?: Garme
     specialDesign: [value(lock, "embroidery"), value(lock, "drawstring"), value(lock, "waistband"), value(lock, "slit"), value(lock, "otherDetails")].filter(Boolean).join("；") || undefined,
     protectedDetails: lock.protectedDetails,
     forbiddenChanges: ["不得改变服装类别、版型、长度、面料和结构", "不得新增或删除产品图已有细节", "不得混入模特原服装特征"],
-    riskWarnings: lock.issues,
-    confidence: Math.min(...Object.values(lock.fields).filter((item) => item.visibility === "visible").map((item) => item.confidence), 1),
-    source: "ai",
+    riskWarnings: [...new Set([...(previous?.riskWarnings || []), ...lock.issues, ...(!primaryCategory ? ["商品类目无法从产品图确认，请人工审核"] : [])])],
+    confidence: previous?.classificationConfirmed ? previous.confidence : visibleConfidences.length ? Math.min(...visibleConfidences) : 0,
+    source: previous?.source === "manual" || previous?.source === "spreadsheet" ? previous.source : "ai",
+    sourceImage: lock.sourceImage,
     analyzedAt: lock.lockedAt,
     model: lock.model,
   };
@@ -228,7 +302,8 @@ export async function analyzeSpreadsheetProject(projectId: string) {
   const indexedId = project.sourceImageRefs?.product[0];
   const cached = indexedId ? (await getIndexedImage(indexedId))?.garmentAnalysis : undefined;
   const lock = cached?.lock || await analyzeGarmentDesign(project, source);
-  const garmentProfile = cached?.profile || garmentProfileFromLock(lock, project.garmentProfile);
+  // 图片索引缓存可复用分析证据，但不能复用另一 SKU 的手工类目决定。
+  const garmentProfile = garmentProfileFromLock(lock, project.garmentProfile);
   if (indexedId && !cached) await saveIndexedGarmentAnalysis(indexedId, { lock, profile: garmentProfile, analyzedAt: new Date().toISOString() });
   const designLevel = /条纹|印花|刺绣|拼接|包边|扣|不对称|色块/.test(`${lock.protectedDetails.join(" ")} ${Object.values(lock.fields).map((item) => item.value).join(" ")}`) ? "complex" as const : "simple" as const;
   return updateProject(project.id, {

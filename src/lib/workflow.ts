@@ -82,6 +82,8 @@ import {
 } from "./tryon-edit-pipeline";
 import { randomGenerationSeed } from "./generation-seed";
 import { isRetryableGenerationError } from "./generation-retry";
+import { computeTargetSize, resolveSizeTier, checkOutputDimensions } from "./generation-size";
+import { rotatedDimensions, normalizeToSize } from "./image-limits";
 import { checkCorrectionQuality } from "./correction-quality";
 import {
   buildRecolorColorRetryInstruction,
@@ -377,6 +379,9 @@ async function runOne(args: {
     await patchJob(id, { phase: "submitting" });
     await patchJob(id, { phase: "waiting_provider" });
     const apiStartedAt = Date.now();
+    // 按基准图（第一张输入图）比例 + 档位计算目标尺寸，作为请求参数发给服务商，锁死画面比例。
+    const baseDimensions = await rotatedDimensions(sourceBuffers[0]);
+    const targetSize = computeTargetSize(baseDimensions.width, baseDimensions.height, resolveSizeTier(args.mode));
     let generated;
     let retryCount = 0;
     for (let attempt = 0; ; attempt++) {
@@ -394,6 +399,7 @@ async function runOne(args: {
               sku: project.sku,
               candidate: args.slot,
               seed,
+              size: { width: targetSize.width, height: targetSize.height },
             },
           },
           choice,
@@ -451,15 +457,22 @@ async function runOne(args: {
     }
     await patchJob(id, { phase: "validating" });
     const localStart = Date.now();
+    // 返回图比例验收：完全一致直接接受；比例一致但分辨率不同等比归一；比例不一致保留图片但标记未通过。
+    const outputDimensions = await rotatedDimensions(downloaded.buffer);
+    const dimensionCheck = checkOutputDimensions(outputDimensions.width, outputDimensions.height, targetSize);
+    let workingBuffer: Buffer = downloaded.buffer;
+    if (dimensionCheck.decision === "normalize") {
+      workingBuffer = await normalizeToSize(downloaded.buffer, targetSize.width, targetSize.height).catch(() => downloaded.buffer);
+    }
     const checks = await validateOutput(
-      downloaded.buffer,
+      workingBuffer,
       downloaded.mime,
       inputHashes,
       args.otherHashes,
       args.workflow === "recolor" ? sourceBuffers[0] : undefined,
     );
     await patchJob(id, { phase: "optimizing" });
-    const optimized = await optimizeFinalImage(downloaded.buffer, {
+    const optimized = await optimizeFinalImage(workingBuffer, {
       preserveQuality: true,
     });
     let correctionQualityCheck;
@@ -528,6 +541,7 @@ async function runOne(args: {
       recolorColorFailed = Boolean(
         recolorColorCheck && !recolorColorCheck.passed,
       ),
+      dimensionFailed = dimensionCheck.decision === "fail",
       commandIssues =
         correctionCheck && !correctionCheck.passed
           ? [...correctionCheck.missed, ...correctionCheck.violations].map(
@@ -540,7 +554,8 @@ async function runOne(args: {
         commandFailed ||
         qualityRegressed ||
         boundaryFailed ||
-        recolorColorFailed
+        recolorColorFailed ||
+        dimensionFailed
           ? ("needs_redo" as const)
           : review
             ? ("needs_review" as const)
@@ -562,6 +577,7 @@ async function runOne(args: {
         ...(correctionQualityCheck?.issues || []),
         ...(inpaintBoundaryCheck?.issues || []),
         ...(recolorColorCheck?.issues || []),
+        ...(dimensionCheck.reason ? [dimensionCheck.reason] : []),
         ...(args.correctionPlan && !correctionCheck
           ? ["咒语命中检查暂不可用，需要人工审核"]
           : []),
@@ -581,7 +597,9 @@ async function runOne(args: {
             ? "图片修改后画质降低，已标记重做；原图和结果均已保留供人工审核"
             : recolorColorFailed
               ? "复色结果颜色与参考图颜色偏差过大，已标记重做"
-              : undefined,
+              : dimensionFailed
+                ? `返回图宽高比与基准不一致，已保留图片但标记未通过：${dimensionCheck.reason || ""}`
+                : undefined,
       finishedAt,
       requestFinishedAt: finishedAt,
       durationMs,
@@ -592,10 +610,15 @@ async function runOne(args: {
       correctionCheck,
       correctionQualityCheck,
       recolorColorCheck,
+      dimensionCheck,
       inpaintBoundaryCheck,
       correctionQualityBaseline: args.correctionQualityBaseline,
       qcStatus:
-        commandFailed || qualityRegressed || boundaryFailed || recolorColorFailed
+        commandFailed ||
+        qualityRegressed ||
+        boundaryFailed ||
+        recolorColorFailed ||
+        dimensionFailed
           ? "FAIL"
           : review
             ? "NEEDS_REVIEW"
@@ -736,6 +759,19 @@ export async function executeTryon(v: {
       `换装第1步 analyzeGarmentDesign 失败：${error instanceof Error ? error.message : "服装识别失败"}`,
     );
   }
+  if (lock.status !== "locked") {
+    const unresolved = lock.issues.length
+      ? lock.issues.join("；")
+      : "存在未确认的服装细节";
+    await updateProject(p.id, {
+      garmentDetailLock: lock,
+      status: "需要补充服装细节",
+      stepStatuses: { ...p.stepStatuses, "2": "failed" },
+    });
+    throw new Error(
+      `换装已停止：服装细节锁定未通过，禁止在不确定证据下自由生成。${unresolved}`,
+    );
+  }
   let modelAnalysis;
   try {
     modelAnalysis =
@@ -777,7 +813,7 @@ export async function executeTryon(v: {
     : "";
   const protectedDetails = [
     composeTryonDetailRequirements(
-      buildProductProtectionPrompt(v.productType, p.profile),
+      buildProductProtectionPrompt(v.productType, p.profile, p.garmentProfile),
       buildGarmentDetailProtectedDetails(lock),
       detailRequirements,
     ),
@@ -1238,7 +1274,7 @@ export async function executePose(v: {
         ? v.poseInstructions
         : POSE_PRESETS[p.productType],
     baseProtectedDetails = normalizeTryonDetailRequirements(
-      `${buildProductProtectionPrompt(p.productType, p.profile)}\n${detailRequirements}`,
+      `${buildProductProtectionPrompt(p.productType, p.profile, p.garmentProfile)}\n${detailRequirements}`,
       2000,
     ),
     protectedDetails = [baseProtectedDetails, correctionText]
@@ -1391,7 +1427,7 @@ export async function executeRecolor(v: {
     protectedDetails = [
       normalizeTryonDetailRequirements(
         [
-          buildProductProtectionPrompt(p.productType, p.profile),
+          buildProductProtectionPrompt(p.productType, p.profile, p.garmentProfile),
           p.garmentDetailLock
             ? buildGarmentDetailProtectedDetails(p.garmentDetailLock)
             : "",

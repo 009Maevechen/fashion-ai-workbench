@@ -4,7 +4,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { durableWriteJson, readValidJson } from "./durable-json";
+import { durableWriteJson, readValidJson, durableWriteFile } from "./durable-json";
 import { runtimeDataDir } from "./runtime-paths";
 import type { IndexedImageType } from "./sku-production";
 import type { GarmentProductionProfile } from "./sku-production";
@@ -22,6 +22,8 @@ export type ImageIndexEntry = {
   mime?: string;
   exists: boolean;
   garmentAnalysis?: { profile: GarmentProductionProfile; lock: GarmentDetailLock; analyzedAt: string };
+  /** AI 图片角色分类结果，按内容哈希缓存，避免重复调用 AI。 */
+  roleAnalysis?: { role: IndexedImageType; confidence: number; reason?: string; analyzedAt: string; model?: string };
 };
 
 type ImageIndexStore = { schemaVersion: 1; images: ImageIndexEntry[] };
@@ -93,6 +95,28 @@ export async function indexLocalImage(input: { sku: string; filePath: string; ty
   return result;
 }
 
+function safeFolder(value: string) {
+  return value.replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 80) || "sku";
+}
+
+/**
+ * 为表格内嵌图片/WPS DISPIMG 图片落盘并建索引：
+ * 内容哈希做文件名，同一张图只保存一次（imageHash 缓存），字节即用即释放。
+ */
+export async function indexImageBuffer(input: { sku: string; type: IndexedImageType; buffer: Buffer; ext?: string }) {
+  const hash = crypto.createHash("sha256").update(input.buffer).digest("hex");
+  const directory = path.join(runtimeDataDir(), "spreadsheet-media", safeFolder(input.sku));
+  await fsp.mkdir(directory, { recursive: true });
+  const ext = input.ext && /^\.[a-z0-9]+$/i.test(input.ext) ? input.ext.toLowerCase() : ".png";
+  const filePath = path.join(directory, `${hash}${ext}`);
+  try {
+    await fsp.access(filePath);
+  } catch {
+    await durableWriteFile(filePath, input.buffer);
+  }
+  return indexLocalImage({ sku: input.sku, filePath, type: input.type });
+}
+
 export async function getIndexedImage(imageId: string) {
   return (await load()).images.find((item) => item.imageId === imageId);
 }
@@ -100,6 +124,25 @@ export async function getIndexedImage(imageId: string) {
 export async function listIndexedImages(sku?: string) {
   const images = (await load()).images;
   return sku ? images.filter((item) => [item.sku, ...(item.linkedSkus || [])].some((value) => value.toLocaleLowerCase() === sku.toLocaleLowerCase())) : images;
+}
+
+/** 按内容哈希查找已索引图片（用于角色分类/服装分析缓存命中）。 */
+export async function findIndexedImageByHash(hash: string) {
+  return (await load()).images.find((item) => item.hash === hash);
+}
+
+/** 保存图片角色分类结果到索引条目。 */
+export async function saveIndexedRoleAnalysis(imageId: string, analysis: NonNullable<ImageIndexEntry["roleAnalysis"]>) {
+  queue = queue.then(async () => {
+    const store = await load();
+    const entry = store.images.find((item) => item.imageId === imageId);
+    if (!entry) return;
+    entry.roleAnalysis = analysis;
+    entry.type = analysis.role;
+    entry.updatedAt = analysis.analyzedAt;
+    await save(store);
+  });
+  await queue;
 }
 
 export async function saveIndexedGarmentAnalysis(imageId: string, analysis: NonNullable<ImageIndexEntry["garmentAnalysis"]>) {

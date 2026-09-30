@@ -19,11 +19,13 @@ export class SycImageProvider implements ImageProvider{
   async generate(input:GenerateInput,model:string):Promise<ProviderResult>{
     const options=this.config.syc||{stream:false,partialImages:1,returnBase64:true,codexCliCompatible:false,timeoutSeconds:600};
     const headers:HeadersInit={Authorization:`Bearer ${this.config.apiKey}`};
+    // 尺寸由调用方按基准图比例 + 档位计算后传入；未传入时才回退默认竖版。
+    const requestSize=input.options.size?`${input.options.size.width}x${input.options.size.height}`:"1024x1536";
     let body:BodyInit,url:string;
     if(input.images.length){
       url=sycEndpoint(this.config.baseUrl,"edits");
       const form=new FormData();
-      form.set("model",model);form.set("prompt",input.prompt);form.set("n","1");form.set("size","1024x1536");
+      form.set("model",model);form.set("prompt",input.prompt);form.set("n","1");form.set("size",requestSize);
       // 工作台必须直接接收图片数据。若让中转站返回 URL，某些上游会返回
       // localhost/内网临时地址，桌面端无法安全下载，也不能把该地址再交给外部服务。
       form.set("response_format","b64_json");
@@ -34,7 +36,7 @@ export class SycImageProvider implements ImageProvider{
       body=form;
     }else{
       url=sycEndpoint(this.config.baseUrl,"generations");headers["Content-Type"]="application/json";
-      body=JSON.stringify({model,prompt:input.prompt,n:1,size:"1024x1536",response_format:"b64_json",stream:options.stream,partial_images:options.partialImages,...(options.codexCliCompatible?{codexCli:true}:{})});
+      body=JSON.stringify({model,prompt:input.prompt,n:1,size:requestSize,response_format:"b64_json",stream:options.stream,partial_images:options.partialImages,...(options.codexCliCompatible?{codexCli:true}:{})});
     }
     let response:Response;
     try{response=await serializeSycRequest(()=>fetch(url,{method:"POST",headers,body,signal:AbortSignal.timeout(options.timeoutSeconds*1000)}))}catch(error){throw sycNetworkError(error)}

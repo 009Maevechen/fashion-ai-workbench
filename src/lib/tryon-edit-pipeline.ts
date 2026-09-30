@@ -49,6 +49,9 @@ export type TryOnEditTask = {
   reviewWarnings: string[];
 };
 
+export const TRYON_SOURCE_PRIORITY =
+  "产品主图 > 产品细节图 > 模特图 > 用户 prompt；产品图（产品主图）是服装整体设计的唯一真值，决定整体商品款式与结构；细节图只能补充主图中对应局部的可见证据，不能覆盖主图；模特图只决定人物与画面，不提供服装设计；prompt 只能补充文字要求，不能推翻图片证据。";
+
 export type TryOnRepairTarget = {
   type:
     | "buttons"
@@ -129,7 +132,7 @@ export function buildTryOnEditTask(input: {
     task: "以参考模特图为基础图片，完整删除模特原服装，只把产品图中的选定服装穿到同一位模特身上。",
     sourceOfTruth: {
       garment:
-        "产品图及经人工确认的服装细节图是服装设计、颜色、面料、版型和结构的唯一真值。",
+        `服装证据优先级固定为${TRYON_SOURCE_PRIORITY}`,
       personAndScene:
         "参考模特图是人物身份、姿势、身体比例、景别、构图、角度、背景、光线和露脸状态的唯一真值。",
       replaceTarget:
@@ -198,6 +201,7 @@ export function tryOnEditTaskPrompt(
     section("reviewWarnings", task.reviewWarnings),
     garmentDescription ? `garmentDescription\n- ${garmentDescription}` : "",
     "执行方式：把第1张参考模特图作为需要编辑的基础图；第2张产品图及后续细节图只提供服装事实。不要自由重画整张画面。产品服装在新人体上的必要透视与自然褶皱可以变化，但商品设计事实不得变化；不得以相似款或近似细节代替。",
+    `证据优先级再次确认：${TRYON_SOURCE_PRIORITY}`,
   ]
     .filter(Boolean)
     .join("\n\n");

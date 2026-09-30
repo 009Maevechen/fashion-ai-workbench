@@ -3,6 +3,7 @@ import "./workflow.css";
 import "./header.css";
 import "./portfolio.css";
 import RootShell from "@/components/RootShell";
+import ProductionNavigationGuard from "@/components/workbench/ProductionNavigationGuard";
 import { Suspense } from "react";
 
 export const metadata = {
@@ -11,5 +12,5 @@ export const metadata = {
   icons: { icon: "/icon.png", apple: "/apple-touch-icon.png" },
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <html lang="zh-CN"><body><Suspense fallback={<main>{children}</main>}><RootShell>{children}</RootShell></Suspense></body></html>;
+  return <html lang="zh-CN"><body><ProductionNavigationGuard><Suspense fallback={<main>{children}</main>}><RootShell>{children}</RootShell></Suspense></ProductionNavigationGuard></body></html>;
 }

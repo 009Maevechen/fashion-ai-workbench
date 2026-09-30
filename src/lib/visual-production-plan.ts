@@ -54,8 +54,8 @@ function projectBrief(project: Project) {
   const attributes = project.profile?.attributes || {};
   return {
     productType: project.productType,
-    productSubtype: (attributes.fit && `${attributes.fit}`) || attributes.garmentLength || undefined,
-    displayFocus: project.profile?.detailDescription || undefined,
+    productSubtype: project.garmentProfile?.secondaryCategory || (attributes.fit && `${attributes.fit}`) || attributes.garmentLength || undefined,
+    displayFocus: project.garmentProfile?.displayFocus || project.profile?.detailDescription || undefined,
     shotType: project.settings.pose?.shotType,
     faceVisible: project.settings.pose?.face,
   };

@@ -245,6 +245,7 @@ export type ProductAssetEvidence = {
   reviewedAt?: string;
 };
 export type ProductVisualAnalysis = {
+  version?: string;
   status: "analyzing" | "completed" | "failed";
   sourceImage: string;
   sourceWidth?: number;
@@ -663,6 +664,16 @@ export type Job = {
     outputHex?: string;
     distance: number;
     issues: string[];
+  };
+  /** 返回图尺寸/宽高比验收结果。 */
+  dimensionCheck?: {
+    decision: "accept" | "normalize" | "fail";
+    actualWidth: number;
+    actualHeight: number;
+    targetWidth: number;
+    targetHeight: number;
+    ratioError: number;
+    reason?: string;
   };
   qualityIssues?: string[];
   qcStatus?: "PASS" | "NEEDS_REVIEW" | "FAIL";

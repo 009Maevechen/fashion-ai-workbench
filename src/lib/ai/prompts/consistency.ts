@@ -3,6 +3,7 @@ import type { GenerationWorkflow } from "../types";
 import { isComplexColorway } from "@/lib/color-sets";
 import { isButtonColorPart } from "../color-analysis-normalize";
 import { resolveRecolorReferenceEvidence } from "@/lib/recolor-reference-source";
+import { productionGarmentProfileText } from "@/lib/garment-classification";
 
 export function garmentConsistencyPrompt(
   workflow: GenerationWorkflow,
@@ -10,7 +11,9 @@ export function garmentConsistencyPrompt(
   job: Job,
 ) {
   const profile = project.profile?.attributes || {};
+  const visualType = productionGarmentProfileText(project.garmentProfile);
   const known = [
+    visualType,
     profile.fabric,
     profile.fabricTexture,
     profile.weaveStructure,

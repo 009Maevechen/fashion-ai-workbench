@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       if (project) {
         const recommended = recommendGroups(manifest.groups, {
           productType: project.productType,
-          productSubtype: project.profile?.attributes?.fit,
+          productSubtype: project.garmentProfile?.secondaryCategory || project.profile?.attributes?.fit,
           shotType: undefined,
           faceVisible: project.settings.pose?.face,
         });

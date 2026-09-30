@@ -88,3 +88,14 @@ export async function createThumbnail(buffer:Buffer,width:number,quality=76):Pro
     .jpeg({quality:Math.max(60,Math.min(90,quality)),mozjpeg:true})
     .toBuffer();
 }
+
+/**
+ * 返回图比例合格但分辨率不同时，等比归一化到目标尺寸：保持宽高比、不裁剪、不补边、不拉伸。
+ */
+export async function normalizeToSize(buffer:Buffer,width:number,height:number,quality=96):Promise<Buffer>{
+  return sharp(buffer,{failOn:"error",animated:false,limitInputPixels:MAX_INPUT_PIXELS})
+    .rotate()
+    .resize({width,height,fit:"inside",withoutEnlargement:false,kernel:"lanczos3"})
+    .jpeg({quality,mozjpeg:true,chromaSubsampling:"4:4:4"})
+    .toBuffer();
+}

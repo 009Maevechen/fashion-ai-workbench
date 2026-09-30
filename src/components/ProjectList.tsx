@@ -1,11 +1,15 @@
 "use client";
-import {useMemo,useState} from "react";
-import {useRouter} from "next/navigation";
+import {useEffect,useMemo,useState} from "react";
+import {useRouter,useSearchParams} from "next/navigation";
 import type {Project} from "@/lib/db";
+import {projectResumeHref} from "@/lib/project-navigation";
 
 export default function ProjectList({initial}:{initial:Project[]}){
-  const [projects,setProjects]=useState(initial),[error,setError]=useState(""),[query,setQuery]=useState("");const router=useRouter();
+  const search=useSearchParams();
+  const returnSku=search.get("sku")||"";
+  const [projects,setProjects]=useState(initial),[error,setError]=useState(""),[query,setQuery]=useState(returnSku);const router=useRouter();
   const [submitting,setSubmitting]=useState(false);
+  useEffect(()=>{setQuery(returnSku);if(returnSku){const frame=requestAnimationFrame(()=>document.getElementById("sku-project-list")?.scrollIntoView({block:"start"}));return()=>cancelAnimationFrame(frame)}},[returnSku]);
   const visible=useMemo(()=>{const keyword=query.trim().toLocaleLowerCase();return keyword?projects.filter(project=>project.sku.toLocaleLowerCase().includes(keyword)||project.productName.toLocaleLowerCase().includes(keyword)):projects},[projects,query]);
   async function create(form:FormData){setError("");const sku=String(form.get("sku")||"").trim();const productName=String(form.get("productName")||"").trim();const productType=String(form.get("productType")||"上衣");
     if(!sku)return setError("请填写 SKU 编号");
@@ -38,12 +42,12 @@ export default function ProjectList({initial}:{initial:Project[]}){
       </form>
       </div>
     </details>
-    <section className="card project-list-card">
+    <section className="card project-list-card" id="sku-project-list">
       <div className="panel-head project-list-head">
         <div><span className="section-kicker">继续已有任务</span><h2>最近商品项目</h2><small>{query?`找到 ${visible.length} 个项目`:`共 ${projects.length} 个项目`}</small></div>
         <label className="project-search"><span>⌕</span><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="搜索货号或商品名称" aria-label="搜索货号或商品名称"/>{query&&<button type="button" aria-label="清空搜索" onClick={()=>setQuery("")}>×</button>}</label>
       </div>
-      {visible.length?<div className="table-scroll"><table className="table project-table"><thead><tr><th>SKU / 商品名称</th><th>商品类型</th><th>当前步骤</th><th>项目状态</th><th>最后更新时间</th><th aria-label="操作" /></tr></thead><tbody>{visible.map(project=><tr key={project.id}><td><strong>{project.sku}</strong><span className="project-product-name">{project.productName}</span></td><td>{project.productType}</td><td><span className="step-progress">{project.currentStep}<small>/ 5</small></span></td><td><span className="badge">{project.status}</span></td><td>{new Date(project.updatedAt).toLocaleString("zh-CN")}</td><td><div className="project-row-actions"><button className="primary" onClick={()=>router.push(`/projects/${project.id}/tryon`)}>继续制作</button><button className="danger" onClick={()=>void remove(project)}>删除</button></div></td></tr>)}</tbody></table></div>:<div className="empty-state"><div><div className="empty-icon">◇</div><b>{query?"没有找到匹配项目":"还没有商品项目"}</b><p>{query?"请检查货号或商品名称后重新搜索。":"创建一个 SKU 项目，开始服装制作流程。"}</p></div></div>}
+      {visible.length?<div className="table-scroll"><table className="table project-table"><thead><tr><th>SKU / 商品名称</th><th>商品类型</th><th>当前步骤</th><th>项目状态</th><th>最后更新时间</th><th aria-label="操作" /></tr></thead><tbody>{visible.map(project=><tr key={project.id}><td><strong>{project.sku}</strong><span className="project-product-name">{project.productName}</span></td><td>{project.productType}</td><td><span className="step-progress">{project.currentStep}<small>/ 5</small></span></td><td><span className="badge">{project.status}</span></td><td>{new Date(project.updatedAt).toLocaleString("zh-CN")}</td><td><div className="project-row-actions"><button className="primary" onClick={()=>router.push(projectResumeHref(project))}>继续制作</button><button className="danger" onClick={()=>void remove(project)}>删除</button></div></td></tr>)}</tbody></table></div>:<div className="empty-state"><div><div className="empty-icon">◇</div><b>{query?"没有找到匹配项目":"还没有商品项目"}</b><p>{query?"请检查货号或商品名称后重新搜索。":"创建一个 SKU 项目，开始服装制作流程。"}</p></div></div>}
     </section>
   </div>
 }

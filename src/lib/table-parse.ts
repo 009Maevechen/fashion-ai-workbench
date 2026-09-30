@@ -1,7 +1,9 @@
 import JSZip from "jszip";
+import path from "node:path";
 import type { TableRow } from "./pose-inventory";
+import { extractXlsxImageRefs, type XlsxImageRef } from "./xlsx-images";
 
-export const DEFAULT_MAX_SPREADSHEET_UPLOAD_MB = 100;
+export const DEFAULT_MAX_SPREADSHEET_UPLOAD_MB = 500;
 
 export function spreadsheetUploadLimitMb(value = process.env.SPREADSHEET_MAX_UPLOAD_MB) {
   const parsed = Number(value);
@@ -31,6 +33,10 @@ export type ParsedTable = {
   rows: TableRow[];
   sheetName: string;
   headers: string[];
+  /** 表格内嵌图片/WPS DISPIMG 图片引用（按行/列），字节由调用方逐个读取。 */
+  images: XlsxImageRef[];
+  /** 按媒体路径读取图片字节（xlsx 才有；逐个读取，避免整表图片入内存）。 */
+  readMedia?: (mediaPath: string) => Promise<Buffer>;
 };
 
 function csvRows(text: string): string[][] {
@@ -126,11 +132,15 @@ export async function parseXlsxDocument(buffer: Buffer): Promise<ParsedTable> {
   }
   if (!zip.files[sheetEntry]) throw new Error("Excel 文件没有可读取的工作表");
   const sheetXml = await zip.files[sheetEntry].async("string");
+  const sheetRelsPath = `${path.dirname(sheetEntry)}/_rels/${path.basename(sheetEntry)}.rels`;
 
   const rows: TableRow[] = [];
   const parsedRows = parseSheetRows(sheetXml, sharedStrings);
   const headers = parsedRows[0] || [];
-  if (!headers.some(Boolean)) return { rows: [], sheetName, headers: [] };
+  if (!headers.some(Boolean)) {
+    const images = await extractXlsxImageRefs(zip, sheetXml, sheetRelsPath).catch(() => []);
+    return { rows: [], sheetName, headers: [], images };
+  }
   for (let i = 1; i < parsedRows.length; i++) {
     const cells = parsedRows[i];
     const row: TableRow = {};
@@ -139,7 +149,18 @@ export async function parseXlsxDocument(buffer: Buffer): Promise<ParsedTable> {
     });
     if (Object.values(row).some((value) => value.trim() !== "")) rows.push(row);
   }
-  return { rows, sheetName, headers };
+  const images = await extractXlsxImageRefs(zip, sheetXml, sheetRelsPath).catch(() => []);
+  return {
+    rows,
+    sheetName,
+    headers,
+    images,
+    readMedia: async (mediaPath: string) => {
+      const entry = zip.files[mediaPath];
+      if (!entry) throw new Error(`表格内图片不存在：${mediaPath}`);
+      return entry.async("nodebuffer");
+    },
+  };
 }
 
 export async function parseXlsx(buffer: Buffer): Promise<TableRow[]> {
@@ -185,7 +206,7 @@ export async function parseTableDocument(buffer: Buffer, filename: string): Prom
   const lower = filename.toLowerCase();
   if (lower.endsWith(".csv")) {
     const rows = parseCsv(buffer.toString("utf8"));
-    return { rows, sheetName: "CSV", headers: rows.length ? Object.keys(rows[0]) : [] };
+    return { rows, sheetName: "CSV", headers: rows.length ? Object.keys(rows[0]) : [], images: [] };
   }
   if (lower.endsWith(".xlsx") || lower.endsWith(".xlsm")) return parseXlsxDocument(buffer);
   if (lower.endsWith(".xls")) throw new Error("旧版 .xls 请先在 WPS/Excel 中另存为 .xlsx 后导入");

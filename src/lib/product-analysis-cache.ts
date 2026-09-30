@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { runtimeDataDir } from "./runtime-paths";
+import type { GarmentClassification } from "./garment-classification";
 
 /**
  * 商品识别结果缓存：同一张产品主图（按内容 Hash）识别成功后缓存，
@@ -17,6 +18,7 @@ export type ProductAnalysisCacheEntry = {
   attributes: Record<string, string>;
   detailDescription: string;
   protectionItems: string[];
+  garmentClassification?: GarmentClassification;
   cachedAt: string;
 };
 

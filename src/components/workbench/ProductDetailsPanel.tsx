@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type {
   Job,
   NormalizedCropRegion,
@@ -18,9 +19,12 @@ import ClearAssetsButton from "./ClearAssetsButton";
 import type { Runner } from "./types";
 import { hasClearableSourceAssets } from "@/lib/asset-cleanup";
 import { DEFAULT_PROTECTION_ITEMS } from "@/lib/product-structure";
-import {useProjectDraftAutosave} from "./useProjectDraftAutosave";
+import {useProductionNavigation} from "./ProductionNavigationGuard";
 import ColorCropper from "./ColorCropper";
 import type { ProductionTaskType } from "@/lib/sku-production";
+import type { GarmentProductionProfile } from "@/lib/sku-production";
+import { GARMENT_TAXONOMY, GARMENT_CATEGORIES, isGarmentCategory, type GarmentClassificationField, legacyProductType } from "@/lib/garment-classification";
+import { PRODUCT_VISUAL_ANALYSIS_VERSION } from "@/lib/product-visual-version";
 
 const TYPES: ProductType[] = ["上衣", "裤装", "连衣裙", "半身裙", "套装"];
 const PRODUCTION_TASK_TYPES: ProductionTaskType[] = ["换装", "复色", "三姿势", "白底图", "高清优化", "局部修改", "产品展示图"];
@@ -260,6 +264,18 @@ const ASSET_FIELDS: {
 const PRIMARY_ASSET_KEYS: SingleAssetKey[] = ["garmentImage", "modelReferenceImage"];
 const primaryAssetFields = ASSET_FIELDS.filter((field) => PRIMARY_ASSET_KEYS.includes(field.key));
 const supplementalAssetFields = ASSET_FIELDS.filter((field) => !PRIMARY_ASSET_KEYS.includes(field.key));
+function isExplicitlyAbsentDetail(
+  key: SingleAssetKey,
+  attributes?: Partial<ProductAttributes>,
+) {
+  if (key === "pocketCloseupImage")
+    return /^(无|0)|无口袋/.test(attributes?.pocketDetails?.trim() || "");
+  if (key === "buttonCloseupImage")
+    return /^(无|0)(颗|个|枚)?$/.test(attributes?.buttonCount?.trim() || "");
+  if (key === "printCloseupImage")
+    return /^(无印花|无|纯色)$/.test(attributes?.printType?.trim() || "");
+  return false;
+}
 const PRODUCT_DETAIL_ASSET_KEYS = new Set<ProductDetailAssetKey>([
   "productFrontImage", "productBackImage", "productDetailImage", "printCloseupImage",
   "buttonCloseupImage", "pocketCloseupImage", "necklineCloseupImage", "sleeveCloseupImage",
@@ -309,10 +325,13 @@ export default function ProductDetailsPanel({
   saveProject: (patch: Partial<Project>) => Promise<Project>;
   onNext: () => void;
 }) {
+  const {register}=useProductionNavigation();
+  const searchParams=useSearchParams();
   const initialProfile = p.profile || {};
   const [sku, setSku] = useState(p.sku),
     [name, setName] = useState(p.productName),
     [type, setType] = useState<ProductType>(p.productType);
+  const [garmentProfile, setGarmentProfile] = useState<GarmentProductionProfile | undefined>(p.garmentProfile);
   const [profile, setProfile] = useState<ProductProfile>({
     ...initialProfile,
     priority: initialProfile.priority || "normal",
@@ -324,34 +343,79 @@ export default function ProductDetailsPanel({
   const [tagInput, setTagInput] = useState(""),
     [saved, setSaved] = useState(true),
     [preview, setPreview] = useState<string | null>(null),
-    [activeTab, setActiveTab] = useState<ProductTab>("basic"),
+    [activeTab, setActiveTab] = useState<ProductTab>(()=>searchParams.get("autoAnalyze")==="1"?"attributes":"basic"),
     [analyzing, setAnalyzing] = useState(false),
     [analysisNotice, setAnalysisNotice] = useState(""),
     [enhancing, setEnhancing] = useState(false),
     [enhanceNotice, setEnhanceNotice] = useState("");
+  useEffect(() => {
+    if (!saved) return;
+    const next = p.profile || {};
+    setSku(p.sku);
+    setName(p.productName);
+    setType(p.productType);
+    setProfile({
+      ...next,
+      priority: next.priority || "normal",
+      reviewStatus: next.reviewStatus || "draft",
+      tags: next.tags || [],
+      protectionItems: next.protectionItems || DEFAULT_PROTECTION_ITEMS,
+      attributes: next.attributes || {},
+    });
+  }, [p.productName, p.productType, p.profile, p.sku, saved]);
+  useEffect(() => {
+    setGarmentProfile((current) => {
+      if (saved || !current) return p.garmentProfile;
+      if (!p.garmentProfile || current.sourceImage === p.garmentProfile.sourceImage || current.classificationConfirmed) return current;
+      const merged = { ...p.garmentProfile };
+      for (const field of current.manualFields || []) {
+        const key = field === "category" ? "primaryCategory" : field === "subcategory" ? "secondaryCategory" : field;
+        (merged as unknown as Record<string, unknown>)[key] = current[key];
+      }
+      merged.manualFields = current.manualFields;
+      merged.category = merged.primaryCategory;
+      merged.subcategory = merged.secondaryCategory;
+      return merged;
+    });
+  }, [p.garmentProfile, saved]);
   const [visualAnalyzing, setVisualAnalyzing] = useState(false);
-  const [visualNotice, setVisualNotice] = useState("");
+  const [visualAnalysisVersion, setVisualAnalysisVersion] = useState(p.productVisualAnalysis?.version);
+  const currentVisualAnalysis = visualAnalysisVersion === PRODUCT_VISUAL_ANALYSIS_VERSION;
+  const hasStaleUnconfirmedAiCrop = Object.values(p.assetEvidence || {}).some(
+    (evidence) => evidence.source === "ai_crop" && !evidence.confirmed,
+  ) && !currentVisualAnalysis;
+  const [visualNotice, setVisualNotice] = useState(() => hasStaleUnconfirmedAiCrop
+    ? "检测到旧版尚未人工确认的 AI 裁图，已隐藏以防止错误细节进入换装。请重新执行步骤1。"
+    : "");
   const [planBusy, setPlanBusy] = useState(false);
   const [planNotice, setPlanNotice] = useState("");
   const [planConfirmed, setPlanConfirmed] = useState(p.productionTask?.status === "ready");
   const [selectedTaskTypes, setSelectedTaskTypes] = useState<ProductionTaskType[]>(p.productionTask?.taskTypes || []);
-  const [assetEvidence, setAssetEvidence] = useState<Project["assetEvidence"]>(() => ({ ...(p.assetEvidence || {}) }));
+  const [assetEvidence, setAssetEvidence] = useState<Project["assetEvidence"]>(() => Object.fromEntries(
+    Object.entries(p.assetEvidence || {}).filter(([, evidence]) =>
+      evidence.source !== "ai_crop" || evidence.confirmed || currentVisualAnalysis,
+    ),
+  ));
   const [cropTarget, setCropTarget] = useState<{key: ProductDetailAssetKey; label: string} | null>(null);
   const [cropDraft, setCropDraft] = useState<NormalizedCropRegion | undefined>();
   const aiFilled = useMemo(() => Object.fromEntries(
     Object.entries(assetEvidence || {})
-      .filter(([, evidence]) => evidence.source === "ai_crop")
+      .filter(([, evidence]) => evidence.source === "ai_crop" && (evidence.confirmed || currentVisualAnalysis))
       .map(([key, evidence]) => [key, evidence]),
-  ) as Record<string, ProductAssetEvidence>, [assetEvidence]);
+  ) as Record<string, ProductAssetEvidence>, [assetEvidence, currentVisualAnalysis]);
   const [assets, setAssets] = useState<Record<string, LocalAsset>>(() =>
     Object.fromEntries([
       ...ASSET_FIELDS.map((field) => [
         field.key,
-        {
-          url: p.assets[field.key],
-          name: p.assets[field.key] ? "已保存素材" : undefined,
-          status: p.assets[field.key] ? "saved" : "idle",
-        },
+        (() => {
+          const evidence = p.assetEvidence?.[field.key];
+          const staleAiCrop = evidence?.source === "ai_crop" && !evidence.confirmed && !currentVisualAnalysis;
+          return {
+            url: staleAiCrop ? undefined : p.assets[field.key],
+            name: !staleAiCrop && p.assets[field.key] ? "已保存素材" : undefined,
+            status: !staleAiCrop && p.assets[field.key] ? "saved" : "idle",
+          };
+        })(),
       ]),
       [
         "otherMaterial",
@@ -363,14 +427,27 @@ export default function ProductDetailsPanel({
       ],
     ]),
   );
-  useProjectDraftAutosave(p.id,{sku:sku.trim()||p.sku,productName:name.trim(),productType:type,profile},500);
   const changeProfile = (patch: Partial<ProductProfile>) => {
     setProfile((value) => ({ ...value, ...patch }));
     setSaved(false);
   };
   const changeAttribute = (key: keyof ProductAttributes, value: string) => {
-    changeProfile({ attributes: { ...profile.attributes, [key]: value } });
+    changeProfile({ attributes: { ...profile.attributes, [key]: value }, manualAttributeKeys: [...new Set([...(profile.manualAttributeKeys || []), key])] });
   };
+  function changeGarmentField(field: GarmentClassificationField, value: string) {
+    setGarmentProfile((current) => {
+      const base = current || { primaryCategory: "" as const, secondaryCategory: "", protectedDetails: [], forbiddenChanges: [], riskWarnings: [], confidence: 0, source: "manual" as const };
+      const key = field === "category" ? "primaryCategory" : field === "subcategory" ? "secondaryCategory" : field;
+      const next = { ...base, [key]: value, manualFields: [...new Set([...(base.manualFields || []), field])], classificationConfirmed: false } as GarmentProductionProfile;
+      if (field === "category") next.secondaryCategory = "";
+      next.category = next.primaryCategory;
+      next.subcategory = next.secondaryCategory;
+      return next;
+    });
+    if (field === "category" || field === "subcategory")
+      setType((current) => field === "category" ? legacyProductType(value) : garmentProfile ? legacyProductType(garmentProfile.primaryCategory, value) : current);
+    setSaved(false);
+  }
   const checks = useMemo(
     () => [
       { label: "基础信息完整", ok: Boolean(sku.trim() && name.trim() && type) },
@@ -404,8 +481,12 @@ export default function ProductDetailsPanel({
   const previewImages = Object.values(assets).flatMap((asset) =>
     asset.url ? [asset.url] : [],
   );
-  const pendingAiReviewCount = Object.values(assetEvidence || {}).filter(
-    (evidence) => evidence.source === "ai_crop" && !evidence.confirmed,
+  const visibleSupplementalAssetFields = supplementalAssetFields.filter(
+    (field) => !isExplicitlyAbsentDetail(field.key, profile.attributes),
+  );
+  const visibleSupplementalKeys = new Set(visibleSupplementalAssetFields.map((field) => field.key));
+  const pendingAiReviewCount = Object.entries(aiFilled).filter(
+    ([key, evidence]) => visibleSupplementalKeys.has(key as SingleAssetKey) && !evidence.confirmed,
   ).length;
   const enhancement=p.productImageEnhancement;
   const enhancementSummary=enhancement
@@ -449,7 +530,6 @@ export default function ProductDetailsPanel({
           },
         }));
       }
-      setSaved(false);
     } catch (error) {
       setAssets((value) => ({
         ...value,
@@ -473,7 +553,6 @@ export default function ProductDetailsPanel({
         return next;
       });
     }
-    setSaved(false);
   }
   async function clearAllAssets() {
     await clearSourceAssets();
@@ -497,6 +576,7 @@ export default function ProductDetailsPanel({
       sku: sku.trim(),
       productName: name.trim(),
       productType: type,
+      garmentProfile,
       profile,
       ...(advance
         ? {
@@ -509,9 +589,12 @@ export default function ProductDetailsPanel({
     setSku(next.sku);
     setName(next.productName);
     setProfile(next.profile || profile);
+    setGarmentProfile(next.garmentProfile);
     setSaved(true);
     if (advance) onNext();
   }
+  useEffect(()=>{register({dirty:!saved,save:()=>persist(false)})});
+  useEffect(()=>()=>register(null),[register]);
   async function enhanceProduct() {
     if (!assets.garmentImage?.url)
       throw new Error("请先上传产品主图，再一键变高清");
@@ -539,9 +622,8 @@ export default function ProductDetailsPanel({
       setEnhancing(false);
     }
   }
-  async function analyzeProduct() {
-    if (!assets.garmentImage?.url)
-      throw new Error("请先在图片素材中上传一张产品主图");    setAnalyzing(true);
+  async function fetchAndApplyProductAnalysis(auto: boolean) {
+    setAnalyzing(true);
     setAnalysisNotice("");
     try {
       const response = await fetch(`/api/projects/${p.id}/product-analyze`, {
@@ -552,26 +634,48 @@ export default function ProductDetailsPanel({
           attributes?: ProductAttributes;
           detailDescription?: string;
           protectionItems?: string[];
+          garmentProfile?: GarmentProductionProfile;
           error?: string;
         };
       if (!response.ok) throw new Error(data.error || "产品图片识别失败");
+      if (data.garmentProfile) setGarmentProfile((current) => {
+        if (!current?.manualFields?.length && !current?.classificationConfirmed) return data.garmentProfile;
+        if (current.classificationConfirmed) return current;
+        const merged = { ...data.garmentProfile } as GarmentProductionProfile;
+        for (const field of current.manualFields || []) {
+          const key = field === "category" ? "primaryCategory" : field === "subcategory" ? "secondaryCategory" : field;
+          (merged as unknown as Record<string, unknown>)[key] = current[key];
+        }
+        merged.manualFields = current.manualFields;
+        merged.category = merged.primaryCategory;
+        merged.subcategory = merged.secondaryCategory;
+        return merged;
+      });
       if (data.productType) setType(data.productType);
-      setProfile((current) => ({
-        ...current,
-        attributes: { ...current.attributes, ...data.attributes },
-        detailDescription: data.detailDescription || current.detailDescription,
-        protectionItems: data.protectionItems?.length
-          ? data.protectionItems
-          : current.protectionItems,
-        reviewStatus: "awaiting_review",
-      }));
-      setSaved(false);
-      setAnalysisNotice(
-        "识别完成：商品属性和细节要求已回填，请检查修改后再保存。",
-      );
+      if (auto && garmentProfile?.manualFields?.length) setSaved(false);
+      if (!auto) {
+        setProfile((current) => {
+          const attributes = { ...current.attributes };
+          for (const [key, value] of Object.entries(data.attributes || {})) {
+            const field = key as keyof ProductAttributes;
+            if (current.reviewStatus !== "confirmed" && !current.manualAttributeKeys?.includes(field))
+              attributes[field] = value;
+          }
+          return { ...current, attributes,
+            detailDescription: current.reviewStatus === "confirmed" ? current.detailDescription : data.detailDescription || current.detailDescription,
+            protectionItems: current.manualProtectionEdited || current.reviewStatus === "confirmed" ? current.protectionItems : data.protectionItems?.length ? data.protectionItems : current.protectionItems,
+            reviewStatus: current.reviewStatus === "confirmed" ? "confirmed" : "awaiting_review" };
+        });
+        setSaved(false);
+      }
+      setAnalysisNotice(auto ? "已根据产品图自动识别服装类型；不确定项请人工确认。" : "识别完成：服装类型、商品属性和细节已回填，请检查修改后保存。");
     } finally {
       setAnalyzing(false);
     }
+  }
+  async function analyzeProduct() {
+    if (!assets.garmentImage?.url) throw new Error("请先在图片素材中上传一张产品主图");
+    await fetchAndApplyProductAnalysis(false);
   }
   async function analyzeVisual() {
     if (!assets.garmentImage?.url)
@@ -591,13 +695,20 @@ export default function ProductDetailsPanel({
           confidence: number;
           needsReview: boolean;
         }>;
-        missing?: Array<{ label: string }>;
+        missing?: Array<{ label: string; reason?: string }>;
         error?: string;
       };
       if (!response.ok || !data.regions)
         throw new Error(data.error || "产品细节识别失败");
       const filledKeys = new Set(data.regions.map((region) => region.assetKey));
       const next = { ...assets };
+      // 新版审核拒绝的旧 AI 裁图必须立刻从界面消失；人工上传、人工框选和
+      // 已确认的 AI 素材仍完整保留。
+      for (const [key, oldEvidence] of Object.entries(assetEvidence || {})) {
+        if (oldEvidence.source === "ai_crop" && !oldEvidence.confirmed && key in next) {
+          next[key] = { status: "idle" };
+        }
+      }
       const evidence: Record<string, ProductAssetEvidence> = {};
       for (const region of data.regions) {
         const stateKey = region.assetKey as keyof typeof assets;
@@ -618,12 +729,23 @@ export default function ProductDetailsPanel({
       }
       setAssets(next);
       setAssetEvidence(data.project?.assetEvidence || { ...(assetEvidence || {}), ...evidence });
-      setSaved(false);
+      setVisualAnalysisVersion(data.project?.productVisualAnalysis?.version || PRODUCT_VISUAL_ANALYSIS_VERSION);
       const filled = Array.from(filledKeys).length;
-      const missing = (data.missing || []).map((item) => item.label).join("、");
+      const intentionallyAbsent = (data.missing || [])
+        .filter((item) => item.reason?.includes("结构不存在"))
+        .map((item) => item.label)
+        .join("、");
+      const missing = (data.missing || [])
+        .filter((item) => !item.reason?.includes("结构不存在"))
+        .map((item) => item.label)
+        .join("、");
       setVisualNotice(
-        `步骤1完成：AI已从产品主图裁剪并高清放大 ${filled} 个补充素材参考${missing ? `；未识别到：${missing}` : ""}。请逐张确认、重新框选或人工上传。`,
+        `步骤1完成：AI已从产品主图裁剪并高清放大 ${filled} 个语义匹配的补充素材${intentionallyAbsent ? `；商品无对应结构、已隐藏：${intentionallyAbsent}` : ""}${missing ? `；画面中没有足够可靠依据：${missing}` : ""}。请逐张确认；不准确时重新框选或人工上传。`,
       );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "产品细节识别失败";
+      setVisualNotice(`细节识别未完成：${message}`);
+      throw error;
     } finally {
       setVisualAnalyzing(false);
     }
@@ -646,7 +768,6 @@ export default function ProductDetailsPanel({
       for (const key of assetKeys) next[key] = { status: "idle" };
       return next;
     });
-    setSaved(false);
     setVisualNotice("已撤销 AI 自动填充的细节图，对应槽位已清空，可重新手动上传或再次识别。");
   }
   function openDetailCrop(key: ProductDetailAssetKey, label: string) {
@@ -668,7 +789,6 @@ export default function ProductDetailsPanel({
     setAssetEvidence((value) => ({ ...(value || {}), [target.key]: data.evidence! }));
     setCropTarget(null);
     setCropDraft(undefined);
-    setSaved(false);
     setVisualNotice(`${target.label}已按你指定的产品主图位置裁剪并确认，换装时会作为高优先级细节参考。`);
   }
   async function confirmAiDetail(assetKey: ProductDetailAssetKey) {
@@ -680,7 +800,6 @@ export default function ProductDetailsPanel({
     const data = await response.json() as {evidence?: ProductAssetEvidence; error?: string};
     if (!response.ok || !data.evidence) throw new Error(data.error || "确认补充素材失败");
     setAssetEvidence((value) => ({ ...(value || {}), [assetKey]: data.evidence! }));
-    setSaved(false);
   }
   const successful = jobs.filter(
     (job) =>
@@ -718,7 +837,7 @@ export default function ProductDetailsPanel({
             <span className={`badge ${planConfirmed ? "success" : "wait"}`}>{planConfirmed ? "方案已确认" : p.productionTask.status === "draft" ? "等待AI分析" : "需要人工确认"}</span>
           </div>
           <div className="sku-production-plan-grid">
-            <div><small>服装分类</small><b>{p.garmentProfile?.primaryCategory || p.productType} / {p.garmentProfile?.secondaryCategory || "待识别"}</b></div>
+            <div><small>服装分类</small><b>{garmentProfile?.primaryCategory || "待产品图识别"} / {garmentProfile?.secondaryCategory || "待识别"}</b></div>
             <div><small>任务类型</small><b>{p.productionTask.taskTypes.join("、") || "待确认"}</b></div>
             <div><small>设计复杂度</small><b>{p.productionTask.designLevel === "complex" ? "复杂款（逐色参考）" : p.productionTask.designLevel === "simple" ? "简单款（快速生产）" : "待人工确认"}</b></div>
             <div><small>Top 3 姿势</small><b>{p.productionTask.recommendedPoses.slice(0, 3).map((item) => item.poseGroupId).join("、") || "姿势库暂无匹配"}</b></div>
@@ -835,6 +954,33 @@ export default function ProductDetailsPanel({
                   <option value="urgent">紧急</option>
                 </select>
               </label>
+            </div>
+            <div className="product-classification">
+              <div className="panel-head">
+                <div><h3>AI 服装类型识别</h3><small>仅依据产品图；一级 / 二级 / 具体款式可人工修改</small></div>
+                <div className="product-ai-review-actions">
+                  <span className={`badge ${garmentProfile?.classificationConfirmed ? "success" : "wait"}`}>
+                    {garmentProfile?.classificationConfirmed ? "人工已确认" : garmentProfile?.sourceImage ? `AI 待确认 · ${Math.round(garmentProfile.confidence * 100)}%` : "等待产品图"}
+                  </span>
+                  {garmentProfile && !garmentProfile.classificationConfirmed && <button type="button" className="secondary" onClick={() => { setGarmentProfile({ ...garmentProfile, classificationConfirmed: true }); setSaved(false); }}>确认服装分类</button>}
+                </div>
+              </div>
+              {garmentProfile?.riskWarnings?.length ? <p className="notice warning">{garmentProfile.riskWarnings.slice(-3).join("；")}</p> : null}
+              <div className="product-basic-grid">
+                <label className="field">一级分类
+                  <select value={garmentProfile?.primaryCategory || ""} onChange={(e) => changeGarmentField("category", e.target.value)}>
+                    <option value="">待识别</option>{GARMENT_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
+                  </select>
+                </label>
+                <label className="field">二级分类
+                  <select value={garmentProfile?.secondaryCategory || ""} onChange={(e) => changeGarmentField("subcategory", e.target.value)}>
+                    <option value="">待识别</option>
+                    {garmentProfile?.secondaryCategory && (!isGarmentCategory(garmentProfile.primaryCategory) || !(GARMENT_TAXONOMY[garmentProfile.primaryCategory] as readonly string[]).includes(garmentProfile.secondaryCategory)) && <option value={garmentProfile.secondaryCategory}>{garmentProfile.secondaryCategory}</option>}
+                    {garmentProfile && isGarmentCategory(garmentProfile.primaryCategory) && GARMENT_TAXONOMY[garmentProfile.primaryCategory].map((subcategory) => <option key={subcategory}>{subcategory}</option>)}
+                  </select>
+                </label>
+                {([ ["garmentType", "具体服装名称"], ["fit", "版型"], ["length", "长度"], ["silhouette", "廓形"], ["style", "风格"], ["material", "材质"], ["season", "季节"], ["gender", "性别定位"], ["displayFocus", "展示重点"] ] as const).map(([field, label]) => <label className="field" key={field}>{label}<input value={garmentProfile?.[field] || ""} placeholder="无法从图片确认" onChange={(e) => changeGarmentField(field, e.target.value)} /></label>)}
+              </div>
             </div>
           </section>
           <aside className="card product-check">
@@ -1084,9 +1230,9 @@ export default function ProductDetailsPanel({
               </div>
             </div>
             <details className="product-supplemental-assets" open>
-              <summary>步骤2：人工检查与补充素材 <span>{supplementalAssetFields.filter(field=>assets[field.key]?.url).length + (assets.otherMaterial?.url ? 1 : 0)} 张已上传{pendingAiReviewCount ? ` · ${pendingAiReviewCount} 张待确认` : " · 已确认素材可用于换装"}</span></summary>
+              <summary>步骤2：人工检查与补充素材 <span>{visibleSupplementalAssetFields.filter(field=>assets[field.key]?.url).length + (assets.otherMaterial?.url ? 1 : 0)} 张已上传{pendingAiReviewCount ? ` · ${pendingAiReviewCount} 张待确认` : " · 已确认素材可用于换装"}</span></summary>
               <div className="product-assets-grid">
-              {supplementalAssetFields.map((field) => {
+              {visibleSupplementalAssetFields.map((field) => {
                 const detailKey = isProductDetailAssetKey(field.key) ? field.key : undefined;
                 const evidence = detailKey ? assetEvidence?.[detailKey] : undefined;
                 const aiPending = evidence?.source === "ai_crop" && !evidence.confirmed;

@@ -2,6 +2,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const root=process.cwd(),source=path.join(root,".next","standalone"),target=path.join(root,"desktop-runtime");
+// Next.js file tracing can pull previous desktop packages back into
+// `.next/standalone` when application code scans the workspace. Copying those
+// folders would recursively embed old runtimes/packages into every new App.
+// Keep only the standalone server and its actual runtime dependencies.
+const excludedStandaloneRoots=new Set(["desktop-runtime","out",".next-build","outputs","uploads","data","logs","temp",".venv"]);
+function includeStandaloneRuntime(sourcePath){
+  const relative=path.relative(source,sourcePath);
+  if(!relative)return true;
+  const [topLevel]=relative.split(path.sep);
+  return !excludedStandaloneRoots.has(topLevel);
+}
 const portfolioRoute=route=>route==="/"||route==="/work"||route.startsWith("/work/")||route==="/about"||route==="/contact";
 const portfolioPageKey=key=>key==="/page"||key==="/work/page"||key.startsWith("/work/")||key==="/about/page"||key==="/contact/page";
 async function readJson(file){return JSON.parse(await fs.readFile(file,"utf8"))}
@@ -65,7 +76,7 @@ async function prunePortfolio(){
 }
 await fs.access(path.join(source,"server.js"));
 await fs.rm(target,{recursive:true,force:true});
-await fs.cp(source,target,{recursive:true});
+await fs.cp(source,target,{recursive:true,filter:includeStandaloneRuntime});
 await alignSharpRuntime();
 await verifyImageRuntime();
 await fs.mkdir(path.join(target,".next"),{recursive:true});

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getProject, updateProjectWith, type ProductVisualRegion } from "@/lib/db";
 import { detectProductVisualRegions, buildVisualRegion } from "@/lib/ai/product-visual-regions";
+import { applyExplicitAbsenceRules } from "@/lib/ai/product-visual-regions-normalize";
+import { PRODUCT_VISUAL_ANALYSIS_VERSION } from "@/lib/product-visual-version";
+import { ZodError } from "zod";
 
 const AUTO_ASSET_KEYS = [
   "productFrontImage",
@@ -27,9 +30,10 @@ export async function POST(
     if (!project) throw new Error("商品项目不存在");
     const source = project.assets.garmentEnhancedImage || project.assets.garmentImage;
     if (!source) throw new Error("请先上传一张产品主图");
-    const detected = await detectProductVisualRegions(source);
-    if (!detected.regions.length)
-      throw new Error("未在产品主图中识别出可裁剪的细节区域");
+    const detected = applyExplicitAbsenceRules(
+      await detectProductVisualRegions(source),
+      project.profile?.attributes,
+    );
     const regions: ProductVisualRegion[] = [];
     for (const region of detected.regions) {
       const regionAssetKey = (
@@ -59,6 +63,15 @@ export async function POST(
     }
     const assets = { ...project.assets };
     const assetEvidence = { ...(project.assetEvidence || {}) };
+    // 重跑时先清理尚未人工确认的旧 AI 裁图。若新版审核拒绝了“伪背面”或
+    // 无价值局部，旧错误图片不能继续留在对应卡片中；人工上传/确认内容不动。
+    for (const assetKey of AUTO_ASSET_KEYS) {
+      const evidence = assetEvidence[assetKey];
+      if (evidence?.source === "ai_crop" && !evidence.confirmed) {
+        delete assets[assetKey];
+        delete assetEvidence[assetKey];
+      }
+    }
     const now = new Date().toISOString();
     for (const region of regions) {
       const assetKey = region.assetKey;
@@ -81,6 +94,7 @@ export async function POST(
       assets,
       assetEvidence,
       productVisualAnalysis: {
+        version: PRODUCT_VISUAL_ANALYSIS_VERSION,
         status: "completed",
         sourceImage: source,
         model: undefined,
@@ -96,8 +110,11 @@ export async function POST(
       missing: detected.missing,
     });
   } catch (error) {
+    const message = error instanceof ZodError
+      ? "AI返回的细节位置格式不完整，请重新识别；系统没有保存这次不可靠的结果。"
+      : error instanceof Error ? error.message : "产品细节识别失败";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "产品细节识别失败" },
+      { error: message },
       { status: 400 },
     );
   }

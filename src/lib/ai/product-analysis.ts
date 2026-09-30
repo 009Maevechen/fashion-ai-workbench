@@ -10,8 +10,8 @@ import {
   putCachedProductAnalysis,
 } from "../product-analysis-cache";
 import { resizeToJpeg } from "../image-limits";
+import { GARMENT_CATEGORIES, GARMENT_TAXONOMY, legacyProductType, validateGarmentClassification, type GarmentClassification } from "../garment-classification";
 
-const productTypes = ["上衣", "裤装", "连衣裙", "半身裙", "套装"] as const;
 const attributeKeys = [
   "mainColor", "printType", "neckline", "sleeveType", "garmentLength",
   "fit", "fabric", "fabricTexture", "weaveStructure", "gradientDesign",
@@ -55,7 +55,22 @@ const attributesSchema = z.object({
 });
 
 const analysisSchema = z.object({
-  productType: z.enum(productTypes),
+  garmentClassification: z.object({
+    category: z.enum(["", ...GARMENT_CATEGORIES] as ["", ...typeof GARMENT_CATEGORIES]),
+    subcategory: z.string().max(80),
+    garmentType: z.string().max(120),
+    style: z.string().max(100),
+    fit: z.string().max(100),
+    length: z.string().max(100),
+    silhouette: z.string().max(100),
+    material: z.string().max(100),
+    season: z.string().max(100),
+    gender: z.string().max(100),
+    displayFocus: z.string().max(200),
+    confidence: z.coerce.number().min(0).max(1),
+    needsReview: z.boolean().default(false),
+    issues: z.array(z.string().max(200)).max(12).default([]),
+  }),
   attributes: attributesSchema,
   detailDescription: z.string().min(1).max(4000).transform((value) => value.trim().slice(0, 800)),
   protectionItems: z.array(z.string().min(1)).max(20).default([]),
@@ -66,6 +81,7 @@ export type ProductImageAnalysis = {
   attributes: ProductAttributes;
   detailDescription: string;
   protectionItems: string[];
+  garmentClassification: GarmentClassification;
 };
 
 type ProductAnalysisRuntime = typeof globalThis & {
@@ -79,7 +95,13 @@ function completeAnalysis(parsed: z.infer<typeof analysisSchema>): ProductImageA
   const attributes = Object.fromEntries(
     attributeKeys.map((key) => [key, parsed.attributes[key]?.trim() || "无法从图片确认"]),
   ) as ProductAttributes;
-  return { ...parsed, attributes };
+  const garmentClassification = validateGarmentClassification(parsed.garmentClassification);
+  return {
+    ...parsed,
+    attributes,
+    garmentClassification,
+    productType: legacyProductType(garmentClassification.category, garmentClassification.subcategory),
+  };
 }
 
 function shouldUseCompatibilityPass(error: unknown) {
@@ -92,10 +114,14 @@ async function runProductAnalysis(input: Buffer, imageHash: string): Promise<Pro
     resolveProductAnalysisModel(),
     resolveProductAnalysisModel("fallback"),
   ]);
-  const normalized = await resizeToJpeg(input, 1024, 82);
+  // 商品资料识别需要看清针法、纹理、纽扣、口袋和拼接边界；保留比普通
+  // 对话缩略图更高的视觉分辨率，避免高清产品图在分析前被过度压缩。
+  const normalized = await resizeToJpeg(input, 1600, 90);
   const imageDataUrl = toDataUrl(normalized, "image/jpeg");
   const fields = attributeKeys.join(", ");
-  const observationPrompt = "详细观察图片中的核心服装商品，不要把模特的裤子、包、饰品或背景当成目标商品。必须逐项观察并说明：商品类型、主体色、印花类型、领型、袖型、衣长、版型、面料材质、表面纹理、织法或针法结构、纹理方向与密度、渐变颜色与过渡方向、色块和拼接的边界比例、特殊设计、门襟、纽扣数量、口袋数量和位置、包边颜色、印花位置、左右是否不对称、腰带、抽绳、褶皱、开叉、透明度、内衬和弹性。尤其要区分针织、罗纹、提花、网眼、绒感、光泽和垂坠感；明确可见的不存在结构写‘无’；单张图片无法可靠判断的隐藏信息写‘无法从图片确认’，严禁猜测。";
+  const taxonomy = Object.entries(GARMENT_TAXONOMY).map(([category, children]) => `${category}：${children.join("、")}`).join("；");
+  const classificationPrompt = `三级服装分类词库：${taxonomy}。garmentClassification 必须包含 category（上述一级之一；完全无法确认时填空字符串）、subcategory（对应一级下的二级之一；无法确认时填空字符串）、garmentType（从图片可见特征形成的具体三级名称，如“宽松针织短款毛衣”；无法确认时填空字符串）、style、fit、length、silhouette、material、season、gender、displayFocus、confidence（0-1 数字）、needsReview（布尔）、issues（数组）。所有字段只根据本张产品图判断，不参考商品标题、文件名或模特图；季节、性别、材质等看不清时填“无法从图片确认”，不得凭常识推断。多件或多色只识别画面中最完整清晰的同一件，不混合。二级或三级难以确认时降低 confidence、标记 needsReview 并说明原因。`;
+  const observationPrompt = "把本张产品图作为唯一事实来源并放大逐区域检查。详细观察图片中的核心服装商品，不要把模特的裤子、包、饰品或背景当成目标商品。若画面展示同款多色，必须先确认它们结构完全相同，再以最完整清晰的一件识别结构；颜色分别出现时不得把多件颜色混成一件。必须逐项观察并说明：商品大类、子类、可见的具体服装名称、版型、长度、廓形、风格、材质、季节和性别定位的可见证据、最适合展示的服装部位、主体色、印花类型、领型、袖型、衣长、面料材质、表面纹理、织法或针法结构、纹理方向与密度、渐变颜色与过渡方向、色块和拼接的边界比例、特殊设计、门襟、纽扣数量、口袋数量和位置、包边颜色、印花位置、左右是否不对称、腰带、抽绳、褶皱、开叉、透明度、内衬和弹性。尤其要区分针织、罗纹、提花、网眼、绒感、光泽和垂坠感；装饰环、抽褶、垂坠或拍摄折痕必须按真实结构区分，不能凭相似外观猜测；明确可见的不存在结构写‘无’；被遮挡、分辨率不足或单张图片无法可靠判断的隐藏信息写‘无法从图片确认’，严禁猜测。";
   let parsed: z.infer<typeof analysisSchema>;
 
   try {
@@ -103,7 +129,7 @@ async function runProductAnalysis(input: Buffer, imageHash: string): Promise<Pro
       visionRuntime,
       imageDataUrl,
       "你是电商服装图片识别助手。只陈述图片中明确可见的信息，不确定的内容不要猜测。只输出合法 JSON。",
-      `${observationPrompt}\n直接返回 JSON：productType 只能是上衣/裤装/连衣裙/半身裙/套装；attributes 必须完整包含 ${fields} 共25项且所有值均为字符串；detailDescription 重点概括材质、织法、纹理、渐变、色块和特殊设计布局；protectionItems 只列出图片中明确可见、生成时必须保护的材质与设计细节。不得省略字段，不得添加图片中看不到的信息。`,
+      `${observationPrompt}\n${classificationPrompt}\n直接返回 JSON：只需返回 garmentClassification、attributes、detailDescription、protectionItems；旧版 productType 将由服务端转换。attributes 必须完整包含 ${fields} 共25项且所有值均为字符串；detailDescription 重点概括材质、织法、纹理、渐变、色块和特殊设计布局；protectionItems 只列出图片中明确可见、生成时必须保护的材质与设计细节。不得省略字段，不得添加图片中看不到的信息。`,
     ));
   } catch (directError) {
     // 网络、鉴权、额度或中转站错误直接返回真实原因，禁止再发一轮必然失败
@@ -119,7 +145,7 @@ async function runProductAnalysis(input: Buffer, imageHash: string): Promise<Pro
       parsed = analysisSchema.parse(await requestTextJson(
         textRuntime,
         "你是电商服装资料整理助手。根据图片识别模型提供的观察文字整理资料，不得添加观察中没有的信息，必须只返回合法 JSON。attributes 的每一个字段都必须填写；图片无法证明时统一填‘无法从图片确认’，不得省略字段、不得猜测。",
-        `图片识别结果：\n${observation}\n\n整理为 JSON：productType 只能是上衣/裤装/连衣裙/半身裙/套装；attributes 必须完整包含 ${fields} 共25项，所有属性值必须是字符串；detailDescription 必须重点概括材质、织法、纹理、渐变、色块和特殊设计布局；protectionItems 只列出图片中明确可见、生成时必须保护的材质与设计细节。`,
+        `图片识别结果：\n${observation}\n\n${classificationPrompt}\n整理为 JSON：只需返回 garmentClassification、attributes、detailDescription、protectionItems；旧版 productType 将由服务端转换。attributes 必须完整包含 ${fields} 共25项，所有属性值必须是字符串；detailDescription 必须重点概括材质、织法、纹理、渐变、色块和特殊设计布局；protectionItems 只列出图片中明确可见、生成时必须保护的材质与设计细节。`,
       ));
     } catch (fallbackError) {
       throw new Error(`单次结构化识别失败：${directError instanceof Error ? directError.message : "未知错误"}；兼容识别也失败：${fallbackError instanceof Error ? fallbackError.message : "未知错误"}`);
@@ -133,6 +159,7 @@ async function runProductAnalysis(input: Buffer, imageHash: string): Promise<Pro
     attributes: result.attributes as Record<string, string>,
     detailDescription: result.detailDescription,
     protectionItems: result.protectionItems,
+    garmentClassification: result.garmentClassification,
     cachedAt: new Date().toISOString(),
   });
   return result;
@@ -146,12 +173,13 @@ export async function analyzeProductImage(
   const imageHash = hashBuffer(input);
   if (!options.force) {
     const cached = await getCachedProductAnalysis(imageHash);
-    if (cached) {
+    if (cached?.garmentClassification) {
       return {
         productType: cached.productType as ProductType,
         attributes: cached.attributes as ProductAttributes,
         detailDescription: cached.detailDescription,
         protectionItems: cached.protectionItems,
+        garmentClassification: cached.garmentClassification,
       };
     }
   }
